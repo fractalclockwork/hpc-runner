@@ -28,5 +28,8 @@ If applicable, add screenshots to help explain your problem.
 - Kernel Version: [e.g. linux kernel release 4.18.0-240]
  - Software Version [e.g. 22]
 
+** Browser (optional, delete if not related to frontend) **
+- Browser Version(s): [e.g. Chrome 146.0.7]
+
 **Additional context**
 Add any other context about the problem here.
