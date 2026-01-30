@@ -17,5 +17,6 @@ assignees: ''
 - [ ] Brief description of change 3
 
 ## Checklist before requesting a review
+- [ ] I have properly formatted my code using the agreed upon style guide and automated formatters
 - [ ] I have performed a self-review of my code
 - [ ] If it is a core feature, I have added thorough tests.
