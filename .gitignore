@@ -1,0 +1,15 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# uv virtual environment (if created locally)
+.venv/
+
+# Temporary outputs
+tmp/
+#*.svg
+*.html
+
+# OS junk
+.DS_Store
+Thumbs.db

@@ -1,0 +1,71 @@
+Type,Name,Start,End,Date,Owner,Depends
+phase,Pre-Course,2026-01-08,2026-01-19,,,
+phase,Requirements & Architecture,2026-01-20,2026-02-09,,,
+phase,MVP Development,2026-02-10,2026-03-27,,,
+phase,Testing,2026-03-28,2026-04-17,,,
+phase,Final Delivery,2026-04-18,2026-05-08,,,
+
+task,Team Communication Setup,2026-01-08,2026-01-20,,Team,
+task,Sponsor Kickoff + Requirements Intake,2026-01-14,2026-02-02,,Team,Team Communication Setup
+
+task,Draft Project Scope + Charter,2026-01-20,2026-01-24,,Brent,Sponsor Kickoff + Requirements Intake
+task,Architecture Sketch v1,2026-01-22,2026-01-25,,Brent,Sponsor Kickoff + Requirements Intake
+
+task,Requirements Alignment + Scope Finalization,2026-01-27,2026-01-30,,Shree,Draft Project Scope + Charter
+task,Customer Discovery Outreach,2026-01-28,2026-02-06,,Kayleen,Draft Project Scope + Charter
+
+task,Documentation Framework Setup,2026-01-26,2026-02-06,,Brent,Draft Project Scope + Charter
+task,Validation Strategy Draft,2026-01-20,2026-02-06,,Kayleen,Sponsor Kickoff + Requirements Intake
+
+task,MVP Architecture Definition,2026-02-03,2026-02-13,,Team,Requirements Alignment + Scope Finalization
+task,Prototype UI Concepts,2026-02-05,2026-02-14,,Brent,MVP Architecture Definition
+
+task,Resource & System Schema,2026-02-02,2026-02-07,,Shawn,MVP Architecture Definition
+task,Solver Definition Schema,2026-02-02,2026-02-07,,Shawn,MVP Architecture Definition
+task,Test Definition Schema,2026-02-02,2026-02-07,,Shawn,MVP Architecture Definition
+
+task,Test Runner Prototype,2026-02-07,2026-02-10,,Shawn,Resource & System Schema
+task,Log Parsing Prototype,2026-02-07,2026-02-10,,Kayleen,Solver Definition Schema
+task,Database Schema & Setup,2026-02-07,2026-02-10,,Brent,Test Definition Schema
+task,Web UI Prototype,2026-02-07,2026-02-10,,Shree,Database Schema & Setup
+
+task,Sample Solver Implementations,2026-02-11,2026-02-28,,Shawn,Test Runner Prototype
+task,Metric Extraction Rules,2026-02-11,2026-02-28,,Kayleen,Log Parsing Prototype
+task,Documentation Expansion,2026-02-11,2026-02-28,,Brent,Documentation Framework Setup
+task,UI Integration & Scheduling,2026-02-11,2026-02-28,,Shree,Web UI Prototype
+
+task,End-to-End MVP Assembly,2026-02-28,2026-03-20,,Team,Sample Solver Implementations
+
+task,Internal Test Runs,2026-03-20,2026-04-05,,Team,End-to-End MVP Assembly
+task,Sponsor Validation Cycle,2026-03-24,2026-04-05,,Team,Internal Test Runs
+
+task,UI/UX Refinement,2026-03-24,2026-04-17,,Shree,Sponsor Validation Cycle
+task,Parser & Metrics Refinement,2026-03-24,2026-04-17,,Kayleen,Sponsor Validation Cycle
+task,Runner & System Refinement,2026-03-24,2026-04-17,,Shawn,Sponsor Validation Cycle
+task,Documentation Polish,2026-03-24,2026-04-17,,Brent,Sponsor Validation Cycle
+
+task,Final Report Writing,2026-04-18,2026-04-27,,Brent,Documentation Polish
+task,Poster Creation,2026-04-18,2026-04-27,,Kayleen,Documentation Polish
+task,Repo Cleanup & Release Prep,2026-04-18,2026-04-27,,Shawn,Runner & System Refinement
+task,UI Final Polish,2026-04-18,2026-04-27,,Shree,UI/UX Refinement
+
+task,Final Presentation Prep,2026-04-27,2026-05-01,,Team,Final Report Writing
+
+milestone,Course Kickoff,, ,2026-01-21,,
+milestone,Flash Demo #1,, ,2026-02-11,,Test Runner Prototype
+milestone,Milestone Review I,, ,2026-02-25,,Sample Solver Implementations
+milestone,Flash Demo #2,, ,2026-03-11,,End-to-End MVP Assembly
+milestone,Milestone Review II,, ,2026-03-31,,End-to-End MVP Assembly
+milestone,Flash Demo #3,, ,2026-04-08,,Sponsor Validation Cycle
+milestone,Milestone Review III,, ,2026-04-21,,Documentation Polish
+milestone,Final Capstone Presentations,, ,2026-05-06,,Final Presentation Prep
+
+deliverable,Kickoff Assignment,, ,2026-01-30,,Draft Project Scope + Charter
+deliverable,Flash Demo #1 Slides,, ,2026-02-13,,Test Runner Prototype
+deliverable,Milestone Review I Video,, ,2026-02-27,,Sample Solver Implementations
+deliverable,Flash Demo #2 Slides,, ,2026-03-13,,End-to-End MVP Assembly
+deliverable,Milestone Review II Video,, ,2026-04-03,,End-to-End MVP Assembly
+deliverable,Flash Demo #3 Slides,, ,2026-04-10,,Sponsor Validation Cycle
+deliverable,Draft Report,, ,2026-04-24,,Documentation Polish
+deliverable,Final Deliverables (Report + Repo + Poster),, ,2026-05-01,,Final Report Writing
+
