@@ -1,7 +1,7 @@
 # Temporary outputs
 tmp/
 #*.svg
-*.html
+#*.html
 
 # OS junk
 .DS_Store

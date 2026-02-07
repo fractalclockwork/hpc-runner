@@ -10358,15 +10358,6 @@ const Ai = te(
   ]
 ),
 Nn = [
-  {
-    id: 'RUN-001234',
-    solver: 'LAMMPS',
-    system: 'HPC-Cluster-01',
-    status: 'passed',
-    runtime: 145,
-    mlups: '2.8M',
-    timestamp: '2026-02-04 10:23:15'
-  },
 ],
 Jf = [
   {

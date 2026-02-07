@@ -5,6 +5,7 @@ import yaml
 import structlog
 from dataclasses import dataclass
 from typing import List, Dict, Any
+from datetime import datetime
 
 logger = structlog.get_logger()
 
@@ -32,6 +33,7 @@ def load_config(path: str) -> List[RunnerSpec]:
 
 def run_runner(spec: RunnerSpec, capture_output: bool = True, check: bool = False) -> Dict[str, Any]:
     logger.info("runner.start", name=spec.name, command=spec.command, cwd=spec.cwd)
+    start_time = datetime.utcnow()
     result = subprocess.run(
         spec.command,
         env={**(spec.env or {})},
@@ -47,11 +49,16 @@ def run_runner(spec: RunnerSpec, capture_output: bool = True, check: bool = Fals
         stdout=(result.stdout or "").strip(),
         stderr=(result.stderr or "").strip(),
     )
+    end_time = datetime.utcnow()
+    runtime = (end_time - start_time).total_seconds()
     return {
         "name": spec.name,
         "returncode": result.returncode,
         "stdout": result.stdout,
         "stderr": result.stderr,
+        # putting in the timestamp so we get them from runners
+        "runtime": runtime,
+        "timestamp": datetime.utcnow().isoformat(),
     }
 
 def run_from_config(path: str) -> List[Dict[str, Any]]:

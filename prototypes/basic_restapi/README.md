@@ -45,6 +45,7 @@ uv --directory prototypes/hpc-runner run hpc-runner configs/runners.yaml
 
 ```bash
 # From inside the project directory prototypes/hpc-runner
+cd prototypes/hpc-runner
 # 1. Sync environment
 uv sync
 
@@ -68,8 +69,9 @@ unzip -l dist/*.whl | sed -n '1,200p'
 Next you need to install the uv requirements as well as the build for the hpc_runner
 
 ```bash
-cd prototypes/basic-restapi
+cd ../basic_restapi
 uv sync
+source .venv/bin/activate
 uv --directory ../hpc-runner pip install ../hpc-runner/dist/hpc_regression-0.1.0-py3-none-any.whl
 ```
 
