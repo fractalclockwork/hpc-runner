@@ -1,6 +1,6 @@
 # canary rest-api
 
-A minimal rest api that hooks into the hpc-runner for the flash demo. Some very important notes are currently there is no long term state management or data storage, so the run test info will only persist until a page reload. This prototype also requires that you manually install the hpc runner module.
+A minimal rest api that hooks into the hpc-runner for the flash demo. Some very important notes are currently there is no long term state management or data storage, so the run test info will only persist until a page reload. Also the fetch requests all specify "localhost" and so the frontend must be modified if you wanted to deploy the frontend somewhere remote. This prototype also requires that you manually install the hpc runner module.
 
 
 ## Requirements
@@ -82,3 +82,18 @@ flask --app app run
 # This will run a terminal process, navigate to http://localhost:5000 in a browser to use the demo
 ```
 
+
+# Running in termianl sesshion
+
+Remember to activate the python environment when rerunning the terminal session. also note that you may need to reinstall the hpc-regression module manually until we get a build/release system up and running for working CI/CD
+
+``` bash
+# from prototypes/basic_restapi
+source .venv/bin/activate
+flask --app app run
+# This will run a terminal process, navigate to http://localhost:5000 in a browser to use the demo
+```
+
+## A note on the front end
+
+I edited the front end in an extremely janky fashion, since it was compiled REACT js that i dont have the source code for. If you need to review the changes, go to `prototypes/basic_restapi/static/js/index.js` and review the `runMainTestRunner` function first to get an idea of what the fetch request is doing.
