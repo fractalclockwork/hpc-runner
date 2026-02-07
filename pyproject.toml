@@ -1,0 +1,6 @@
+[workspace]
+members = [
+  "prototypes/hpc-runner",
+  "utils/gantt-tool",
+]
+

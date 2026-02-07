@@ -1,10 +1,3 @@
-# Python cache
-__pycache__/
-*.pyc
-
-# uv virtual environment (if created locally)
-.venv/
-
 # Temporary outputs
 tmp/
 #*.svg
@@ -13,3 +6,23 @@ tmp/
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Virtualenv and build artifacts
+.venv/
+dist/
+build/
+*.egg-info
+
+# Python caches
+__pycache__/
+*.pyc
+
+# uv lock (optional to commit, but often useful)
+# uv.lock
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+
+

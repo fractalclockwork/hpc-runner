@@ -26,3 +26,6 @@ dev = [
 [project.optional-dependencies]
 dev = ["pytest"]
 
+[project.scripts]
+hpc-runner = "hpc_regression.runner:main"
+
