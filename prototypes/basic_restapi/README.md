@@ -78,7 +78,7 @@ uv --directory ../hpc-runner pip install ../hpc-runner/dist/hpc_regression-0.1.0
 Finally, run the development server and navigate to the link in your browser
 
 ``` bash
-flask --app app run
+flask --app app run --host localhost --port 5000
 # This will run a terminal process, navigate to http://localhost:5000 in a browser to use the demo
 ```
 
