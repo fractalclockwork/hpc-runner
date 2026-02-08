@@ -1,4 +1,3 @@
-```
 # DOW-1-26  
 Automated HPC Test Harness
 
@@ -131,5 +130,4 @@ make api          # run the web UI
 | `api`        | Launch the Flask web interface                    |
 
 ---
-```
 
