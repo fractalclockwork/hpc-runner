@@ -90,7 +90,7 @@ Remember to activate the python environment when rerunning the terminal session.
 ``` bash
 # from prototypes/basic_restapi
 source .venv/bin/activate
-flask --app app run
+flask --app app run --host localhost --port 5000
 # This will run a terminal process, navigate to http://localhost:5000 in a browser to use the demo
 ```
 
