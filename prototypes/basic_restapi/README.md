@@ -83,7 +83,7 @@ flask --app app run
 ```
 
 
-# Running in termianl sesshion
+# Running in terminal session
 
 Remember to activate the python environment when rerunning the terminal session. also note that you may need to reinstall the hpc-regression module manually until we get a build/release system up and running for working CI/CD
 
