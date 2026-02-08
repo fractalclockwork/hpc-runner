@@ -1,9 +1,12 @@
 [project]
-name = "canary-api"
+name = "basic_restapi"
 version = "0.1.0"
-description = "Minimal restapi for running the test harness using flask and html"
+description = "Minimal REST API for running the test harness using Flask and HTML"
 requires-python = ">=3.10"
 dependencies = [
     "flask>=3.1.2",
     "structlog>=25.5.0",
 ]
+
+[project.scripts]
+basic-restapi = "basic_restapi.app:main"

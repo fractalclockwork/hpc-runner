@@ -6,24 +6,3 @@ dependencies = [
     "pandas",
     "matplotlib",
 ]
-
-[project.optional-dependencies]
-dev = [
-    "ruff",
-]
-
-[tool.ruff]
-line-length = 88
-indent-width = 4
-target-version = "py310"
-
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-line-ending = "lf"
-
-[dependency-groups]
-dev = [
-    "ruff>=0.14.14",
-]
-

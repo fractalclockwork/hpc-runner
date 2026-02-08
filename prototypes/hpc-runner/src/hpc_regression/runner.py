@@ -69,17 +69,21 @@ def run_from_config(path: str) -> List[Dict[str, Any]]:
     return results
 
 def main(argv=None):
-    import sys, json
-    if argv is None:
-        argv = sys.argv[1:]
-    if not argv:
-        print("Usage: hpc-runner <config.yaml>")
-        return 2
-    config_path = argv[0]
-    results = run_from_config(config_path)
+    import sys, json, argparse
+
+    parser = argparse.ArgumentParser(
+        description="Run commands defined in a YAML config file."
+    )
+    parser.add_argument(
+        "config",
+        help="Path to the YAML configuration file defining runners."
+    )
+
+    args = parser.parse_args(argv)
+
+    results = run_from_config(args.config)
     print(json.dumps(results, indent=2))
     return 0
-
 
 
 if __name__ == "__main__":
