@@ -3,4 +3,6 @@ runners:
     command: ["echo", "hello"]
   - name: python-print
     command: ["python3", "-c", "print('runner ok')"]
+  - name: cpu-info
+    command: ["cat", "/proc/cpuinfo"]
 
