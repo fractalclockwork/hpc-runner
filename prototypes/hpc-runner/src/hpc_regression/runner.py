@@ -3,9 +3,11 @@ from __future__ import annotations
 import subprocess
 import yaml
 import structlog
+import json
 from dataclasses import dataclass
 from typing import List, Dict, Any
 from datetime import datetime, timezone
+from .log_parser import parse_structlog_status
 
 logger = structlog.get_logger()
 
@@ -42,10 +44,25 @@ def run_runner(spec: RunnerSpec, capture_output: bool = True, check: bool = Fals
         text=True,
         check=check,
     )
+    
+    # Build a structlog-like JSON line to pass to the parser
+    # okay i think this can be better thought out bc this is just packaging
+    # the structlog early prior to the return statement but we also return
+    # the log after compiling soooo this seems it can be re-thought
+    structlog_line = json.dumps({
+        "event": "runner.finish",
+        "name": spec.name,
+        "returncode": result.returncode,
+    })
+    
+    # Use parse_structlog_status to derive status from the structlog line
+    parsed_status = parse_structlog_status(structlog_line)
+    
     logger.info(
         "runner.finish",
         name=spec.name,
         returncode=result.returncode,
+        parsed_status=parsed_status,
         stdout=(result.stdout or "").strip(),
         stderr=(result.stderr or "").strip(),
     )
@@ -56,6 +73,8 @@ def run_runner(spec: RunnerSpec, capture_output: bool = True, check: bool = Fals
         "returncode": result.returncode,
         "stdout": result.stdout,
         "stderr": result.stderr,
+        # changed status to parsed_status
+        "parsed_status": parsed_status,
         # putting in the timestamp so we get them from runners
         "runtime": runtime,
         "timestamp": datetime.now(timezone.utc).isoformat(),
