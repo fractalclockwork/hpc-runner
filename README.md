@@ -1,133 +1,73 @@
-# DOW-1-26  
-Automated HPC Test Harness
+# HPC Regression Testing Platform — MVP
 
-This wiki contains all pertinent information for the Capstone project.
+Modular, execution-agnostic HPC regression testing system for the Dow/Berkeley Capstone (Spring 2026).
 
-**[Project Wiki](https://github.berkeley.edu/Chem-283/DOW-1-26/wiki)**
+## Architecture Overview
 
----
+- **Configuration Layer** — TOML/YAML definitions for Resources, Systems, Solvers, Tests
+- **Test Runner** — Execution orchestrator; runs solver scripts as black-box processes
+- **Log Parsing** — YAML-defined regex patterns for metric extraction
+- **Data Storage** — SQLite for run metadata and metrics
+- **Dashboard** — Web UI for scheduling tests and viewing results
 
-# Quick Start Guide: Using the Makefile
+## Quick Start
 
-This project uses a uv‑native Makefile to ensure reproducible, frictionless workflows across all teammates.  
-Use these targets instead of manually activating virtual environments or running pip.
+```bash
+# Sync dependencies
+uv sync --all-extras
 
----
+# List available tests
+uv run hpc-runner configs --list
 
-## 1. If you pulled an earlier version of the project
+# Run all tests
+uv run hpc-runner configs
 
-Start clean. Old lockfiles, stale venvs, and cached artifacts can break the workspace.
+# Run with custom config dir and solvers
+uv run hpc-runner /path/to/configs --solvers-dir /path/to/solvers
 
-Run:
-
-```
-make purge
-```
-
-This removes:
-
-- all `.venv` directories (recursively)
-- all `uv.lock` files
-- all `__pycache__`, `.pytest_cache`, `*.egg-info`
-- all build artifacts
-- uv global caches
-
-Use this whenever the project structure changes or after pulling older commits.
-
----
-
-## 2. Sync the workspace environment
-
-After purging, rebuild the environment:
-
-```
-make sync
+# Start Web UI
+uv run basic-restapi
+# Open http://localhost:5000
 ```
 
-This:
-
-- creates a workspace-level `.venv`
-- installs all workspace members in editable mode
-- installs dev dependencies
-- ensures CLI entrypoints (`hpc-runner`, Flask API) are available
-
----
-
-## 3. Run the test suite
-
-To run all tests for the `hpc-runner` project:
+## Configuration Structure
 
 ```
-make test
+configs/
+├── resources/     # CPU/GPU, memory, node definitions
+├── systems/       # Resource bundles, env vars
+├── tests/         # Solver+system pairings, success criteria
+
+solvers/
+├── my-solver/
+│   ├── solver.yaml      # Metadata, entrypoint, parser_config
+│   ├── run.sh           # Or run.py — executed as black-box
+│   └── parser_config.yaml   # Optional: regex patterns for metrics
 ```
 
-Verbose mode:
+## CLI
 
-```
-make testv
-```
+| Command | Description |
+|---------|-------------|
+| `hpc-runner configs` | Run all tests |
+| `hpc-runner configs --list` | List available tests |
+| `hpc-runner configs --list-runs` | List recent runs from DB |
+| `hpc-runner configs --test echo-test` | Run specific test(s) |
+| `hpc-runner configs --no-store` | Run without persisting to DB |
 
----
+## REST API
 
-## 4. Run the CLI test runner
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/solvers` | GET | List configured solvers |
+| `/api/tests` | GET | List configured tests |
+| `/api/run_tests` | POST | Run tests (body: `{"tests": ["name1"]}`) |
+| `/api/runs` | GET | List recent runs (query: `?solver=`, `?limit=`) |
+| `/api/runs/<id>` | GET | Get run details |
+| `/api/metrics/<solver>/<metric>` | GET | Metric history for trends |
 
-To execute the regression test harness with the default config:
+## Design Principles
 
-```
-make runner
-```
-
-This runs:
-
-- `prototypes/hpc-runner/configs/runners.yaml`
-- the full regression pipeline
-- structured JSON output
-
----
-
-## 5. Run the REST API
-
-To launch the Flask API with auto‑reload:
-
-```
-make api
-```
-
-This starts a dev server at:
-
-```
-http://localhost:5000/
-```
-
-Endpoints:
-
-- `/` — loads the UI  
-- `/api/run_tests` — executes the runner and returns JSON  
-
----
-
-## 6. Typical workflow
-
-```
-git pull
-make purge        # only needed after major changes or old commits
-make sync
-make test         # optional
-make runner       # run the CLI
-make api          # run the web UI
-```
-
----
-
-## 7. Summary of Makefile targets
-
-| Target       | Purpose                                           |
-|--------------|---------------------------------------------------|
-| `purge`      | Remove all venvs, caches, lockfiles, build junk   |
-| `sync`       | Rebuild the uv workspace environment              |
-| `test`       | Run the hpc-runner test suite                     |
-| `runner`     | Execute the CLI test harness                      |
-| `api`        | Launch the Flask web interface                    |
-
----
-
+- **Execution-Agnostic** — Solver scripts control execution (SLURM, MPI, etc.); platform never calls schedulers directly
+- **Modular** — Resources, systems, solvers, tests defined independently
+- **Pluggable** — Add solvers by dropping a folder with `solver.yaml` + run script

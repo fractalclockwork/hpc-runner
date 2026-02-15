@@ -9,4 +9,4 @@ dependencies = [
 ]
 
 [project.scripts]
-hpc-runner = "hpc_regression.runner:main"
+hpc-runner = "hpc_regression.cli:main"

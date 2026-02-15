@@ -1,0 +1,8 @@
+systems:
+  - name: dev-system
+    resources: [dev-local]
+    env: {}
+  - name: hpc-cluster-01
+    resources: [hpc-node]
+    env:
+      MODULEPATH: /opt/modules

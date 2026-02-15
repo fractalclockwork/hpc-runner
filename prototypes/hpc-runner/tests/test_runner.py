@@ -1,28 +1,50 @@
 # tests/test_runner.py
 import tempfile
-import os
+from pathlib import Path
+
+import pytest
 import yaml
-from hpc_regression.runner import run_from_config
 
-def test_run_minimal(tmp_path, capsys):
-    cfg = {
-        "runners": [
-            {"name": "echo-test", "command": ["echo", "hi-from-test"]},
-            {"name": "py-test", "command": ["python3", "-c", "print('py-ok')"]},
-            {"name": "calc-test", "command": ["python3", "-c", "print(2 + 2)"]},
+from hpc_regression import load_all, run_tests
+
+
+def test_run_minimal(tmp_path):
+    """Run tests using the Resource->System->Solver->Test config structure."""
+    # Create minimal config structure
+    (tmp_path / "resources").mkdir()
+    (tmp_path / "systems").mkdir()
+    (tmp_path / "tests").mkdir()
+    solvers_dir = tmp_path / "solvers"
+    solvers_dir.mkdir()
+
+    (tmp_path / "resources" / "default.yaml").write_text(yaml.safe_dump({
+        "resources": [{"name": "dev", "cpus": 4}]
+    }))
+    (tmp_path / "systems" / "default.yaml").write_text(yaml.safe_dump({
+        "systems": [{"name": "dev-system", "resources": ["dev"]}]
+    }))
+
+    # Create a simple solver
+    solver_dir = solvers_dir / "echo-solver"
+    solver_dir.mkdir()
+    (solver_dir / "solver.yaml").write_text(yaml.safe_dump({
+        "name": "echo-solver",
+        "entrypoint": "run.sh",
+        "allowed_systems": ["dev-system"],
+    }))
+    (solver_dir / "run.sh").write_text("#!/bin/bash\necho hi-from-test\n")
+
+    (tmp_path / "tests" / "sample.yaml").write_text(yaml.safe_dump({
+        "tests": [
+            {"name": "echo-test", "solver": "echo-solver", "system": "dev-system"}
         ]
-    }
-    cfg_path = tmp_path / "runners.yaml"
-    cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    }))
 
-    results = run_from_config(str(cfg_path))
-    # two runners executed
-    assert len(results) == 3
-    assert any("hi-from-test" in (r["stdout"] or "") for r in results)
-    assert any("py-ok" in (r["stdout"] or "") for r in results)
-    assert any("4" in (r["stdout"] or "") for r in results)
+    resources, systems, solvers, tests = load_all(tmp_path, solvers_dir)
+    assert "echo-solver" in solvers
+    assert "echo-test" in tests
 
-
-    # return codes should be zero
-    assert all(r["returncode"] == 0 for r in results)
-
+    results = run_tests([tests["echo-test"]], solvers, systems)
+    assert len(results) == 1
+    assert results[0].passed
+    assert "hi-from-test" in results[0].stdout

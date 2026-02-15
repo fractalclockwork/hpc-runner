@@ -1,0 +1,13 @@
+tests:
+  - name: echo-test
+    solver: echo-solver
+    system: dev-system
+    parameters: {}
+    success_criteria:
+      returncode: 0
+  - name: python-test
+    solver: python-solver
+    system: dev-system
+    parameters: {}
+    success_criteria:
+      returncode: 0

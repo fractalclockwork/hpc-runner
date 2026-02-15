@@ -1,0 +1,82 @@
+# parser/parser.py - Regex-based log parsing with YAML-defined parser_config
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+
+def load_parser_config(path: str | Path) -> dict[str, Any]:
+    """Load parser config from YAML."""
+    with open(path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def extract_metrics(
+    text: str,
+    parser_config: dict[str, Any] | None = None,
+    config_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """
+    Extract metrics from log text using regex patterns.
+    Uses parser_config dict or loads from config_path.
+    """
+    if parser_config is None and config_path:
+        parser_config = load_parser_config(config_path)
+    if not parser_config:
+        return {}
+
+    patterns = parser_config.get("patterns", [])
+    metrics: dict[str, Any] = {}
+
+    for p in patterns:
+        name = p.get("name")
+        regex = p.get("regex")
+        type_hint = p.get("type", "str")
+        if not name or not regex:
+            continue
+        try:
+            m = re.search(regex, text)
+            if m:
+                raw = m.group(1)
+                if type_hint == "float":
+                    metrics[name] = float(raw)
+                elif type_hint == "int":
+                    metrics[name] = int(float(raw))
+                else:
+                    metrics[name] = raw.strip()
+        except (ValueError, IndexError):
+            pass
+
+    return metrics
+
+
+def validate_metrics(
+    metrics: dict[str, Any],
+    required: list[str] | None = None,
+    ranges: dict[str, tuple[float | None, float | None]] | None = None,
+) -> tuple[bool, list[str]]:
+    """
+    Validate extracted metrics against required keys and optional ranges.
+    Returns (valid, list of error messages).
+    """
+    errors: list[str] = []
+    if required:
+        for r in required:
+            if r not in metrics:
+                errors.append(f"Missing required metric: {r}")
+    if ranges:
+        for name, (lo, hi) in ranges.items():
+            if name not in metrics:
+                continue
+            try:
+                v = float(metrics[name])
+                if lo is not None and v < lo:
+                    errors.append(f"Metric {name}={v} below min {lo}")
+                if hi is not None and v > hi:
+                    errors.append(f"Metric {name}={v} above max {hi}")
+            except (TypeError, ValueError):
+                pass
+    return len(errors) == 0, errors

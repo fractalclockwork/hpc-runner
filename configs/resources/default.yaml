@@ -1,0 +1,8 @@
+resources:
+  - name: dev-local
+    cpus: 4
+    memory_gb: 8
+  - name: hpc-node
+    cpus: 64
+    gpus: 4
+    memory_gb: 256
