@@ -34,6 +34,28 @@ uv run basic-restapi
 # Open http://localhost:5000
 ```
 
+## Docker
+
+Build and run the REST API:
+
+```bash
+make docker-build
+make docker-run
+# Open http://localhost:5000
+```
+
+Run tests in container:
+
+```bash
+make docker-test
+```
+
+Or with docker-compose:
+
+```bash
+docker compose up --build
+```
+
 ## Testing
 
 Unit tests cover the major features:

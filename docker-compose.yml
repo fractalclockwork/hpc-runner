@@ -1,0 +1,7 @@
+services:
+  api:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./hpc_regression.db:/app/hpc_regression.db
