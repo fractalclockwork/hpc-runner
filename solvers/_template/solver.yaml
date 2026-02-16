@@ -1,0 +1,34 @@
+# Solver definition template
+# Copy this directory to solvers/<your-solver-name>/ and customize
+
+# Required: solver identifier (should match directory name)
+name: my-solver
+
+# Required: script to execute (run.sh, run.py, etc.)
+entrypoint: run.sh
+
+# Required: list of system names this solver can run on
+allowed_systems: [dev-system]
+
+# Optional: version string (default 0.0.0)
+version: "0.0.0"
+
+# Optional: path to parser config for metric extraction
+# parser_config: parser_config.yaml
+
+# Optional: expected metrics and validation ranges
+# metrics:
+#   - name: mlups
+#     unit: MLUPS
+#     min: 0
+#     max: null
+#     required: true
+#   - name: runtime_seconds
+#     unit: s
+#     required: true
+
+# Optional: expected log file names
+# log_names: [stdout, stderr]
+
+# Optional: use solver dir as cwd (default true)
+# cwd: true

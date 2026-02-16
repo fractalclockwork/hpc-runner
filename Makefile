@@ -19,13 +19,17 @@ resync:
 # Testing
 # ---------------------------------------------------------------------------
 
-# Run all tests in the hpc-runner project
+# Run all tests (config, parser, storage, runner)
 test:
-	uv run pytest prototypes/hpc-runner/tests
+	uv run pytest src/core/tests -q
 
 # Run tests with verbose output
 testv:
-	uv run pytest prototypes/hpc-runner/tests -vv
+	uv run pytest src/core/tests -vv
+
+# Run tests with coverage (requires pytest-cov: uv add --dev pytest-cov)
+test-cov:
+	uv run pytest src/core/tests -v --cov=src/core/src/hpc_regression --cov-report=term-missing
 
 # ---------------------------------------------------------------------------
 # Project entrypoints
@@ -33,16 +37,11 @@ testv:
 
 # Run the hpc-regression CLI
 runner:
-	uv run hpc-runner prototypes/hpc-runner/configs/runners.yaml
-#	uv run hpc-runner --help
+	uv run hpc-runner configs
 
 # Run the REST API
 api:
 	uv run flask --app basic_restapi.app run --debug
-
-# Run the Gantt tool
-gantt:
-	uv run python -m gantt_tool
 
 # ---------------------------------------------------------------------------
 # Developer utilities

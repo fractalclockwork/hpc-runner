@@ -3,9 +3,8 @@
 
 This repository contains a multi‑project Python workspace managed with `uv`. It includes:
 
-- `hpc-regression`: a minimal runner harness using `structlog`
-- `basic_restapi`: a small Flask API for triggering the harness
-- `gantt-tool`: a utility for generating Gantt charts from run data
+- `hpc_regression` (src/core): Configuration, Test Runner, Parser, Storage, CLI
+- `basic_restapi` (src/api): REST API and Web Dashboard for running tests and viewing results
 
 The workspace is fully reproducible and requires no manual virtual environment management.
 
@@ -64,7 +63,7 @@ You do not need to activate `.venv` manually.
 ### 4. Run the test harness
 
 ```
-uv run pytest prototypes/hpc-runner/tests
+uv run pytest src/core/tests
 ```
 
 ---
@@ -72,13 +71,8 @@ uv run pytest prototypes/hpc-runner/tests
 ### 5. Run the runner CLI
 
 ```
+uv run hpc-runner configs
 uv run hpc-runner --help
-```
-
-Or run the module directly:
-
-```
-uv run python -m hpc_regression.runner
 ```
 
 ---
@@ -89,15 +83,7 @@ uv run python -m hpc_regression.runner
 uv run python -m basic_restapi.app
 ```
 
-Replace `app` with the actual module name if needed.
-
----
-
-### 7. Run the Gantt tool
-
-```
-uv run python -m gantt_tool
-```
+Or: `make api`
 
 ---
 
@@ -171,17 +157,16 @@ uv sync --all-extras --dev
 ```
 DOW-1-26/
   pyproject.toml
-  prototypes/
-    hpc-runner/
+  configs/
+  solvers/
+  src/
+    core/           # hpc_regression
       pyproject.toml
       ...
-    basic_restapi/
+    api/            # basic_restapi
       pyproject.toml
       ...
-  utils/
-    gantt-tool/
-      pyproject.toml
-      ...
+  docs/
 ```
 
 ---

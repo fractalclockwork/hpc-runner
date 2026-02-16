@@ -1,29 +1,28 @@
-# hpc-runner
+# Core (HPC Regression)
 
-A minimal, reproducible runner harness using `structlog` for logging, `PyYAML` for configuration, and `pytest` for testing.  
-This repository is designed for clean packaging, deterministic environments, and easy portability across machines using `uv`.
+The core platform: Configuration Layer, Test Runner, Log Parser, Storage, and CLI. Uses `structlog` for logging, `PyYAML` for configuration, and `pytest` for testing.
 
 ---
 
 ## Project Structure
 
 ```
-hpc-runner/
+src/core/
 ├── pyproject.toml
-├── src/
-│   └── hpc_regression/
-│       ├── __init__.py
-│       └── runner.py
-├── configs/
-│   └── runners.yaml
+├── src/hpc_regression/
+│   ├── config/
+│   ├── parser/
+│   ├── storage/
+│   ├── runner.py
+│   ├── cli.py
+│   └── __init__.py
 ├── tests/
-│   └── test_runner.py
 ├── scripts/
-│   └── clean.sh
 ├── pytest.ini
-├── .gitignore
 └── README.md
 ```
+
+Configs (resources, systems, tests) live at project root in `configs/`. Solvers live in `solvers/`.
 
 ---
 
@@ -50,8 +49,8 @@ uv pip install -e .
 # 4. Run tests
 uv run python -m pytest
 
-# 5. Invoke the runner
-uv run python -m hpc_regression.runner configs/runners.yaml
+# 5. Invoke the runner (from project root)
+uv run hpc-runner configs
 ```
 
 ---

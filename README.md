@@ -14,7 +14,11 @@ Modular, execution-agnostic HPC regression testing system for the Dow/Berkeley C
 
 ```bash
 # Sync dependencies
-uv sync --all-extras
+uv sync --all-extras --dev
+
+# Run unit tests
+make test
+# or: uv run pytest src/core/tests -q
 
 # List available tests
 uv run hpc-runner configs --list
@@ -28,6 +32,22 @@ uv run hpc-runner /path/to/configs --solvers-dir /path/to/solvers
 # Start Web UI
 uv run basic-restapi
 # Open http://localhost:5000
+```
+
+## Testing
+
+Unit tests cover the major features:
+
+| Test Module | Coverage |
+|-------------|----------|
+| `test_config.py` | Resource, System, Solver, Test loading; _template skip |
+| `test_parser.py` | Metric extraction, validation |
+| `test_storage.py` | DB init, store_run, get_runs, get_run_by_id, get_metrics_history |
+| `test_runner.py` | End-to-end run, metric extraction from solver output |
+
+```bash
+make test      # Quiet
+make testv     # Verbose
 ```
 
 ## Configuration Structure

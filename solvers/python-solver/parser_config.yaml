@@ -1,0 +1,11 @@
+# YAML-defined parser config for regex-based metric extraction
+patterns:
+  - name: mlups
+    regex: 'MLUPS:\s*([\d.e+-]+)'
+    type: float
+  - name: runtime_seconds
+    regex: 'runtime_seconds:\s*([\d.]+)'
+    type: float
+  - name: status
+    regex: 'status:\s*(\w+)'
+    type: str

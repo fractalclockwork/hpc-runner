@@ -1,0 +1,18 @@
+# Parser config template for regex-based metric extraction
+# Uncomment and customize patterns to extract metrics from solver logs
+
+patterns:
+  # Example: extract a float (e.g. MLUPS)
+  - name: mlups
+    regex: 'MLUPS:\s*([\d.e+-]+)'
+    type: float
+
+  # Example: extract a numeric value
+  - name: runtime_seconds
+    regex: 'runtime_seconds:\s*([\d.]+)'
+    type: float
+
+  # Example: extract a string
+  - name: status
+    regex: 'status:\s*(\w+)'
+    type: str

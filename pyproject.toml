@@ -6,21 +6,17 @@ dependencies = [
     "structlog>=25.5.0",
     "hpc_regression",
     "basic_restapi",
-    "gantt_tool",
 ]
 
 [tool.uv.workspace]
 members = [
-  "prototypes/hpc-runner",
-  "prototypes/basic_restapi",
-  "utils/gantt-tool",
+  "src/core",
+  "src/api",
 ]
 
 [tool.uv.sources]
 hpc_regression = { workspace = true }
 basic_restapi = { workspace = true }
-gantt_tool = { workspace = true }
 
 [dependency-groups]
 dev = ["pytest", "ruff", "pyyaml"]
-

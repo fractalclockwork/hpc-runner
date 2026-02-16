@@ -66,8 +66,10 @@ def load_solvers(config_dir: Path, solvers_root: Path | None = None) -> dict[str
     solvers_dir = config_dir / "solvers" if solvers_root is None else solvers_root
     if solvers_dir.exists():
         for f in solvers_dir.glob("**/solver.yaml"):
-            data = _load_yaml(f)
             folder = f.parent
+            if folder.name.startswith("_") or folder.name == "template":
+                continue
+            data = _load_yaml(f)
             ep = data.get("entrypoint", "run.sh")
             if not (folder / ep).exists() and (folder / "run.sh").exists():
                 ep = "run.sh"
