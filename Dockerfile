@@ -14,5 +14,5 @@ COPY solvers ./solvers
 
 RUN uv sync --frozen --all-extras --dev
 
-EXPOSE 5000
+EXPOSE 8000
 CMD ["uv", "run", "basic-restapi"]

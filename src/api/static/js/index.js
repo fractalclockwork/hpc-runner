@@ -11355,7 +11355,7 @@ function ep() {
 }
 const runMainTestRunner = async () => {
 
-      const response = await fetch("http://localhost:5000/api/run_tests");
+      const response = await fetch("/api/run_tests");
       const data = await response.json();
 
 //  {

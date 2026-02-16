@@ -31,7 +31,7 @@ uv run hpc-runner /path/to/configs --solvers-dir /path/to/solvers
 
 # Start Web UI
 uv run basic-restapi
-# Open http://localhost:5000
+# Open http://localhost:8000
 ```
 
 ## Docker
@@ -41,7 +41,7 @@ Build and run the REST API:
 ```bash
 make docker-build
 make docker-run
-# Open http://localhost:5000
+# Open http://localhost:8000
 ```
 
 Run tests in container:

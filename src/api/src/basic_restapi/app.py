@@ -154,7 +154,7 @@ def api_metrics_history(solver_name, metric_name):
 
 
 def main():
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=8000, debug=True)
 
 
 if __name__ == "__main__":

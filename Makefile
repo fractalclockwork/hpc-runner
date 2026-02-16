@@ -41,7 +41,7 @@ runner:
 
 # Run the REST API
 api:
-	uv run flask --app basic_restapi.app run --debug
+	uv run flask --app basic_restapi.app run --debug --port 8000
 
 # ---------------------------------------------------------------------------
 # Docker
@@ -51,9 +51,9 @@ api:
 docker-build:
 	docker build -t dow-workspace .
 
-# Run the API container (port 5000)
+# Run the API container (port 8000)
 docker-run:
-	docker run --rm -p 5000:5000 -v $(PWD)/hpc_regression.db:/app/hpc_regression.db dow-workspace
+	docker run --rm -p 8000:8000 -v $(PWD)/hpc_regression.db:/app/hpc_regression.db dow-workspace
 
 # Run tests inside container
 docker-test:

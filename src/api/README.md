@@ -18,7 +18,7 @@ uv sync --all-extras --dev
 
 # Run the API
 uv run flask --app basic_restapi.app run --debug
-# Navigate to http://localhost:5000
+# Navigate to http://localhost:8000
 ```
 
 Or use the Makefile:
