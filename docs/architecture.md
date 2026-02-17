@@ -52,7 +52,7 @@ flowchart TB
 | System | `src/core/src/harness/config/schemas.py` | Resource bundle, env vars, constraints |
 | Solver | `src/core/src/harness/config/schemas.py` | Entrypoint, parser_config, allowed_systems |
 | Job | `src/core/src/harness/config/schemas.py` | Solver+system pairing, success_criteria |
-| RunResult | `src/core/src/harness/runner.py` | job_name, returncode, metrics, passed |
+| RunResult | `src/core/src/harness/runner.py` | job_name, returncode, metrics, passed, processor |
 
 ## 4. Config Structure
 
@@ -103,7 +103,7 @@ sequenceDiagram
 | `/api/solvers` | GET | List solvers |
 | `/api/jobs` | GET | List jobs |
 | `/api/run_jobs` | POST | Run jobs (body: `{"jobs": ["name1"]}`) |
-| `/api/runs` | GET | List runs (?solver=, ?limit=) |
+| `/api/runs` | GET | List runs (?solver=, ?processor=, ?limit=) |
 | `/api/runs/<id>` | GET | Run detail |
 | `/api/metrics/<solver>/<metric>` | GET | Metric history for trends |
 
@@ -115,7 +115,7 @@ sequenceDiagram
 
 ## 8. Storage Schema
 
-Table `runs`: id, job_name, solver_name, system_name, returncode, passed, runtime_seconds, timestamp, stdout, stderr, metrics_json
+Table `runs`: id, job_name, solver_name, system_name, returncode, passed, runtime_seconds, timestamp, stdout, stderr, metrics_json, processor (probed at runtime via `platform.machine()`)
 
 ## 9. Deployment
 

@@ -102,6 +102,7 @@ def api_run_jobs():
             "runtime_seconds": r.runtime_seconds,
             "timestamp": r.timestamp,
             "metrics": r.metrics,
+            "processor": r.processor,
         }
         for r in results
     ])
@@ -109,12 +110,13 @@ def api_run_jobs():
 
 @app.route("/api/runs")
 def api_runs():
-    """List recent runs, optionally filtered by solver."""
+    """List recent runs, optionally filtered by solver or processor."""
     solver = request.args.get("solver")
+    processor = request.args.get("processor")
     limit = min(int(request.args.get("limit", 100)), 500)
     offset = int(request.args.get("offset", 0))
     init_db(DB_PATH)
-    runs = get_runs(DB_PATH, solver=solver, limit=limit, offset=offset)
+    runs = get_runs(DB_PATH, solver=solver, processor=processor, limit=limit, offset=offset)
     for r in runs:
         if r.get("metrics_json"):
             import json

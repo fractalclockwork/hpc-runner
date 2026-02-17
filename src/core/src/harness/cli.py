@@ -73,7 +73,8 @@ def main(argv: list[str] | None = None) -> int:
         runs = get_runs(args.db, limit=20)
         for r in runs:
             status = "PASS" if r.get("passed") else "FAIL"
-            print(f"  {r['id']}: {r['job_name']} | {status} | {r['timestamp']}")
+            proc = r.get("processor") or "-"
+            print(f"  {r['id']}: {r['job_name']} | {status} | {proc} | {r['timestamp']}")
         return 0
 
     job_list = list(jobs.values())
@@ -102,6 +103,7 @@ def main(argv: list[str] | None = None) -> int:
             "runtime_seconds": r.runtime_seconds,
             "timestamp": r.timestamp,
             "metrics": r.metrics,
+            "processor": r.processor,
         }
         for r in results
     ]

@@ -58,7 +58,7 @@
                 </div>
                 <div class="card">
                     <table>
-                        <thead><tr><th>ID</th><th>Job</th><th>Solver</th><th>System</th><th>Status</th><th>Runtime</th><th>Time</th></tr></thead>
+                        <thead><tr><th>ID</th><th>Job</th><th>Solver</th><th>System</th><th>Processor</th><th>Status</th><th>Runtime</th><th>Time</th></tr></thead>
                         <tbody id="runs-tbody"></tbody>
                     </table>
                 </div>
@@ -104,22 +104,23 @@
 
         async function loadRuns() {
             const tbody = document.getElementById('runs-tbody');
-            tbody.innerHTML = '<tr><td colspan="7" class="loading">Loading...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="loading">Loading...</td></tr>';
             try {
                 const runs = await fetchJson('/api/runs');
                 tbody.innerHTML = runs.length === 0
-                    ? '<tr><td colspan="7">No runs yet. Click "Run All Jobs" to start.</td></tr>'
+                    ? '<tr><td colspan="8">No runs yet. Click "Run All Jobs" to start.</td></tr>'
                     : runs.map(r => `<tr>
                         <td>${r.id}</td>
                         <td>${r.job_name}</td>
                         <td>${r.solver_name}</td>
                         <td>${r.system_name}</td>
+                        <td>${r.processor || '-'}</td>
                         <td><span class="badge ${r.passed ? 'badge-pass' : 'badge-fail'}">${r.passed ? 'PASS' : 'FAIL'}</span></td>
                         <td>${r.runtime_seconds?.toFixed(2) || '-'}s</td>
                         <td>${r.timestamp ? new Date(r.timestamp).toLocaleString() : '-'}</td>
                     </tr>`).join('');
             } catch (e) {
-                tbody.innerHTML = '<tr><td colspan="7" style="color:#f87171">Error: ' + e.message + '</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" style="color:#f87171">Error: ' + e.message + '</td></tr>';
             }
         }
 

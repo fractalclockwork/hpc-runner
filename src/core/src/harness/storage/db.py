@@ -26,11 +26,17 @@ def init_db(path: str | Path) -> None:
             timestamp TEXT NOT NULL,
             stdout TEXT,
             stderr TEXT,
-            metrics_json TEXT
+            metrics_json TEXT,
+            processor TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_runs_solver ON runs(solver_name);
         CREATE INDEX IF NOT EXISTS idx_runs_timestamp ON runs(timestamp);
     """)
+    # Migration: add processor column if missing (existing DBs)
+    cur = conn.execute("PRAGMA table_info(runs)")
+    columns = [row[1] for row in cur.fetchall()]
+    if "processor" not in columns:
+        conn.execute("ALTER TABLE runs ADD COLUMN processor TEXT")
     conn.commit()
     conn.close()
 
@@ -43,8 +49,8 @@ def store_run(db_path: str | Path, result: RunResult) -> int:
     cur = conn.execute(
         """INSERT INTO runs (
             job_name, solver_name, system_name, returncode, passed,
-            runtime_seconds, timestamp, stdout, stderr, metrics_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            runtime_seconds, timestamp, stdout, stderr, metrics_json, processor
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             result.job_name,
             result.solver_name,
@@ -56,6 +62,7 @@ def store_run(db_path: str | Path, result: RunResult) -> int:
             result.stdout,
             result.stderr,
             metrics_json,
+            result.processor,
         ),
     )
     row_id = cur.lastrowid or 0
@@ -67,24 +74,28 @@ def store_run(db_path: str | Path, result: RunResult) -> int:
 def get_runs(
     db_path: str | Path,
     solver: str | None = None,
+    processor: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
-    """Fetch runs with optional solver filter."""
+    """Fetch runs with optional solver and processor filters."""
     init_db(db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+    conditions: list[str] = []
+    params: list[Any] = []
     if solver:
-        rows = conn.execute(
-            """SELECT * FROM runs WHERE solver_name = ?
-               ORDER BY timestamp DESC LIMIT ? OFFSET ?""",
-            (solver, limit, offset),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            """SELECT * FROM runs ORDER BY timestamp DESC LIMIT ? OFFSET ?""",
-            (limit, offset),
-        ).fetchall()
+        conditions.append("solver_name = ?")
+        params.append(solver)
+    if processor:
+        conditions.append("processor = ?")
+        params.append(processor)
+    where = ("WHERE " + " AND ".join(conditions) + " ") if conditions else ""
+    params.extend([limit, offset])
+    rows = conn.execute(
+        f"""SELECT * FROM runs {where}ORDER BY timestamp DESC LIMIT ? OFFSET ?""",
+        params,
+    ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 

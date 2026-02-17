@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import platform
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -14,6 +15,11 @@ from .config import Solver, System, Job
 from .parser import extract_metrics
 
 logger = structlog.get_logger()
+
+
+def probe_processor() -> str:
+    """Return CPU architecture of the host (e.g. x86_64, aarch64)."""
+    return platform.machine() or "unknown"
 
 
 @dataclass
@@ -30,6 +36,7 @@ class RunResult:
     metrics: dict[str, Any] = field(default_factory=dict)
     passed: bool = False
     raw_logs: str = ""
+    processor: str | None = None
 
 
 def _build_env(system: System, base_env: dict[str, str] | None = None) -> dict[str, str]:
@@ -53,6 +60,7 @@ def run_job(
     Platform remains scheduler-agnostic; solver script may call SLURM, MPI, etc.
     """
     start = datetime.now(timezone.utc)
+    processor = probe_processor()
     logger.info(
         "runner.start",
         job=job.name,
@@ -95,6 +103,7 @@ def run_job(
             runtime_seconds=runtime,
             timestamp=end.isoformat(),
             passed=False,
+            processor=processor,
         )
         logger.warning("runner.timeout", job=job.name, runtime=runtime)
         return run_result
@@ -111,6 +120,7 @@ def run_job(
             runtime_seconds=runtime,
             timestamp=end.isoformat(),
             passed=False,
+            processor=processor,
         )
         logger.exception("runner.error", job=job.name, error=str(e))
         return run_result
@@ -141,6 +151,7 @@ def run_job(
         passed=passed,
         raw_logs=raw_logs,
         metrics=metrics,
+        processor=processor,
     )
 
     logger.info(

@@ -48,6 +48,8 @@ def test_run_minimal(tmp_path):
     assert len(results) == 1
     assert results[0].passed
     assert "hi-from-test" in results[0].stdout
+    assert results[0].processor is not None
+    assert len(results[0].processor) > 0
 
 
 def test_run_with_metric_extraction(tmp_path):

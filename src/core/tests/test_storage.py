@@ -8,7 +8,7 @@ from harness import RunResult
 from harness.storage import init_db, store_run, get_runs, get_run_by_id, get_metrics_history
 
 
-def _make_result(job_name="t1", solver_name="s1", metrics=None):
+def _make_result(job_name="t1", solver_name="s1", metrics=None, processor="x86_64"):
     return RunResult(
         job_name=job_name,
         solver_name=solver_name,
@@ -20,6 +20,7 @@ def _make_result(job_name="t1", solver_name="s1", metrics=None):
         timestamp="2026-02-14T12:00:00+00:00",
         passed=True,
         metrics=metrics or {},
+        processor=processor,
     )
 
 
@@ -48,15 +49,33 @@ def test_get_runs(tmp_path):
     assert all(r["solver_name"] == "solver-a" for r in runs_a)
 
 
+def test_get_runs_filter_by_processor(tmp_path):
+    """Retrieve runs filtered by processor."""
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    store_run(db_path, _make_result(job_name="t1", solver_name="s1", processor="x86_64"))
+    store_run(db_path, _make_result(job_name="t2", solver_name="s1", processor="x86_64"))
+    store_run(db_path, _make_result(job_name="t3", solver_name="s1", processor="aarch64"))
+
+    runs_x86 = get_runs(db_path, processor="x86_64")
+    assert len(runs_x86) == 2
+    assert all(r["processor"] == "x86_64" for r in runs_x86)
+
+    runs_arm = get_runs(db_path, processor="aarch64")
+    assert len(runs_arm) == 1
+    assert runs_arm[0]["processor"] == "aarch64"
+
+
 def test_get_run_by_id(tmp_path):
     """Retrieve single run by id."""
     db_path = tmp_path / "test.db"
     init_db(db_path)
-    row_id = store_run(db_path, _make_result(job_name="my-test"))
+    row_id = store_run(db_path, _make_result(job_name="my-test", processor="x86_64"))
     run = get_run_by_id(db_path, row_id)
     assert run is not None
     assert run["job_name"] == "my-test"
     assert run["passed"] == 1
+    assert run["processor"] == "x86_64"
 
     assert get_run_by_id(db_path, 99999) is None
 
