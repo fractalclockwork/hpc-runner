@@ -4,4 +4,4 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./hpc_regression.db:/app/hpc_regression.db
+      - ./data:/app/data

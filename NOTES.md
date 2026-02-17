@@ -3,8 +3,8 @@
 
 This repository contains a multi‑project Python workspace managed with `uv`. It includes:
 
-- `hpc_regression` (src/core): Configuration, Test Runner, Parser, Storage, CLI
-- `basic_restapi` (src/api): REST API and Web Dashboard for running tests and viewing results
+- `harness` (src/core): Configuration, Job Runner, Parser, Storage, CLI
+- `basic_restapi` (src/api): REST API and Web Dashboard for running jobs and viewing results
 
 The workspace is fully reproducible and requires no manual virtual environment management.
 
@@ -160,7 +160,7 @@ DOW-1-26/
   configs/
   solvers/
   src/
-    core/           # hpc_regression
+    core/           # harness
       pyproject.toml
       ...
     api/            # basic_restapi

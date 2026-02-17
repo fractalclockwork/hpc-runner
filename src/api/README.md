@@ -1,12 +1,12 @@
 # API (REST + Web Dashboard)
 
-A minimal REST API and web dashboard that hooks into the HPC regression core for running tests and viewing results.
+A minimal REST API and web dashboard that hooks into the harness core for running jobs and viewing results.
 
 ## Requirements
 
 - **Python** 3.10 or newer
 - **uv** (https://github.com/astral-sh/uv)
-- Workspace sync (includes hpc_regression from src/core)
+- Workspace sync (includes harness from src/core)
 
 ## Quickstart
 

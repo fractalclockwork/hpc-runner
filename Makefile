@@ -27,9 +27,9 @@ test:
 testv:
 	uv run pytest src/core/tests -vv
 
-# Run tests with coverage (requires pytest-cov: uv add --dev pytest-cov)
+# Run tests with coverage
 test-cov:
-	uv run pytest src/core/tests -v --cov=src/core/src/hpc_regression --cov-report=term-missing
+	uv run pytest src/core/tests -v --cov=src/core/src/harness --cov-report=term-missing
 
 # ---------------------------------------------------------------------------
 # Project entrypoints
@@ -53,7 +53,7 @@ docker-build:
 
 # Run the API container (port 8000)
 docker-run:
-	docker run --rm -p 8000:8000 -v $(PWD)/hpc_regression.db:/app/hpc_regression.db dow-workspace
+	docker run --rm -p 8000:8000 -v $(PWD)/data:/app/data dow-workspace
 
 # Run tests inside container
 docker-test:

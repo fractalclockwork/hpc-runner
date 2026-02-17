@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from hpc_regression import RunResult
-from hpc_regression.storage import init_db, store_run, get_runs, get_run_by_id, get_metrics_history
+from harness import RunResult
+from harness.storage import init_db, store_run, get_runs, get_run_by_id, get_metrics_history
 
 
-def _make_result(test_name="t1", solver_name="s1", metrics=None):
+def _make_result(job_name="t1", solver_name="s1", metrics=None):
     return RunResult(
-        test_name=test_name,
+        job_name=job_name,
         solver_name=solver_name,
         system_name="dev",
         returncode=0,
@@ -36,9 +36,9 @@ def test_get_runs(tmp_path):
     """Retrieve runs with optional solver filter."""
     db_path = tmp_path / "test.db"
     init_db(db_path)
-    store_run(db_path, _make_result(test_name="t1", solver_name="solver-a"))
-    store_run(db_path, _make_result(test_name="t2", solver_name="solver-a"))
-    store_run(db_path, _make_result(test_name="t3", solver_name="solver-b"))
+    store_run(db_path, _make_result(job_name="t1", solver_name="solver-a"))
+    store_run(db_path, _make_result(job_name="t2", solver_name="solver-a"))
+    store_run(db_path, _make_result(job_name="t3", solver_name="solver-b"))
 
     runs = get_runs(db_path)
     assert len(runs) == 3
@@ -52,10 +52,10 @@ def test_get_run_by_id(tmp_path):
     """Retrieve single run by id."""
     db_path = tmp_path / "test.db"
     init_db(db_path)
-    row_id = store_run(db_path, _make_result(test_name="my-test"))
+    row_id = store_run(db_path, _make_result(job_name="my-test"))
     run = get_run_by_id(db_path, row_id)
     assert run is not None
-    assert run["test_name"] == "my-test"
+    assert run["job_name"] == "my-test"
     assert run["passed"] == 1
 
     assert get_run_by_id(db_path, 99999) is None

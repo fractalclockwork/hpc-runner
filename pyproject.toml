@@ -4,7 +4,7 @@ version = "0.0.0"
 requires-python = ">=3.10"
 dependencies = [
     "structlog>=25.5.0",
-    "hpc_regression",
+    "harness",
     "basic_restapi",
 ]
 
@@ -15,8 +15,8 @@ members = [
 ]
 
 [tool.uv.sources]
-hpc_regression = { workspace = true }
+harness = { workspace = true }
 basic_restapi = { workspace = true }
 
 [dependency-groups]
-dev = ["pytest", "ruff", "pyyaml"]
+dev = ["pytest", "pytest-cov", "ruff", "pyyaml"]

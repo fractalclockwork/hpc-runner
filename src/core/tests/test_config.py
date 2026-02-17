@@ -5,11 +5,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from hpc_regression.config import (
+from harness.config import (
     load_resources,
     load_systems,
     load_solvers,
-    load_tests,
+    load_jobs,
     load_all,
 )
 
@@ -73,25 +73,25 @@ def test_load_solvers_skips_template(tmp_path):
     assert "_template" not in [s.name for s in solvers.values()]
 
 
-def test_load_tests(tmp_path):
-    """Load tests from YAML."""
-    (tmp_path / "tests").mkdir()
-    (tmp_path / "tests" / "sample.yaml").write_text(yaml.safe_dump({
-        "tests": [
+def test_load_jobs(tmp_path):
+    """Load jobs from YAML."""
+    (tmp_path / "jobs").mkdir()
+    (tmp_path / "jobs" / "sample.yaml").write_text(yaml.safe_dump({
+        "jobs": [
             {"name": "t1", "solver": "s1", "system": "sys1", "success_criteria": {"returncode": 0}},
         ]
     }))
-    tests = load_tests(tmp_path)
-    assert len(tests) == 1
-    assert tests["t1"].solver == "s1"
-    assert tests["t1"].success_criteria == {"returncode": 0}
+    jobs = load_jobs(tmp_path)
+    assert len(jobs) == 1
+    assert jobs["t1"].solver == "s1"
+    assert jobs["t1"].success_criteria == {"returncode": 0}
 
 
 def test_load_all(tmp_path):
     """Load all config entities."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "tests").mkdir()
+    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -99,8 +99,8 @@ def test_load_all(tmp_path):
     (tmp_path / "systems" / "s.yaml").write_text(yaml.safe_dump({
         "systems": [{"name": "s1", "resources": ["r1"]}]
     }))
-    (tmp_path / "tests" / "t.yaml").write_text(yaml.safe_dump({
-        "tests": [{"name": "t1", "solver": "sol1", "system": "s1"}]
+    (tmp_path / "jobs" / "t.yaml").write_text(yaml.safe_dump({
+        "jobs": [{"name": "t1", "solver": "sol1", "system": "s1"}]
     }))
     (solvers_dir / "sol1").mkdir()
     (solvers_dir / "sol1" / "solver.yaml").write_text(yaml.safe_dump({
@@ -108,8 +108,8 @@ def test_load_all(tmp_path):
     }))
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    resources, systems, solvers, tests = load_all(tmp_path, solvers_dir)
+    resources, systems, solvers, jobs = load_all(tmp_path, solvers_dir)
     assert "r1" in resources
     assert "s1" in systems
     assert "sol1" in solvers
-    assert "t1" in tests
+    assert "t1" in jobs

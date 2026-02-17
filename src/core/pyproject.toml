@@ -1,5 +1,5 @@
 [project]
-name = "hpc_regression"
+name = "harness"
 version = "0.1.0"
 description = "Minimal runner harness using structlog"
 requires-python = ">=3.10"
@@ -9,4 +9,4 @@ dependencies = [
 ]
 
 [project.scripts]
-hpc-runner = "hpc_regression.cli:main"
+hpc-runner = "harness.cli:main"

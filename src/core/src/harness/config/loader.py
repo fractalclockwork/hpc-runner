@@ -1,10 +1,10 @@
-# config/loader.py - Load TOML/YAML definitions for Resources, Systems, Solvers, Tests
+# config/loader.py - Load TOML/YAML definitions for Resources, Systems, Solvers, Jobs
 from __future__ import annotations
 
 import yaml
 from pathlib import Path
 
-from .schemas import Resource, System, Solver, Test, MetricSpec
+from .schemas import Resource, System, Solver, Job, MetricSpec
 
 
 def _load_yaml(path: Path) -> dict:
@@ -92,15 +92,15 @@ def load_solvers(config_dir: Path, solvers_root: Path | None = None) -> dict[str
     return solvers
 
 
-def load_tests(config_dir: Path) -> dict[str, Test]:
-    """Load tests from config_dir/tests/."""
-    tests: dict[str, Test] = {}
-    tests_dir = config_dir / "tests"
-    if tests_dir.exists():
-        for f in tests_dir.glob("*.yaml"):
+def load_jobs(config_dir: Path) -> dict[str, Job]:
+    """Load jobs from config_dir/jobs/."""
+    jobs: dict[str, Job] = {}
+    jobs_dir = config_dir / "jobs"
+    if jobs_dir.exists():
+        for f in jobs_dir.glob("*.yaml"):
             data = _load_yaml(f)
-            for item in data.get("tests", [data]):
-                t = Test(
+            for item in data.get("jobs", [data]):
+                j = Job(
                     name=item["name"],
                     solver=item["solver"],
                     system=item["system"],
@@ -109,15 +109,15 @@ def load_tests(config_dir: Path) -> dict[str, Test]:
                     schedule=item.get("schedule"),
                     extra={k: v for k, v in item.items() if k not in ("name", "solver", "system", "parameters", "success_criteria", "schedule")},
                 )
-                tests[t.name] = t
-    return tests
+                jobs[j.name] = j
+    return jobs
 
 
-def load_all(config_dir: Path, solvers_root: Path | None = None) -> tuple[dict[str, Resource], dict[str, System], dict[str, Solver], dict[str, Test]]:
+def load_all(config_dir: Path, solvers_root: Path | None = None) -> tuple[dict[str, Resource], dict[str, System], dict[str, Solver], dict[str, Job]]:
     """Load all config entities from a config directory."""
     config_path = Path(config_dir)
     resources = load_resources(config_path)
     systems = load_systems(config_path)
     solvers = load_solvers(config_path, solvers_root)
-    tests = load_tests(config_path)
-    return resources, systems, solvers, tests
+    jobs = load_jobs(config_path)
+    return resources, systems, solvers, jobs

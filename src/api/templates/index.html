@@ -51,14 +51,14 @@
         <main>
             <div id="view-runs">
                 <h1>Test Runs</h1>
-                <p class="muted">Recent runs and results. Click "Run All Tests" to execute.</p>
+                <p class="muted">Recent runs and results. Click "Run All Jobs" to execute.</p>
                 <div class="card">
-                    <button class="btn btn-primary" id="btn-run-tests">Run All Tests</button>
+                    <button class="btn btn-primary" id="btn-run-jobs">Run All Jobs</button>
                     <span class="loading" id="run-status" style="margin-left: 1rem;"></span>
                 </div>
                 <div class="card">
                     <table>
-                        <thead><tr><th>ID</th><th>Test</th><th>Solver</th><th>System</th><th>Status</th><th>Runtime</th><th>Time</th></tr></thead>
+                        <thead><tr><th>ID</th><th>Job</th><th>Solver</th><th>System</th><th>Status</th><th>Runtime</th><th>Time</th></tr></thead>
                         <tbody id="runs-tbody"></tbody>
                     </table>
                 </div>
@@ -108,10 +108,10 @@
             try {
                 const runs = await fetchJson('/api/runs');
                 tbody.innerHTML = runs.length === 0
-                    ? '<tr><td colspan="7">No runs yet. Click "Run All Tests" to start.</td></tr>'
+                    ? '<tr><td colspan="7">No runs yet. Click "Run All Jobs" to start.</td></tr>'
                     : runs.map(r => `<tr>
                         <td>${r.id}</td>
-                        <td>${r.test_name}</td>
+                        <td>${r.job_name}</td>
                         <td>${r.solver_name}</td>
                         <td>${r.system_name}</td>
                         <td><span class="badge ${r.passed ? 'badge-pass' : 'badge-fail'}">${r.passed ? 'PASS' : 'FAIL'}</span></td>
@@ -123,11 +123,11 @@
             }
         }
 
-        document.getElementById('btn-run-tests').onclick = async () => {
+        document.getElementById('btn-run-jobs').onclick = async () => {
             const status = document.getElementById('run-status');
             status.textContent = 'Running...';
             try {
-                await fetch(API + '/api/run_tests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                await fetch(API + '/api/run_jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
                 status.textContent = 'Done.';
                 loadRuns();
             } catch (e) {

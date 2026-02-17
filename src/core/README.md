@@ -1,6 +1,6 @@
-# Core (HPC Regression)
+# Core (Harness)
 
-The core platform: Configuration Layer, Test Runner, Log Parser, Storage, and CLI. Uses `structlog` for logging, `PyYAML` for configuration, and `pytest` for testing.
+The core platform: Configuration Layer, Job Runner, Log Parser, Storage, and CLI. Uses `structlog` for logging, `PyYAML` for configuration, and `pytest` for testing.
 
 ---
 
@@ -9,7 +9,7 @@ The core platform: Configuration Layer, Test Runner, Log Parser, Storage, and CL
 ```
 src/core/
 ├── pyproject.toml
-├── src/hpc_regression/
+├── src/harness/
 │   ├── config/
 │   ├── parser/
 │   ├── storage/
@@ -22,7 +22,7 @@ src/core/
 └── README.md
 ```
 
-Configs (resources, systems, tests) live at project root in `configs/`. Solvers live in `solvers/`.
+Configs (resources, systems, jobs) live at project root in `configs/`. Solvers live in `solvers/`.
 
 ---
 

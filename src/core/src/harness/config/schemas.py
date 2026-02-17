@@ -1,4 +1,4 @@
-# config/schemas.py - Declarative definitions for Resources, Systems, Solvers, Tests
+# config/schemas.py - Declarative definitions for Resources, Systems, Solvers, Jobs
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -50,7 +50,7 @@ class Solver:
 
 
 @dataclass
-class Test:
+class Job:
     """Solver/system pairing, parameters, success criteria."""
     name: str
     solver: str

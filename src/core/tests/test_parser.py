@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from hpc_regression.parser import extract_metrics, validate_metrics, load_parser_config
+from harness.parser import extract_metrics, validate_metrics, load_parser_config
 
 
 def test_extract_metrics_from_dict():

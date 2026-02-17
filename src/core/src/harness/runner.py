@@ -1,4 +1,4 @@
-# runner.py - Execution-agnostic Test Runner
+# runner.py - Execution-agnostic job runner
 from __future__ import annotations
 
 import os
@@ -10,7 +10,7 @@ from typing import Any
 
 import structlog
 
-from .config import Solver, System, Test
+from .config import Solver, System, Job
 from .parser import extract_metrics
 
 logger = structlog.get_logger()
@@ -18,8 +18,8 @@ logger = structlog.get_logger()
 
 @dataclass
 class RunResult:
-    """Result of a single test run."""
-    test_name: str
+    """Result of a single job run."""
+    job_name: str
     solver_name: str
     system_name: str
     returncode: int
@@ -41,21 +41,21 @@ def _build_env(system: System, base_env: dict[str, str] | None = None) -> dict[s
     return env
 
 
-def run_test(
-    test: Test,
+def run_job(
+    job: Job,
     solver: Solver,
     system: System,
     *,
     capture_output: bool = True,
 ) -> RunResult:
     """
-    Execute a test by running the solver script with system environment.
+    Execute a job by running the solver script with system environment.
     Platform remains scheduler-agnostic; solver script may call SLURM, MPI, etc.
     """
     start = datetime.now(timezone.utc)
     logger.info(
         "runner.start",
-        test=test.name,
+        job=job.name,
         solver=solver.name,
         system=system.name,
         entrypoint=solver.entrypoint,
@@ -86,7 +86,7 @@ def run_test(
         end = datetime.now(timezone.utc)
         runtime = (end - start).total_seconds()
         run_result = RunResult(
-            test_name=test.name,
+            job_name=job.name,
             solver_name=solver.name,
             system_name=system.name,
             returncode=-1,
@@ -96,13 +96,13 @@ def run_test(
             timestamp=end.isoformat(),
             passed=False,
         )
-        logger.warning("runner.timeout", test=test.name, runtime=runtime)
+        logger.warning("runner.timeout", job=job.name, runtime=runtime)
         return run_result
     except Exception as e:
         end = datetime.now(timezone.utc)
         runtime = (end - start).total_seconds()
         run_result = RunResult(
-            test_name=test.name,
+            job_name=job.name,
             solver_name=solver.name,
             system_name=system.name,
             returncode=-1,
@@ -112,7 +112,7 @@ def run_test(
             timestamp=end.isoformat(),
             passed=False,
         )
-        logger.exception("runner.error", test=test.name, error=str(e))
+        logger.exception("runner.error", job=job.name, error=str(e))
         return run_result
 
     end = datetime.now(timezone.utc)
@@ -120,7 +120,7 @@ def run_test(
     raw_logs = (result.stdout or "") + "\n" + (result.stderr or "")
 
     # Basic pass/fail from returncode
-    success_criteria = test.success_criteria or {}
+    success_criteria = job.success_criteria or {}
     expected_rc = success_criteria.get("returncode", 0)
     passed = result.returncode == expected_rc
 
@@ -130,7 +130,7 @@ def run_test(
         metrics = extract_metrics(raw_logs, config_path=solver.parser_config)
 
     run_result = RunResult(
-        test_name=test.name,
+        job_name=job.name,
         solver_name=solver.name,
         system_name=system.name,
         returncode=result.returncode,
@@ -145,7 +145,7 @@ def run_test(
 
     logger.info(
         "runner.finish",
-        test=test.name,
+        job=job.name,
         returncode=result.returncode,
         passed=passed,
         runtime=runtime,
@@ -153,21 +153,21 @@ def run_test(
     return run_result
 
 
-def run_tests(
-    tests: list[Test],
+def run_jobs(
+    jobs: list[Job],
     solvers: dict[str, Solver],
     systems: dict[str, System],
 ) -> list[RunResult]:
-    """Run multiple tests and return results."""
+    """Run multiple jobs and return results."""
     results: list[RunResult] = []
-    for test in tests:
-        solver = solvers.get(test.solver)
-        system = systems.get(test.system)
+    for job in jobs:
+        solver = solvers.get(job.solver)
+        system = systems.get(job.system)
         if not solver:
-            logger.warning("runner.skip", test=test.name, reason=f"unknown solver: {test.solver}")
+            logger.warning("runner.skip", job=job.name, reason=f"unknown solver: {job.solver}")
             continue
         if not system:
-            logger.warning("runner.skip", test=test.name, reason=f"unknown system: {test.system}")
+            logger.warning("runner.skip", job=job.name, reason=f"unknown system: {job.system}")
             continue
-        results.append(run_test(test, solver, system))
+        results.append(run_job(job, solver, system))
     return results

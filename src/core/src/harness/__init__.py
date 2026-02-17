@@ -1,7 +1,7 @@
-"""HPC Regression Testing Platform - execution-agnostic test runner."""
+"""Execution-agnostic harness for running solver jobs."""
 
-from .config import load_all, Resource, System, Solver, Test
-from .runner import run_test, run_tests, RunResult
+from .config import load_all, Resource, System, Solver, Job
+from .runner import run_job, run_jobs, RunResult
 from .parser import extract_metrics
 from .storage import init_db, store_run, get_runs, get_run_by_id, get_metrics_history
 
@@ -10,9 +10,9 @@ __all__ = [
     "Resource",
     "System",
     "Solver",
-    "Test",
-    "run_test",
-    "run_tests",
+    "Job",
+    "run_job",
+    "run_jobs",
     "RunResult",
     "extract_metrics",
     "init_db",

@@ -1,4 +1,4 @@
-tests:
+jobs:
   - name: echo-test
     solver: echo-solver
     system: dev-system

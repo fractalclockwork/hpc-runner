@@ -4,9 +4,9 @@ from pathlib import Path
 import structlog
 from flask import Flask, jsonify, render_template, request
 
-from hpc_regression import (
+from harness import (
     load_all,
-    run_tests,
+    run_jobs,
     init_db,
     store_run,
     get_runs,
@@ -27,12 +27,12 @@ logger = structlog.get_logger()
 
 CONFIG_DIR = PROJECT_ROOT / "configs"
 SOLVERS_DIR = PROJECT_ROOT / "solvers"
-DB_PATH = PROJECT_ROOT / "hpc_regression.db"
+DB_PATH = PROJECT_ROOT / "data" / "harness.db"
 
 
 def _load_definitions():
-    resources, systems, solvers, tests = load_all(CONFIG_DIR, SOLVERS_DIR)
-    return resources, systems, solvers, tests
+    resources, systems, solvers, jobs = load_all(CONFIG_DIR, SOLVERS_DIR)
+    return resources, systems, solvers, jobs
 
 
 @app.route("/")
@@ -55,37 +55,37 @@ def api_solvers():
     ])
 
 
-@app.route("/api/tests")
-def api_tests():
-    """List configured tests."""
-    _, _, solvers, tests = _load_definitions()
+@app.route("/api/jobs")
+def api_jobs():
+    """List configured jobs."""
+    _, _, solvers, jobs = _load_definitions()
     return jsonify([
         {
-            "name": t.name,
-            "solver": t.solver,
-            "system": t.system,
+            "name": j.name,
+            "solver": j.solver,
+            "system": j.system,
         }
-        for t in tests.values()
+        for j in jobs.values()
     ])
 
 
-@app.route("/api/run_tests", methods=["GET", "POST"])
-def api_run_tests():
-    """Run tests. POST with optional JSON body: { "tests": ["test1", "test2"] }."""
-    resources, systems, solvers, tests = _load_definitions()
-    test_names = None
+@app.route("/api/run_jobs", methods=["GET", "POST"])
+def api_run_jobs():
+    """Run jobs. POST with optional JSON body: { "jobs": ["job1", "job2"] }."""
+    resources, systems, solvers, jobs = _load_definitions()
+    job_names = None
     if request.method == "POST" and request.is_json:
         body = request.get_json() or {}
-        test_names = body.get("tests")
+        job_names = body.get("jobs")
 
-    test_list = list(tests.values())
-    if test_names:
-        test_list = [t for t in test_list if t.name in test_names]
+    job_list = list(jobs.values())
+    if job_names:
+        job_list = [j for j in job_list if j.name in job_names]
 
-    if not test_list:
-        return jsonify({"error": "No tests to run", "results": []}), 400
+    if not job_list:
+        return jsonify({"error": "No jobs to run", "results": []}), 400
 
-    results = run_tests(test_list, solvers, systems)
+    results = run_jobs(job_list, solvers, systems)
 
     # Store in DB
     init_db(DB_PATH)
@@ -94,7 +94,7 @@ def api_run_tests():
 
     return jsonify([
         {
-            "test_name": r.test_name,
+            "job_name": r.job_name,
             "solver_name": r.solver_name,
             "system_name": r.system_name,
             "returncode": r.returncode,

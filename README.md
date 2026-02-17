@@ -4,11 +4,11 @@ Modular, execution-agnostic HPC regression testing system for the Dow/Berkeley C
 
 ## Architecture Overview
 
-- **Configuration Layer** — TOML/YAML definitions for Resources, Systems, Solvers, Tests
-- **Test Runner** — Execution orchestrator; runs solver scripts as black-box processes
+- **Configuration Layer** — TOML/YAML definitions for Resources, Systems, Solvers, Jobs
+- **Job Runner** — Execution orchestrator; runs solver scripts as black-box processes
 - **Log Parsing** — YAML-defined regex patterns for metric extraction
 - **Data Storage** — SQLite for run metadata and metrics
-- **Dashboard** — Web UI for scheduling tests and viewing results
+- **Dashboard** — Web UI for running jobs and viewing results
 
 ## Quick Start
 
@@ -20,10 +20,10 @@ uv sync --all-extras --dev
 make test
 # or: uv run pytest src/core/tests -q
 
-# List available tests
+# List available jobs
 uv run hpc-runner configs --list
 
-# Run all tests
+# Run all jobs
 uv run hpc-runner configs
 
 # Run with custom config dir and solvers
@@ -62,7 +62,7 @@ Unit tests cover the major features:
 
 | Test Module | Coverage |
 |-------------|----------|
-| `test_config.py` | Resource, System, Solver, Test loading; _template skip |
+| `test_config.py` | Resource, System, Solver, Job loading; _template skip |
 | `test_parser.py` | Metric extraction, validation |
 | `test_storage.py` | DB init, store_run, get_runs, get_run_by_id, get_metrics_history |
 | `test_runner.py` | End-to-end run, metric extraction from solver output |
@@ -78,7 +78,7 @@ make testv     # Verbose
 configs/
 ├── resources/     # CPU/GPU, memory, node definitions
 ├── systems/       # Resource bundles, env vars
-├── tests/         # Solver+system pairings, success criteria
+├── jobs/          # Solver+system pairings, success criteria
 
 solvers/
 ├── my-solver/
@@ -91,10 +91,10 @@ solvers/
 
 | Command | Description |
 |---------|-------------|
-| `hpc-runner configs` | Run all tests |
-| `hpc-runner configs --list` | List available tests |
+| `hpc-runner configs` | Run all jobs |
+| `hpc-runner configs --list` | List available jobs |
 | `hpc-runner configs --list-runs` | List recent runs from DB |
-| `hpc-runner configs --test echo-test` | Run specific test(s) |
+| `hpc-runner configs --job echo-test` | Run specific job(s) |
 | `hpc-runner configs --no-store` | Run without persisting to DB |
 
 ## REST API
@@ -102,8 +102,8 @@ solvers/
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/solvers` | GET | List configured solvers |
-| `/api/tests` | GET | List configured tests |
-| `/api/run_tests` | POST | Run tests (body: `{"tests": ["name1"]}`) |
+| `/api/jobs` | GET | List configured jobs |
+| `/api/run_jobs` | POST | Run jobs (body: `{"jobs": ["name1"]}`) |
 | `/api/runs` | GET | List recent runs (query: `?solver=`, `?limit=`) |
 | `/api/runs/<id>` | GET | Get run details |
 | `/api/metrics/<solver>/<metric>` | GET | Metric history for trends |
@@ -111,5 +111,5 @@ solvers/
 ## Design Principles
 
 - **Execution-Agnostic** — Solver scripts control execution (SLURM, MPI, etc.); platform never calls schedulers directly
-- **Modular** — Resources, systems, solvers, tests defined independently
+- **Modular** — Resources, systems, solvers, jobs defined independently
 - **Pluggable** — Add solvers by dropping a folder with `solver.yaml` + run script

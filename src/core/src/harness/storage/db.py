@@ -11,11 +11,13 @@ from ..runner import RunResult
 
 def init_db(path: str | Path) -> None:
     """Create tables if they don't exist."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            test_name TEXT NOT NULL,
+            job_name TEXT NOT NULL,
             solver_name TEXT NOT NULL,
             system_name TEXT NOT NULL,
             returncode INTEGER NOT NULL,
@@ -40,11 +42,11 @@ def store_run(db_path: str | Path, result: RunResult) -> int:
     metrics_json = json.dumps(result.metrics) if result.metrics else None
     cur = conn.execute(
         """INSERT INTO runs (
-            test_name, solver_name, system_name, returncode, passed,
+            job_name, solver_name, system_name, returncode, passed,
             runtime_seconds, timestamp, stdout, stderr, metrics_json
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            result.test_name,
+            result.job_name,
             result.solver_name,
             result.system_name,
             result.returncode,
