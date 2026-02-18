@@ -103,7 +103,7 @@ sequenceDiagram
 | `/api/solvers` | GET | List solvers |
 | `/api/jobs` | GET | List jobs |
 | `/api/run_jobs` | POST | Run jobs (body: `{"jobs": ["name1"]}`) |
-| `/api/runs` | GET | List runs (?solver=, ?processor=, ?limit=) |
+| `/api/runs` | GET | List runs (?solver=, ?processor=, ?limit=, ?offset=) |
 | `/api/runs/<id>` | GET | Run detail |
 | `/api/metrics/<solver>/<metric>` | GET | Metric history for trends |
 

@@ -137,4 +137,4 @@ sys.exit(0)
 2. Edit `solver.yaml`: set `name`, `entrypoint`, `allowed_systems`
 3. Implement the run script
 4. Optionally add `parser_config.yaml` and define metrics
-5. Add a test in `configs/tests/` that references your solver
+5. Add a job in `configs/jobs/` that references your solver

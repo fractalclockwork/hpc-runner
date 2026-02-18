@@ -21,6 +21,6 @@ This directory is a template for creating new solvers. **It is ignored by the lo
 
 4. Optional: Add `parser_config.yaml` to extract metrics from logs.
 
-5. Add a test in `configs/tests/` that references your solver.
+5. Add a job in `configs/jobs/` that references your solver.
 
 See [docs/solver_template.md](../../docs/solver_template.md) for full specification.

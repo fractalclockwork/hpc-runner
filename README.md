@@ -4,7 +4,7 @@ Modular, execution-agnostic HPC regression testing system for the Dow/Berkeley C
 
 ## Architecture Overview
 
-- **Configuration Layer** — TOML/YAML definitions for Resources, Systems, Solvers, Jobs
+- **Configuration Layer** — YAML definitions for Resources, Systems, Solvers, Jobs
 - **Job Runner** — Execution orchestrator; runs solver scripts as black-box processes
 - **Log Parsing** — YAML-defined regex patterns for metric extraction
 - **Data Storage** — SQLite for run metadata and metrics
@@ -104,7 +104,7 @@ solvers/
 | `/api/solvers` | GET | List configured solvers |
 | `/api/jobs` | GET | List configured jobs |
 | `/api/run_jobs` | POST | Run jobs (body: `{"jobs": ["name1"]}`) |
-| `/api/runs` | GET | List recent runs (query: `?solver=`, `?limit=`) |
+| `/api/runs` | GET | List recent runs (?solver=, ?processor=, ?limit=, ?offset=) |
 | `/api/runs/<id>` | GET | Get run details |
 | `/api/metrics/<solver>/<metric>` | GET | Metric history for trends |
 

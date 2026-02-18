@@ -35,7 +35,7 @@ test-cov:
 # Project entrypoints
 # ---------------------------------------------------------------------------
 
-# Run the hpc-regression CLI
+# Run the hpc-runner CLI
 runner:
 	uv run hpc-runner configs
 
