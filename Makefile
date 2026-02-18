@@ -118,8 +118,15 @@ purge:
 	rm -rf ~/.local/share/uv/python
 	@echo "Purge complete."
 
+# ---------------------------------------------------------------------------
+# Pre-release
+# ---------------------------------------------------------------------------
 
-
+# Clear the harness database (run before release to reset run history)
+clear-db:
+	@echo "Clearing harness database..."
+	rm -f data/harness.db
+	@echo "Database cleared."
 
 # ---------------------------------------------------------------------------
 # Meta
