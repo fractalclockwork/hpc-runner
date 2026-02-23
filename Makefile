@@ -43,6 +43,10 @@ runner:
 api:
 	uv run flask --app basic_restapi.app run --debug --port 8000
 
+# Run the Streamlit UI
+ui:
+	uv run streamlit run src/ui/app.py
+
 # ---------------------------------------------------------------------------
 # Docker
 # ---------------------------------------------------------------------------
