@@ -68,8 +68,10 @@ Unit tests cover the major features:
 | `test_runner.py` | End-to-end run, metric extraction from solver output |
 
 ```bash
-make test      # Quiet
-make testv     # Verbose
+make test      # Core unit tests (quiet)
+make testv     # Core unit tests (verbose)
+make e2e       # Playwright E2E tests (Streamlit UI)
+make e2e-docker # E2E tests in Docker (Streamlit + Playwright)
 ```
 
 ## Configuration Structure
