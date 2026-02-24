@@ -35,6 +35,12 @@ def _wait_for_streamlit(url: str, timeout: float = STREAMLIT_START_TIMEOUT) -> b
 def streamlit_process():
     """Start Streamlit in background when running locally (STREAMLIT_URL not set to remote)."""
     # If URL points to a different host (e.g. streamlit:8501 in Docker), app is already running
+    # Or if STREAMLIT_ALREADY_RUNNING=1 (e.g. Streamlit running in Docker on localhost:8501)
+    if os.environ.get("STREAMLIT_ALREADY_RUNNING") == "1":
+        if not _wait_for_streamlit(STREAMLIT_URL):
+            pytest.skip("Streamlit at STREAMLIT_URL did not respond in time")
+        yield
+        return
     if "localhost" not in STREAMLIT_URL and "127.0.0.1" not in STREAMLIT_URL:
         yield
         return

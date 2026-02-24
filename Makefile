@@ -57,7 +57,7 @@ ui:
 
 # Build the Docker image
 docker-build:
-	docker build -t dow-workspace .
+	docker build -f docker/Dockerfile -t dow-workspace .
 
 # Run the API container (port 8000)
 docker-run:
@@ -65,11 +65,19 @@ docker-run:
 
 # Run tests inside container
 docker-test:
-	docker build -t dow-workspace . && docker run --rm dow-workspace uv run pytest src/core/tests -q
+	docker build -f docker/Dockerfile -t dow-workspace . && docker run --rm dow-workspace uv run pytest src/core/tests -q
 
 # Build Playwright image for E2E tests
 docker-build-playwright:
-	docker build -f Dockerfile.playwright -t dow-workspace-playwright .
+	docker build -f docker/Dockerfile.playwright -t dow-workspace-playwright .
+
+# Run API via docker-compose
+docker-up:
+	docker compose -f docker/docker-compose.yml up --build
+
+# Run Streamlit UI in Docker (port 8501)
+docker-ui:
+	docker run --rm -p 8501:8501 -v $(PWD)/data:/app/data dow-workspace uv run streamlit run src/ui/app.py --server.port 8501 --server.address 0.0.0.0
 
 # Run Playwright E2E tests locally (starts Streamlit automatically)
 e2e:
@@ -77,7 +85,20 @@ e2e:
 
 # Run Playwright E2E tests in Docker (Streamlit + Playwright containers)
 e2e-docker:
-	docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit
+	docker compose -f docker/docker-compose.e2e.yml up --build --abort-on-container-exit
+
+# Run Streamlit UI in Docker, then run E2E tests against it (local Playwright)
+e2e-docker-ui:
+	@cid=$$(docker run -d -p 8501:8501 -v $(PWD)/data:/app/data dow-workspace uv run streamlit run src/ui/app.py --server.port 8501 --server.address 0.0.0.0); \
+	sleep 8; \
+	STREAMLIT_ALREADY_RUNNING=1 uv run pytest src/ui/tests/e2e -v --browser chromium; \
+	exit_code=$$?; \
+	docker rm -f $$cid 2>/dev/null; \
+	exit $$exit_code
+
+# Validate Docker images (build + API health check)
+docker-validate:
+	./scripts/validate-docker.sh
 
 # ---------------------------------------------------------------------------
 # Developer utilities
