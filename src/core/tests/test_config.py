@@ -1,8 +1,5 @@
 # tests/test_config.py - Configuration loading
-import tempfile
-from pathlib import Path
 
-import pytest
 import yaml
 
 from harness.config import (

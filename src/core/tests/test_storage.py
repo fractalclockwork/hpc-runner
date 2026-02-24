@@ -1,8 +1,5 @@
 # tests/test_storage.py - SQLite storage
-import tempfile
-from pathlib import Path
 
-import pytest
 
 from harness import RunResult
 from harness.storage import init_db, store_run, get_runs, get_run_by_id, get_metrics_history

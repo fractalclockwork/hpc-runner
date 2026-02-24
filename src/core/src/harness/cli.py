@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .config import load_all, load_jobs
+from .config import load_all
 from .runner import run_jobs
 from .storage import init_db, store_run, get_runs
 
