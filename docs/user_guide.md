@@ -12,7 +12,7 @@ Execution environments are built from **Resources** (hardware) and **Systems** (
 
 ### Resources
 
-Resources define hardware capacity. Add them in `configs/resources/*.yaml`:
+Resources define hardware capacity. Add them in `configs/resources/*.yaml` (`.yml` is also supported; `.yaml` is preferred for consistency):
 
 ```yaml
 resources:
@@ -36,7 +36,7 @@ You can define multiple resources in one file or split across files. Each resour
 
 ### Systems
 
-Systems bundle one or more resources and add environment variables. Add them in `configs/systems/*.yaml`:
+Systems bundle one or more resources and add environment variables. Add them in `configs/systems/*.yaml` (`.yml` also supported):
 
 ```yaml
 systems:
@@ -70,10 +70,10 @@ A solver is a self-contained package with a run script and metadata. See [solver
 
 1. Copy the template:
    ```bash
-   cp -r solvers/_template solvers/my-solver
+   cp -r configs/solvers/_template configs/solvers/my-solver
    ```
 
-2. Edit `solvers/my-solver/solver.yaml`:
+2. Edit `configs/solvers/my-solver/solver.yaml`:
    ```yaml
    name: my-solver
    entrypoint: run.sh
@@ -84,11 +84,26 @@ A solver is a self-contained package with a run script and metadata. See [solver
 
 4. Add a job that uses your solver (see [Defining Jobs](#4-defining-jobs)).
 
+### Adding a solver from a command
+
+To quickly add a solver that runs a shell command:
+
+```bash
+uv run hpc-runner --add "cat /proc/cpuinfo" --system dev-system
+```
+
+This creates a minimal solver and job in `configs/solvers/` and `configs/jobs/added.yaml`, then runs the new job. Use `--name` for a custom solver/job name:
+
+```bash
+uv run hpc-runner --add "echo hello" --system dev-system --name hello-check --no-store
+```
+
 ### Key Points
 
 - **Paths** in `solver.yaml` (e.g. `entrypoint`, `parser_config`) are relative to the solver directory.
 - **allowed_systems** must list system names that exist in `configs/systems/`. Jobs can only pair your solver with one of these systems.
 - **Entrypoint** must exist at the specified path. Use `run.sh` or `run.py`; the platform invokes them via `bash` or `python3`.
+- **cwd** (optional): Working directory for the solver. Default `true` = use solver dir; `false` = use entrypoint parent; or a string path.
 
 ---
 
@@ -98,7 +113,7 @@ To extract metrics from solver output, add a `parser_config.yaml` and reference 
 
 ### Parser Config
 
-Create `solvers/my-solver/parser_config.yaml`:
+Create `configs/solvers/my-solver/parser_config.yaml`:
 
 ```yaml
 patterns:
@@ -156,7 +171,7 @@ The `metrics` list is optional; it declares expected metrics and validation rang
 
 ## 4. Defining Jobs
 
-Jobs pair a solver with a system and define success criteria. Add them in `configs/jobs/*.yaml`:
+Jobs pair a solver with a system and define success criteria. Add them in `configs/jobs/*.yaml` (`.yml` also supported):
 
 ```yaml
 jobs:
@@ -181,6 +196,7 @@ jobs:
 | `system`          | System name (must exist in `configs/systems/`)   |
 | `parameters`      | Optional key-value params (passed to solver)      |
 | `success_criteria`| Pass/fail conditions; `returncode` (default 0)   |
+| `schedule`        | Optional; reserved for future cron/scheduling    |
 
 The solver’s `allowed_systems` must include the job’s `system`. Otherwise the job will be skipped.
 
@@ -213,29 +229,32 @@ Options:
 
 | Option           | Description                                  |
 |------------------|----------------------------------------------|
+| `config_dir`     | Optional positional; path to config dir (default: `configs`) |
+| `--add CMD`      | Create solver from command and run (requires `--system`)   |
+| `--system NAME`  | System name (required with `--add`)                         |
+| `--name NAME`    | Custom solver/job name (optional with `--add`)               |
 | `--job <name>`   | Run only these jobs (repeatable)              |
 | `--list`         | List jobs and exit                           |
-| `--list-runs`    | List recent runs from DB and exit             |
+| `--list-runs`    | List last 20 runs from DB and exit           |
 | `--no-store`     | Do not persist results to database           |
-| `--solvers-dir`  | Override solvers directory                    |
+| `--solvers-dir`  | Override solvers directory (default: config_dir/solvers) |
 | `--db`           | Override database path (default: data/harness.db) |
 
 You can also pass a custom config directory as the first argument:
 
 ```bash
-uv run hpc-runner /path/to/configs --solvers-dir /path/to/solvers
+uv run hpc-runner /path/to/configs --solvers-dir /path/to/configs/solvers
 ```
 
 ### Web UI
 
-Start the dashboard:
+Two interfaces are available:
 
-```bash
-uv run basic-restapi
-# or: make api
-```
+**REST API (FastAPI):** `make api` → http://localhost:8000 (root redirects to `/docs` for interactive API documentation). Use for programmatic access or automation.
 
-Open http://localhost:8000. You can:
+**Streamlit UI:** `make ui` → http://localhost:8501. Use for interactive running of jobs and viewing results in a browser.
+
+Both allow you to:
 
 - Run all jobs
 - View recent runs (filter by solver or processor)
@@ -267,9 +286,9 @@ Each run produces a result with:
 - `returncode`, `passed` (based on success_criteria)
 - `runtime_seconds`, `timestamp`
 - `metrics` (extracted via parser_config)
-- `processor` (e.g. x86_64, aarch64)
+- `processor` (e.g. x86_64, aarch64) — detected via `platform.machine()`
 
-CLI output is JSON. Results are stored in `data/harness.db` unless you use `--no-store`.
+CLI output is JSON. Results are stored in `data/harness.db` unless you use `--no-store`. Jobs have a 1-hour (3600s) timeout; jobs exceeding this are marked as failed.
 
 ### Dashboard
 
@@ -283,10 +302,11 @@ CLI output is JSON. Results are stored in `data/harness.db` unless you use `--no
 
 | Issue                    | Check                                                                 |
 |--------------------------|-----------------------------------------------------------------------|
-| Solver not found         | Solver folder not under `_template` or starting with `_`; `--solvers-dir` points to correct path |
+| Solver not found         | Solver folder not under `_template` or starting with `_`; `--solvers-dir` points to configs/solvers |
 | System not found for job | System exists in `configs/systems/`; solver’s `allowed_systems` includes it |
 | Metrics not extracted    | Regex has exactly one capture group; solver prints to stdout/stderr   |
 | Job fails                | Inspect returncode; view stdout/stderr in run detail or DB             |
+| Job times out            | Jobs have a 1-hour limit; long runs may need to be split or optimized |
 | Entrypoint not found     | Path in `solver.yaml` is relative to solver dir; file exists           |
 
 ---
@@ -298,15 +318,12 @@ CLI output is JSON. Results are stored in `data/harness.db` unless you use `--no
 configs/
 ├── resources/   # Hardware definitions
 ├── systems/    # Resource bundles + env
-└── jobs/       # Solver+system pairings
-```
-
-**Solver layout:**
-```
-solvers/<name>/
-├── solver.yaml        # Required
-├── run.sh or run.py   # Required
-└── parser_config.yaml # Optional
+├── jobs/       # Solver+system pairings
+└── solvers/    # Solver packages
+    └── <name>/
+        ├── solver.yaml        # Required
+        ├── run.sh or run.py   # Required
+        └── parser_config.yaml # Optional
 ```
 
 **See also:** [Glossary](glossary.md) | [Solver Template](solver_template.md) | [Architecture](architecture.md)

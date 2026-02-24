@@ -19,8 +19,12 @@ resync:
 # Testing
 # ---------------------------------------------------------------------------
 
-# Run all tests (config, parser, storage, runner)
+# Run core tests
 test:
+	uv run pytest src/core/tests -q
+
+# Run core tests (alias)
+test-core:
 	uv run pytest src/core/tests -q
 
 # Run tests with verbose output
@@ -39,9 +43,9 @@ test-cov:
 runner:
 	uv run hpc-runner configs
 
-# Run the REST API
+# Run the REST API (FastAPI)
 api:
-	uv run flask --app basic_restapi.app run --debug --port 8000
+	uv run uvicorn basic_restapi.fastapi_app:app --reload --port 8000
 
 # Run the Streamlit UI
 ui:
@@ -62,6 +66,18 @@ docker-run:
 # Run tests inside container
 docker-test:
 	docker build -t dow-workspace . && docker run --rm dow-workspace uv run pytest src/core/tests -q
+
+# Build Playwright image for E2E tests
+docker-build-playwright:
+	docker build -f Dockerfile.playwright -t dow-workspace-playwright .
+
+# Run Playwright E2E tests locally (starts Streamlit automatically)
+e2e:
+	uv run pytest src/ui/tests/e2e -v --browser chromium
+
+# Run Playwright E2E tests in Docker (Streamlit + Playwright containers)
+e2e-docker:
+	docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit
 
 # ---------------------------------------------------------------------------
 # Developer utilities

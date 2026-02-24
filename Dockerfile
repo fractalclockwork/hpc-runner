@@ -10,7 +10,6 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY src ./src
 COPY configs ./configs
-COPY solvers ./solvers
 
 RUN uv sync --frozen --all-extras --dev
 

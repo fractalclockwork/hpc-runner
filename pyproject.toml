@@ -20,4 +20,4 @@ harness = { workspace = true }
 basic_restapi = { workspace = true }
 
 [dependency-groups]
-dev = ["pytest", "pytest-cov", "ruff", "pyyaml"]
+dev = ["pytest", "pytest-cov", "ruff", "pyyaml", "pytest-playwright>=0.4.0", "playwright>=1.40.0", "httpx"]

@@ -1,0 +1,7 @@
+jobs:
+- name: cpuinfo-test-test
+  solver: cpuinfo-test
+  system: dev-system
+  parameters: {}
+  success_criteria:
+    returncode: 0

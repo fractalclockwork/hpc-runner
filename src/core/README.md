@@ -22,7 +22,7 @@ src/core/
 └── README.md
 ```
 
-Configs (resources, systems, jobs) live at project root in `configs/`. Solvers live in `solvers/`.
+Configs (resources, systems, jobs, solvers) live in `configs/`.
 
 ---
 

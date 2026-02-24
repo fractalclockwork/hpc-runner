@@ -3,7 +3,7 @@
 ## 1. High-Level Overview
 
 - **Purpose**: Execution-agnostic harness for running solver jobs (HPC regression testing)
-- **Entry points**: CLI (`hpc-runner`), Web API + Dashboard
+- **Entry points**: CLI (`hpc-runner`), REST API (FastAPI), Streamlit UI
 - **Key principle**: Solver scripts are black-box; platform never calls schedulers (SLURM, MPI, etc.)
 
 ## 2. Component Architecture
@@ -15,7 +15,8 @@ flowchart TB
         Browser[Web Browser]
     end
     subgraph api [API Layer]
-        Flask[Flask basic_restapi]
+        FastAPI[FastAPI REST API]
+        Streamlit[Streamlit UI]
     end
     subgraph core [Harness Core]
         Config[Config Loader]
@@ -24,7 +25,7 @@ flowchart TB
         Storage[Storage]
     end
     subgraph data [Data]
-        YAML[configs/ jobs/ solvers/]
+        YAML[configs/ resources systems jobs solvers]
         DB[(data/harness.db)]
     end
     subgraph external [External]
@@ -33,10 +34,14 @@ flowchart TB
     CLI --> Config
     CLI --> Runner
     CLI --> Storage
-    Browser --> Flask
-    Flask --> Config
-    Flask --> Runner
-    Flask --> Storage
+    Browser --> FastAPI
+    Browser --> Streamlit
+    FastAPI --> Config
+    FastAPI --> Runner
+    FastAPI --> Storage
+    Streamlit --> Config
+    Streamlit --> Runner
+    Streamlit --> Storage
     Config --> YAML
     Runner --> Parser
     Runner --> SolverScript
@@ -61,12 +66,11 @@ configs/
 ├── resources/     # Resource definitions (cpus, gpus, memory)
 ├── systems/       # System definitions (resources, env)
 ├── jobs/          # Job definitions (solver+system pairings)
-
-solvers/
-├── <solver-name>/
-│   ├── solver.yaml       # Metadata, entrypoint, parser_config path
-│   ├── run.sh or run.py  # Executed as black-box
-│   └── parser_config.yaml  # Optional: regex patterns for metrics
+└── solvers/       # Solver packages
+    └── <solver-name>/
+        ├── solver.yaml       # Metadata, entrypoint, parser_config path
+        ├── run.sh or run.py  # Executed as black-box
+        └── parser_config.yaml  # Optional: regex patterns for metrics
 ```
 
 ## 5. Job Execution Flow
@@ -99,7 +103,7 @@ sequenceDiagram
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | Dashboard (index.html) |
+| `/` | GET | Redirects to `/docs` (Swagger UI) |
 | `/api/solvers` | GET | List solvers |
 | `/api/jobs` | GET | List jobs |
 | `/api/run_jobs` | POST | Run jobs (body: `{"jobs": ["name1"]}`) |
@@ -109,9 +113,13 @@ sequenceDiagram
 
 ## 7. Dashboard Views
 
+The **Streamlit UI** (`make ui`, port 8501) provides:
+
 - **Test Runs**: Table of runs, "Run All Jobs" button
 - **Solvers**: Grid of configured solvers
-- **Performance Trends**: Chart.js line chart (solver + metric selector)
+- **Performance Trends**: Line chart (solver + metric selector)
+
+The **REST API** (`make api`, port 8000) serves JSON; `/docs` provides interactive Swagger UI.
 
 ## 8. Storage Schema
 
@@ -119,20 +127,20 @@ Table `runs`: id, job_name, solver_name, system_name, returncode, passed, runtim
 
 ## 9. Deployment
 
-- **Local**: `make api`, `make runner`
+- **Local**: `make api` (REST API), `make ui` (Streamlit dashboard), `make runner` (CLI)
 - **Docker**: `make docker-build`, `make docker-run` (mounts `./data`)
-- **docker-compose**: `docker compose up --build`
+- **docker-compose**: `docker compose up --build` (REST API on port 8000)
 
 ## 10. Workspace Layout
 
 ```
 DOW-1-26/
-├── configs/           # YAML configs
-├── solvers/           # Solver packages
+├── configs/           # YAML configs (resources, systems, jobs, solvers)
 ├── data/              # harness.db (gitignored)
 ├── src/
 │   ├── core/          # harness package
-│   └── api/           # basic_restapi package
+│   ├── api/           # basic_restapi package (FastAPI)
+│   └── ui/            # Streamlit dashboard
 ├── pyproject.toml     # uv workspace
 └── Makefile
 ```

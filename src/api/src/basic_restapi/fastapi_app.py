@@ -1,10 +1,14 @@
-"""REST API and Dashboard for HPC Regression Testing Platform."""
+"""FastAPI REST API for HPC Regression Testing Platform."""
+
 from pathlib import Path
 
 import structlog
-from flask import Flask, jsonify, request
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse, RedirectResponse
+from pydantic import BaseModel
 
 from harness import (
+    ConfigError,
     load_all,
     run_jobs,
     init_db,
@@ -15,27 +19,42 @@ from harness import (
 )
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-PROJECT_ROOT = BASE_DIR.parent.parent  # DOW-1-26/
+PROJECT_ROOT = BASE_DIR.parent.parent
 
-app = Flask(__name__)
-
+app = FastAPI(title="HPC Regression Testing API", version="0.1.0")
 logger = structlog.get_logger()
 
 CONFIG_DIR = PROJECT_ROOT / "configs"
-SOLVERS_DIR = PROJECT_ROOT / "solvers"
 DB_PATH = PROJECT_ROOT / "data" / "harness.db"
 
 
 def _load_definitions():
-    resources, systems, solvers, jobs = load_all(CONFIG_DIR, SOLVERS_DIR)
-    return resources, systems, solvers, jobs
+    return load_all(CONFIG_DIR, None)
 
 
-@app.route("/api/solvers")
+@app.exception_handler(ConfigError)
+def config_error_handler(request, exc: ConfigError):
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Config load failed", "detail": str(exc)},
+    )
+
+
+class RunJobsRequest(BaseModel):
+    jobs: list[str] | None = None
+
+
+@app.get("/")
+def root():
+    """Redirect to interactive API docs."""
+    return RedirectResponse(url="/docs", status_code=302)
+
+
+@app.get("/api/solvers")
 def api_solvers():
     """List configured solvers."""
     _, _, solvers, _ = _load_definitions()
-    return jsonify([
+    return [
         {
             "name": s.name,
             "version": s.version,
@@ -43,47 +62,46 @@ def api_solvers():
             "has_parser": s.parser_config is not None,
         }
         for s in solvers.values()
-    ])
+    ]
 
 
-@app.route("/api/jobs")
+@app.get("/api/jobs")
 def api_jobs():
     """List configured jobs."""
-    _, _, solvers, jobs = _load_definitions()
-    return jsonify([
-        {
-            "name": j.name,
-            "solver": j.solver,
-            "system": j.system,
-        }
+    _, _, _, jobs = _load_definitions()
+    return [
+        {"name": j.name, "solver": j.solver, "system": j.system}
         for j in jobs.values()
-    ])
+    ]
 
 
-@app.route("/api/run_jobs", methods=["GET", "POST"])
-def api_run_jobs():
-    """Run jobs. POST with optional JSON body: { "jobs": ["job1", "job2"] }."""
-    resources, systems, solvers, jobs = _load_definitions()
-    job_names = None
-    if request.method == "POST" and request.is_json:
-        body = request.get_json() or {}
-        job_names = body.get("jobs")
+@app.post("/api/run_jobs")
+def api_run_jobs(body: RunJobsRequest | None = None):
+    """Run jobs. Optional body: { "jobs": ["job1", "job2"] }."""
+    _, systems, solvers, jobs = _load_definitions()
+    job_names = body.jobs if body and body.jobs else None
 
     job_list = list(jobs.values())
     if job_names:
         job_list = [j for j in job_list if j.name in job_names]
 
     if not job_list:
-        return jsonify({"error": "No jobs to run", "results": []}), 400
+        available = sorted(j.name for j in jobs.values())
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "No jobs to run",
+                "available_jobs": available,
+                "results": [],
+            },
+        )
 
     results = run_jobs(job_list, solvers, systems)
-
-    # Store in DB
     init_db(DB_PATH)
     for r in results:
         store_run(DB_PATH, r)
 
-    return jsonify([
+    return [
         {
             "job_name": r.job_name,
             "solver_name": r.solver_name,
@@ -96,16 +114,18 @@ def api_run_jobs():
             "processor": r.processor,
         }
         for r in results
-    ])
+    ]
 
 
-@app.route("/api/runs")
-def api_runs():
+@app.get("/api/runs")
+def api_runs(
+    solver: str | None = None,
+    processor: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+):
     """List recent runs, optionally filtered by solver or processor."""
-    solver = request.args.get("solver")
-    processor = request.args.get("processor")
-    limit = min(int(request.args.get("limit", 100)), 500)
-    offset = int(request.args.get("offset", 0))
+    limit = min(limit, 500)
     init_db(DB_PATH)
     runs = get_runs(DB_PATH, solver=solver, processor=processor, limit=limit, offset=offset)
     for r in runs:
@@ -116,16 +136,16 @@ def api_runs():
             except Exception:
                 r["metrics"] = {}
         r["passed"] = bool(r.get("passed"))
-    return jsonify(runs)
+    return runs
 
 
-@app.route("/api/runs/<int:run_id>")
-def api_run_detail(run_id):
+@app.get("/api/runs/{run_id}")
+def api_run_detail(run_id: int):
     """Get a single run by id."""
     init_db(DB_PATH)
     run = get_run_by_id(DB_PATH, run_id)
     if not run:
-        return jsonify({"error": "Run not found"}), 404
+        raise HTTPException(status_code=404, detail="Run not found")
     run = dict(run)
     if run.get("metrics_json"):
         import json
@@ -134,20 +154,30 @@ def api_run_detail(run_id):
         except Exception:
             run["metrics"] = {}
     run["passed"] = bool(run.get("passed"))
-    return jsonify(run)
+    return run
 
 
-@app.route("/api/metrics/<solver_name>/<metric_name>")
-def api_metrics_history(solver_name, metric_name):
+@app.get("/api/metrics/{solver_name}/{metric_name}")
+def api_metrics_history(
+    solver_name: str,
+    metric_name: str,
+    limit: int = 100,
+):
     """Get metric history for trend visualization."""
-    limit = min(int(request.args.get("limit", 100)), 500)
+    limit = min(limit, 500)
     init_db(DB_PATH)
     history = get_metrics_history(DB_PATH, solver_name, metric_name, limit=limit)
-    return jsonify([{"timestamp": ts, "value": v} for ts, v in history])
+    return [{"timestamp": ts, "value": v} for ts, v in history]
 
 
 def main():
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    import uvicorn
+    uvicorn.run(
+        "basic_restapi.fastapi_app:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+    )
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 # Solver definition template
-# Copy this directory to solvers/<your-solver-name>/ and customize
+# Copy this directory to configs/solvers/<your-solver-name>/ and customize
 
 # Required: solver identifier (should match directory name)
 name: my-solver
@@ -30,5 +30,8 @@ version: "0.0.0"
 # Optional: expected log file names
 # log_names: [stdout, stderr]
 
-# Optional: use solver dir as cwd (default true)
+# Optional: working directory for the solver script
+#   cwd: true   (default) - use solver directory as cwd
+#   cwd: /path  - use explicit path as cwd
+#   cwd: false  - use entrypoint script's parent directory as cwd
 # cwd: true

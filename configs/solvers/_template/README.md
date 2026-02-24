@@ -6,7 +6,7 @@ This directory is a template for creating new solvers. **It is ignored by the lo
 
 1. Copy this directory to create a new solver:
    ```bash
-   cp -r solvers/_template solvers/my-solver
+   cp -r configs/solvers/_template configs/solvers/my-solver
    ```
 
 2. Edit `solver.yaml`:
@@ -23,4 +23,4 @@ This directory is a template for creating new solvers. **It is ignored by the lo
 
 5. Add a job in `configs/jobs/` that references your solver.
 
-See [docs/solver_template.md](../../docs/solver_template.md) for full specification.
+See [docs/solver_template.md](../../../docs/solver_template.md) for full specification.
