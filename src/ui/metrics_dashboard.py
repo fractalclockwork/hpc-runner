@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from harness import get_db_path
 
-# Project root: src/ui/metrics_dashboard.py -> parents[1] = src/ui, parents[2] = project root
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DB_PATH = PROJECT_ROOT / "data" / "harness.db"
+DB_PATH = get_db_path()
 
 
 def get_available_metrics() -> list[tuple[str, str]]:

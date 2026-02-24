@@ -1,6 +1,6 @@
 # Solver Template
 
-This directory is a template for creating new solvers. **It is ignored by the loader** (prefix `_`).
+This directory is a template for creating new solvers. **It is ignored by the loader** (prefix `_`). Solvers live in `configs/solvers/` (inside the configs directory).
 
 ## Quick Start
 

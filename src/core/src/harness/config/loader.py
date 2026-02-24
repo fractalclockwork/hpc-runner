@@ -25,8 +25,15 @@ def _glob_yaml(glob_dir: Path, _pattern_base: str = "") -> list[Path]:
 
 
 def _load_yaml(path: Path) -> dict:
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    """Load YAML file. Raises ConfigError on parse or I/O errors."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except OSError as e:
+        raise ConfigError(f"Cannot read config file {path}: {e}") from e
+    except yaml.YAMLError as e:
+        raise ConfigError(f"Invalid YAML in {path}: {e}") from e
+    return data if isinstance(data, dict) else {}
 
 
 def load_resources(config_dir: Path) -> dict[str, Resource]:
@@ -37,6 +44,10 @@ def load_resources(config_dir: Path) -> dict[str, Resource]:
         for f in _glob_yaml(resources_dir, "resources"):
             data = _load_yaml(f)
             for item in data.get("resources", [data]):
+                if not isinstance(item, dict):
+                    raise ConfigError(f"Resource entry in {f} must be a dict, got {type(item).__name__}")
+                if "name" not in item:
+                    raise ConfigError(f"Resource in {f} missing required field 'name'. Keys: {list(item.keys())}")
                 r = Resource(
                     name=item["name"],
                     cpus=item.get("cpus"),
@@ -56,6 +67,10 @@ def load_systems(config_dir: Path) -> dict[str, System]:
         for f in _glob_yaml(systems_dir, "systems"):
             data = _load_yaml(f)
             for item in data.get("systems", [data]):
+                if not isinstance(item, dict):
+                    raise ConfigError(f"System entry in {f} must be a dict, got {type(item).__name__}")
+                if "name" not in item:
+                    raise ConfigError(f"System in {f} missing required field 'name'. Keys: {list(item.keys())}")
                 s = System(
                     name=item["name"],
                     resources=item.get("resources", []),
@@ -68,6 +83,8 @@ def load_systems(config_dir: Path) -> dict[str, System]:
 
 
 def _metric_from_dict(d: dict) -> MetricSpec:
+    if not isinstance(d, dict) or "name" not in d:
+        raise ConfigError(f"Metric spec must have 'name' field. Got: {d}")
     return MetricSpec(
         name=d["name"],
         unit=d.get("unit"),
@@ -87,10 +104,17 @@ def load_solvers(config_dir: Path, solvers_root: Path | None = None) -> dict[str
             if folder.name.startswith("_") or folder.name == "template":
                 continue
             data = _load_yaml(f)
+            if not isinstance(data, dict):
+                raise ConfigError(f"Solver config {f} must be a YAML object, got {type(data).__name__}")
             ep = data.get("entrypoint", "run.sh")
             if not (folder / ep).exists() and (folder / "run.sh").exists():
                 ep = "run.sh"
-            metrics = [_metric_from_dict(m) for m in data.get("metrics", [])]
+            metrics = []
+            for m in data.get("metrics", []):
+                try:
+                    metrics.append(_metric_from_dict(m))
+                except ConfigError as e:
+                    raise ConfigError(f"In solver {folder.name}: {e}") from e
             cwd_val = data.get("cwd", True)
             if cwd_val is False:
                 cwd = None
@@ -124,6 +148,11 @@ def load_jobs(config_dir: Path) -> dict[str, Job]:
         for f in _glob_yaml(jobs_dir, "jobs"):
             data = _load_yaml(f)
             for item in data.get("jobs", [data]):
+                if not isinstance(item, dict):
+                    raise ConfigError(f"Job entry in {f} must be a dict, got {type(item).__name__}")
+                for key in ("name", "solver", "system"):
+                    if key not in item:
+                        raise ConfigError(f"Job in {f} missing required field '{key}'. Keys: {list(item.keys())}")
                 j = Job(
                     name=item["name"],
                     solver=item["solver"],
@@ -131,7 +160,8 @@ def load_jobs(config_dir: Path) -> dict[str, Job]:
                     parameters=item.get("parameters", {}),
                     success_criteria=item.get("success_criteria", {}),
                     schedule=item.get("schedule"),
-                    extra={k: v for k, v in item.items() if k not in ("name", "solver", "system", "parameters", "success_criteria", "schedule")},
+                    timeout_seconds=item.get("timeout_seconds"),
+                    extra={k: v for k, v in item.items() if k not in ("name", "solver", "system", "parameters", "success_criteria", "schedule", "timeout_seconds")},
                 )
                 jobs[j.name] = j
     return jobs

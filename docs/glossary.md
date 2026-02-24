@@ -1,6 +1,6 @@
 # Glossary of Terms
 
-This glossary defines key terms for the HPC Regression Testing Platform. It helps **developers** working on the harness or API, **config authors** defining resources, systems, and jobs, and **solver authors** creating solver packages.
+This glossary defines key terms for the HPC Regression Platform. It helps **developers** working on the harness or API, **config authors** defining resources, systems, and jobs, and **solver authors** creating solver packages.
 
 ---
 
@@ -92,7 +92,7 @@ This glossary defines key terms for the HPC Regression Testing Platform. It help
 
 ## Storage and API
 
-**config_dir** — Root directory containing `resources/`, `systems/`, `jobs/` subdirs. Default: `configs`.
+**config_dir** — Root directory containing `resources/`, `systems/`, `jobs/`, and `solvers/` subdirs. Default: `configs`.
 
 **harness.db** — SQLite database (default `data/harness.db`) storing run metadata and metrics.
 
@@ -100,7 +100,7 @@ This glossary defines key terms for the HPC Regression Testing Platform. It help
 
 **runs table** — Schema: `id`, `job_name`, `solver_name`, `system_name`, `returncode`, `passed`, `runtime_seconds`, `timestamp`, `stdout`, `stderr`, `metrics_json`, `processor`.
 
-**solvers_dir** — Root directory containing solver packages. Default: `config_dir/solvers`. Overridable via `--solvers-dir`.
+**solvers_dir** — Directory containing solver packages. Lives inside config_dir: `config_dir/solvers` (e.g. `configs/solvers/`). Overridable via `--solvers-dir`.
 
 ---
 

@@ -6,9 +6,9 @@ import yaml
 from dataclasses import dataclass
 from pathlib import Path
 
-# Project root: src/ui/config_editor.py -> parents[1] = src/ui, parents[2] = project root
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CONFIGS_DIR = PROJECT_ROOT / "configs"
+from harness import get_config_dir
+
+CONFIGS_DIR = get_config_dir()
 
 
 @dataclass
@@ -44,6 +44,15 @@ def discover_config_files() -> list[ConfigFile]:
                             path=solver_yaml,
                             category="solvers",
                             display_name=f"{solver_dir.name}/solver.yaml",
+                        )
+                    )
+                parser_config = solver_dir / "parser_config.yaml"
+                if parser_config.exists():
+                    files.append(
+                        ConfigFile(
+                            path=parser_config,
+                            category="solvers",
+                            display_name=f"{solver_dir.name}/parser_config.yaml",
                         )
                     )
 

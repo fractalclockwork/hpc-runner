@@ -1,4 +1,3 @@
-```markdown
 # DOW‑1‑26 Workspace
 
 This repository contains a multi‑project Python workspace managed with `uv`. It includes:
@@ -157,7 +156,7 @@ uv sync --all-extras --dev
 ```
 DOW-1-26/
   pyproject.toml
-  configs/         # resources, systems, jobs, solvers
+  configs/         # resources, systems, jobs, solvers (all under configs/)
   src/
     core/           # harness
       pyproject.toml
@@ -175,5 +174,4 @@ DOW-1-26/
 - uv manages the virtual environment; do not manually activate `.venv`.
 - pip is not required; uv provides its own installer and resolver.
 - All commands should be run from the workspace root.
-```
 

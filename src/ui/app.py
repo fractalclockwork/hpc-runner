@@ -1,4 +1,4 @@
-"""Streamlit UI — minimal scaffolding for the HPC Regression Testing Platform."""
+"""Streamlit UI — minimal scaffolding for the HPC Regression Platform."""
 
 import sys
 from pathlib import Path
@@ -22,6 +22,10 @@ from metrics_dashboard import (  # noqa: E402
     get_metric_history,
 )
 
+from harness import get_db_path
+
+DB_PATH = get_db_path()
+
 
 def _testid(id: str) -> None:
     """Inject hidden data-testid marker for Playwright."""
@@ -41,45 +45,45 @@ if st.session_state.page == "Test Results":
 
 if "test_result" not in st.session_state:
     st.session_state.test_result = None
+if "run_job_results" not in st.session_state:
+    st.session_state.run_job_results = None
 
 # ---------------------------------------------------------------------------
 # Sidebar navigation
 # ---------------------------------------------------------------------------
-PAGES = ["Home", "Tests", "Configs"]
+PAGES = ["Home", "Run Jobs", "Run History", "Tests", "Configs"]
 
 st.sidebar.markdown(
     '<span data-testid="nav-sidebar" style="display:none" aria-hidden="true"></span>',
     unsafe_allow_html=True,
 )
 st.sidebar.title("Navigation")
+page_index = PAGES.index(st.session_state.page) if st.session_state.page in PAGES else 0
 selected_page = st.sidebar.radio(
     "Go to",
     PAGES,
-    index=PAGES.index(st.session_state.page),
+    index=page_index,
     key="nav-pages",
 )
 st.session_state.page = selected_page
 
 # ---------------------------------------------------------------------------
-# Page: Home
+# Page: Home (Metrics over job history)
 # ---------------------------------------------------------------------------
 
 def page_home() -> None:
     _testid("page-home")
-    st.header("HPC Regression Testing Platform")
-    st.write("")
-    st.write("Use Tests to run the suite and view results.")
-    st.write("")
+    st.header("HPC Regression Platform")
+    st.write("Metrics for each solver over the entire job history.")
 
-    # Metrics dashboard
     available = get_available_metrics()
     if not available:
-        st.info("No metrics data yet. Run jobs via the harness (e.g. `hpc-runner configs` or the API) to collect metrics.")
+        st.info("No metrics data yet. Run jobs via Run Jobs or the CLI to collect metrics.")
         return
 
     options = [f"{solver} / {metric}" for solver, metric in available]
     selected = st.selectbox(
-        "Select metric to view",
+        "Select solver and metric to view",
         options=options,
         key="home-metric-select",
     )
@@ -88,7 +92,7 @@ def page_home() -> None:
 
     idx = options.index(selected)
     solver_name, metric_name = available[idx]
-    history = get_metric_history(solver_name, metric_name)
+    history = get_metric_history(solver_name, metric_name, limit=500)
 
     if not history:
         st.warning("No history for this metric.")
@@ -105,6 +109,132 @@ def page_home() -> None:
     with st.expander("View raw data"):
         raw_df = pd.DataFrame(history, columns=["timestamp", "value"])
         st.dataframe(raw_df, use_container_width=True)
+
+
+# ---------------------------------------------------------------------------
+# Page: Run History
+# ---------------------------------------------------------------------------
+
+def page_run_history() -> None:
+    _testid("page-run-history")
+    st.header("Run History")
+    st.write("Browse past runs. Filter by solver or processor.")
+
+    try:
+        from harness.storage import get_runs, init_db
+    except ImportError as e:
+        st.error(f"Cannot load harness: {e}")
+        return
+
+    if not DB_PATH.exists():
+        st.info("No runs yet. Run jobs via Run Jobs or the CLI to collect data.")
+        return
+
+    init_db(DB_PATH)
+
+    runs_all = get_runs(DB_PATH, limit=500)
+    if not runs_all:
+        st.info("No runs in database.")
+        return
+
+    solvers = sorted({r["solver_name"] for r in runs_all})
+    processors = sorted({r.get("processor") or "unknown" for r in runs_all})
+
+    col1, col2 = st.columns(2)
+    with col1:
+        solver_filter = st.selectbox("Filter by solver", ["(all)"] + solvers, key="history-solver")
+    with col2:
+        processor_filter = st.selectbox("Filter by processor", ["(all)"] + processors, key="history-processor")
+
+    solver_arg = solver_filter if solver_filter != "(all)" else None
+    processor_arg = processor_filter if processor_filter != "(all)" else None
+    filtered = get_runs(DB_PATH, solver=solver_arg, processor=processor_arg, limit=100)
+
+    st.write(f"Showing {len(filtered)} run(s)")
+
+    import json
+    for r in filtered:
+        passed = "Passed" if r.get("passed") else "Failed"
+        icon = "\u2705" if r.get("passed") else "\u274c"  # checkmark / cross mark
+        with st.expander(f"{icon} {r['job_name']} — {passed} ({r.get('timestamp', '')})"):
+            st.write(f"**Solver:** {r['solver_name']} | **System:** {r['system_name']} | **Returncode:** {r.get('returncode')} | **Runtime:** {r.get('runtime_seconds')}s")
+            if r.get("stdout"):
+                st.subheader("stdout")
+                st.code(r["stdout"], language="text")
+            if r.get("stderr"):
+                st.subheader("stderr")
+                st.code(r["stderr"], language="text")
+            if r.get("metrics_json"):
+                try:
+                    metrics = json.loads(r["metrics_json"])
+                    st.subheader("Metrics")
+                    st.json(metrics)
+                except json.JSONDecodeError:
+                    st.text(r["metrics_json"])
+
+
+# ---------------------------------------------------------------------------
+# Page: Run Jobs
+# ---------------------------------------------------------------------------
+
+def page_run_jobs() -> None:
+    _testid("page-run-jobs")
+    st.header("Run Jobs")
+    st.write("Execute HPC regression jobs. Select jobs and run them.")
+
+    try:
+        from harness import load_all, run_jobs, init_db, store_run, ConfigError
+    except ImportError as e:
+        st.error(f"Cannot load harness: {e}")
+        return
+
+    try:
+        _, systems, solvers, jobs = load_all(CONFIGS_DIR)
+    except ConfigError as e:
+        st.error(f"Config error: {e}")
+        return
+
+    job_list = list(jobs.values())
+    if not job_list:
+        st.warning("No jobs configured. Add jobs in configs/jobs/.")
+        return
+
+    job_names = [j.name for j in job_list]
+    selected = st.multiselect(
+        "Select jobs to run",
+        options=job_names,
+        default=job_names,
+        key="run-jobs-select",
+    )
+
+    col1, col2, col3 = st.columns([1, 1, 4])
+    with col1:
+        run_all = st.button("Run All", key="run-jobs-all")
+    with col2:
+        run_selected = st.button("Run Selected", key="run-jobs-selected")
+
+    if run_all or run_selected:
+        to_run = job_names if run_all else selected
+        if not to_run:
+            st.warning("Select at least one job.")
+        else:
+            job_objs = [j for j in job_list if j.name in to_run]
+            with st.spinner(f"Running {len(job_objs)} job(s)…"):
+                results = run_jobs(job_objs, solvers, systems)
+                init_db(DB_PATH)
+                for r in results:
+                    store_run(DB_PATH, r)
+
+            st.session_state.run_job_results = results
+            st.rerun()
+
+    if "run_job_results" in st.session_state and st.session_state.run_job_results:
+        results = st.session_state.run_job_results
+        st.subheader("Results")
+        for r in results:
+            status = "Passed" if r.passed else "Failed"
+            icon = "✅" if r.passed else "❌"
+            st.write(f"{icon} **{r.job_name}** — {status} (returncode={r.returncode}, runtime={r.runtime_seconds:.2f}s)")
 
 
 # ---------------------------------------------------------------------------
@@ -259,6 +389,10 @@ def page_tests() -> None:
 
 if st.session_state.page == "Home":
     page_home()
+elif st.session_state.page == "Run Jobs":
+    page_run_jobs()
+elif st.session_state.page == "Run History":
+    page_run_history()
 elif st.session_state.page == "Tests":
     page_tests()
 elif st.session_state.page == "Configs":

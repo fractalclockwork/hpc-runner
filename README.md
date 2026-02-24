@@ -1,4 +1,4 @@
-# HPC Regression Testing Platform — MVP
+# HPC Regression Platform — MVP
 
 Modular, execution-agnostic HPC regression testing system for the Dow/Berkeley Capstone (Spring 2026).
 
@@ -111,13 +111,14 @@ configs/
 | `hpc-runner [config_dir] --job NAME` | Run specific job(s); repeat `--job` for multiple |
 | `hpc-runner [config_dir] --no-store` | Run without persisting to DB |
 | `hpc-runner [config_dir] --db PATH` | Override database path |
-| `hpc-runner [config_dir] --solvers-dir PATH` | Override solvers directory |
+| `hpc-runner [config_dir] --solvers-dir PATH` | Override solvers directory (default: `configs/solvers`) |
 | `hpc-runner --add CMD --system NAME` | Create solver from command, add job, run it |
 
 ## REST API
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/api/health` | GET | Health check (returns `{"status": "ok"}`) |
 | `/api/solvers` | GET | List configured solvers |
 | `/api/jobs` | GET | List configured jobs |
 | `/api/run_jobs` | POST | Run jobs (body: `{"jobs": ["name1"]}`) |

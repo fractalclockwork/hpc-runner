@@ -1,6 +1,4 @@
-"""FastAPI REST API for HPC Regression Testing Platform."""
-
-from pathlib import Path
+"""FastAPI REST API for HPC Regression Platform."""
 
 import structlog
 from fastapi import FastAPI, HTTPException
@@ -16,16 +14,15 @@ from harness import (
     get_runs,
     get_run_by_id,
     get_metrics_history,
+    get_config_dir,
+    get_db_path,
 )
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-PROJECT_ROOT = BASE_DIR.parent.parent
-
-app = FastAPI(title="HPC Regression Testing API", version="0.1.0")
+app = FastAPI(title="HPC Regression API", version="0.1.0")
 logger = structlog.get_logger()
 
-CONFIG_DIR = PROJECT_ROOT / "configs"
-DB_PATH = PROJECT_ROOT / "data" / "harness.db"
+CONFIG_DIR = get_config_dir()
+DB_PATH = get_db_path()
 
 
 def _load_definitions():
@@ -48,6 +45,13 @@ class RunJobsRequest(BaseModel):
 def root():
     """Redirect to interactive API docs."""
     return RedirectResponse(url="/docs", status_code=302)
+
+
+@app.get("/api/health")
+@app.get("/health")
+def api_health():
+    """Health check for Docker/orchestration. Returns 200 when API is ready."""
+    return {"status": "ok"}
 
 
 @app.get("/api/solvers")

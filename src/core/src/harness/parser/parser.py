@@ -1,11 +1,14 @@
 # parser/parser.py - Regex-based log parsing with YAML-defined parser_config
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 def load_parser_config(path: str | Path) -> dict[str, Any]:
@@ -41,14 +44,17 @@ def extract_metrics(
             m = re.search(regex, text)
             if m:
                 raw = m.group(1)
-                if type_hint == "float":
-                    metrics[name] = float(raw)
-                elif type_hint == "int":
-                    metrics[name] = int(float(raw))
-                else:
-                    metrics[name] = raw.strip()
-        except (ValueError, IndexError):
-            pass
+                try:
+                    if type_hint == "float":
+                        metrics[name] = float(raw)
+                    elif type_hint == "int":
+                        metrics[name] = int(float(raw))
+                    else:
+                        metrics[name] = raw.strip()
+                except (ValueError, IndexError) as e:
+                    logger.debug("Metric %s: failed to convert %r: %s", name, raw, e)
+        except re.error as e:
+            logger.warning("Invalid regex for metric %s: %s", name, e)
 
     return metrics
 

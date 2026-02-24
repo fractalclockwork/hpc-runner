@@ -66,7 +66,7 @@ configs/
 ├── resources/     # Resource definitions (cpus, gpus, memory)
 ├── systems/       # System definitions (resources, env)
 ├── jobs/          # Job definitions (solver+system pairings)
-└── solvers/       # Solver packages
+└── solvers/       # Solver packages (lives inside configs)
     └── <solver-name>/
         ├── solver.yaml       # Metadata, entrypoint, parser_config path
         ├── run.sh or run.py  # Executed as black-box
@@ -115,9 +115,11 @@ sequenceDiagram
 
 The **Streamlit UI** (`make ui`, port 8501) provides:
 
-- **Test Runs**: Table of runs, "Run All Jobs" button
-- **Solvers**: Grid of configured solvers
-- **Performance Trends**: Line chart (solver + metric selector)
+- **Home**: Metrics for each solver over the entire job history — select solver and metric, line chart
+- **Run Jobs**: Execute HPC jobs — select jobs, "Run All" / "Run Selected" buttons
+- **Run History**: Table of runs; filter by solver or processor; expand for stdout, stderr, metrics
+- **Tests**: Run unit tests (pytest) for the harness
+- **Configs**: Edit YAML config files (resources, systems, jobs, solvers)
 
 The **REST API** (`make api`, port 8000) serves JSON; `/docs` provides interactive Swagger UI.
 
