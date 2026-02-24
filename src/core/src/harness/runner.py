@@ -106,6 +106,7 @@ def run_job(
             runtime_seconds=runtime,
             timestamp=end.isoformat(),
             passed=False,
+            metrics={"runtime_seconds": runtime},
             processor=processor,
         )
         logger.warning("runner.timeout", job=job.name, runtime=runtime)
@@ -124,6 +125,7 @@ def run_job(
             runtime_seconds=runtime,
             timestamp=end.isoformat(),
             passed=False,
+            metrics={"runtime_seconds": runtime},
             processor=processor,
         )
         logger.exception("runner.error", job=job.name, error=str(e))
@@ -142,6 +144,8 @@ def run_job(
     metrics: dict[str, Any] = {}
     if solver.parser_config and Path(solver.parser_config).exists():
         metrics = extract_metrics(raw_logs, config_path=solver.parser_config)
+    # Always include runtime_seconds so all solvers show metrics on the Home page
+    metrics["runtime_seconds"] = runtime
 
     run_result = RunResult(
         job_name=job.name,
@@ -193,6 +197,7 @@ def run_jobs(
                     runtime_seconds=0.0,
                     timestamp=now,
                     passed=False,
+                    metrics={"runtime_seconds": 0.0},
                     processor=probe_processor(),
                 )
             )
@@ -211,6 +216,7 @@ def run_jobs(
                     runtime_seconds=0.0,
                     timestamp=now,
                     passed=False,
+                    metrics={"runtime_seconds": 0.0},
                     processor=probe_processor(),
                 )
             )
