@@ -7,7 +7,7 @@ Each solver is a self-contained directory with its own config, parser config, ru
 ## Directory Structure
 
 ```
-configs/solvers/<solver-name>/
+configs/solvers/<solver-name>/   # solvers directory is inside configs
 ├── solver.yaml           # Required: metadata, entrypoint, allowed systems
 ├── parser_config.yaml    # Optional: regex patterns for metric extraction
 ├── run.sh                # Required (or run.py): entrypoint script
@@ -133,7 +133,7 @@ sys.exit(0)
 
 ## Creating a New Solver
 
-1. Copy `configs/solvers/_template/` to `configs/solvers/<your-solver-name>/`
+1. Copy `configs/solvers/_template/` to `configs/solvers/<your-solver-name>/` (both under configs)
 2. Edit `solver.yaml`: set `name`, `entrypoint`, `allowed_systems`
 3. Implement the run script
 4. Optionally add `parser_config.yaml` and define metrics

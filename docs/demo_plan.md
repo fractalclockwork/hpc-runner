@@ -1,12 +1,12 @@
 # Demo Plan
 
-This document guides the sponsor through a feature demo, adding a new solver, and collecting deliverables after running jobs on their own systems.
+This document guides the sponsor through a feature demo of the **HPC Regression Platform**, adding a new solver, and collecting deliverables after running jobs on their own systems.
 
 ---
 
 ## Part 1: Demo Script — Feature Showcase
 
-Follow these steps to see all platform features.
+Follow these steps to see all platform features. **Suggested order:** Run jobs first (1.2 or 1.3) so the Home page has data to display.
 
 ### 1.1 Setup and Quick Validation
 
@@ -39,12 +39,17 @@ uv run hpc-runner configs --list-runs
 make ui
 ```
 
-Open http://localhost:8501. You can:
+Open http://localhost:8501. Walk through each page:
 
-- **Run All Jobs** — execute all configured jobs
-- **Test Runs** — table of runs; filter by solver or processor
-- **Run detail** — click a run to see stdout, stderr, metrics
-- **Performance Trends** — select solver and metric for a line chart over time
+| Page | What to do | What you see |
+|------|------------|--------------|
+| **Home** | Select a solver and metric from the dropdown | Line chart of that metric over the entire job history; expand "View raw data" for the table |
+| **Run Jobs** | Select jobs, click "Run All" or "Run Selected" | Results (passed/failed, returncode, runtime) for each job |
+| **Run History** | Filter by solver or processor; expand a run | Table of past runs; expand any row for stdout, stderr, and metrics |
+| **Tests** | Click "Run Test" | Unit test results (pytest output) |
+| **Configs** | Pick a category and file; edit YAML; click Validate or Save | Edit resources, systems, jobs, solvers, and parser_config.yaml; validate before saving |
+
+**Tip:** Run jobs via Run Jobs or the CLI before visiting Home so metrics data exists.
 
 ### 1.4 REST API (for automation)
 
@@ -56,19 +61,46 @@ Open http://localhost:8000 (redirects to `/docs` for interactive Swagger UI). Av
 
 | Request | Description |
 |---------|-------------|
+| `GET /api/health` | Health check (returns `{"status": "ok"}`) |
 | `GET /api/solvers` | List configured solvers |
 | `GET /api/jobs` | List configured jobs |
 | `POST /api/run_jobs` with `{"jobs": ["echo-test"]}` | Run specific jobs |
 | `GET /api/runs` | List runs (?solver=, ?processor=, ?limit=) |
+| `GET /api/runs/<id>` | Get run details |
 | `GET /api/metrics/python-solver/mlups` | Metric history for trends |
 
-### 1.5 Configuration Layer
+### 1.5 Quick Solver Creation (CLI)
+
+Add a solver from a shell command without manual config:
+
+```bash
+uv run hpc-runner --add "echo hello" --system dev-system --name hello-check
+```
+
+Creates a solver and job, then runs it. Use `--no-store` to skip saving to the database.
+
+### 1.6 Configuration Layer
 
 - **configs/resources/** — CPU, GPU, memory definitions
 - **configs/systems/** — Resource bundles + environment variables
 - **configs/jobs/** — Solver+system pairings, success criteria
+- **configs/solvers/** — Solver packages (solver.yaml, run script, optional parser_config.yaml)
 
 Flow: Resource → System → Job. See [user_guide.md](user_guide.md) for details.
+
+### 1.7 Docker (optional)
+
+```bash
+make docker-build
+make docker-run
+# Open http://localhost:8000
+```
+
+Or validate the build and API health:
+
+```bash
+make docker-validate
+```
 
 ---
 
@@ -147,7 +179,9 @@ uv run hpc-runner configs --list
 uv run hpc-runner configs --job demo-test
 ```
 
-Check the dashboard for the new run and metrics. See [solver_template.md](solver_template.md) for the full specification.
+Check the dashboard: **Run History** for the new run, **Home** for the mlups metric chart. See [solver_template.md](solver_template.md) for the full specification.
+
+**Alternative:** Edit solver and parser configs via the **Configs** page in the Streamlit UI (supports solver.yaml and parser_config.yaml).
 
 ---
 
@@ -172,7 +206,7 @@ Provide **one** of:
 
 | Deliverable | Purpose |
 |-------------|---------|
-| **configs/** | Copy your `configs/resources/`, `configs/systems/`, `configs/jobs/` — so we know what was run and on what hardware |
+| **configs/** | Copy your `configs/resources/`, `configs/systems/`, `configs/jobs/`, and `configs/solvers/` — so we know what was run and on what hardware |
 | **System identifier** | Short name (e.g. "dow-hpc-01", "sponsor-cluster") — used to tag results |
 
 ### 3.3 Optional but Helpful
@@ -193,7 +227,8 @@ sponsor-results-YYYY-MM-DD/
 ├── configs/
 │   ├── resources/
 │   ├── systems/
-│   └── jobs/
+│   ├── jobs/
+│   └── solvers/
 ├── system-info.txt        # Optional: system name, notes
 └── README.txt             # Optional: what was run, any issues
 ```
@@ -209,7 +244,7 @@ sponsor-results-YYYY-MM-DD/
 
 ## Part 4: Summary Checklist
 
-- [ ] Run demo script (Part 1)
+- [ ] Run demo script (Part 1): setup, CLI, Streamlit, API
 - [ ] Add a new solver (Part 2)
 - [ ] Run jobs on sponsor systems
 - [ ] Collect: harness.db (or results.json) + configs/

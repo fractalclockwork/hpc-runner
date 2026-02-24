@@ -1,6 +1,7 @@
 """Execution-agnostic harness for running solver jobs."""
 
 from .config import ConfigError, load_all, Resource, System, Solver, Job
+from .paths import get_project_root, get_db_path, get_config_dir
 from .runner import run_job, run_jobs, RunResult
 from .parser import extract_metrics
 from .storage import (
@@ -14,6 +15,9 @@ from .storage import (
 
 __all__ = [
     "ConfigError",
+    "get_project_root",
+    "get_db_path",
+    "get_config_dir",
     "load_all",
     "Resource",
     "System",

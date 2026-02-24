@@ -81,6 +81,8 @@ def run_job(
     else:
         cmd = [str(entrypoint_path)]
 
+    timeout_sec = job.timeout_seconds if job.timeout_seconds is not None else 3600
+
     try:
         result = subprocess.run(
             cmd,
@@ -88,12 +90,12 @@ def run_job(
             env=env,
             capture_output=capture_output,
             text=True,
-            timeout=3600,
+            timeout=timeout_sec,
         )
     except subprocess.TimeoutExpired as e:
         end = datetime.now(timezone.utc)
         runtime = (end - start).total_seconds()
-        timeout_msg = "Job timed out after 3600s"
+        timeout_msg = f"Job timed out after {timeout_sec}s"
         run_result = RunResult(
             job_name=job.name,
             solver_name=solver.name,

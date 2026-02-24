@@ -1,6 +1,6 @@
 # User Guide
 
-This guide walks you through defining solvers, execution environments, jobs, and metrics for the HPC Regression Testing Platform. It is intended for **solver authors** and **config authors**.
+This guide walks you through defining solvers, execution environments, jobs, and metrics for the HPC Regression Platform. It is intended for **solver authors** and **config authors**.
 
 **Prerequisites:** Run `uv sync --all-extras --dev` from the project root. Familiarity with YAML is helpful. For unfamiliar terms, see the [Glossary](glossary.md).
 
@@ -192,10 +192,11 @@ jobs:
 | Field             | Description                                      |
 |-------------------|--------------------------------------------------|
 | `name`            | Unique job identifier                            |
-| `solver`          | Solver name (must exist in `solvers/`)           |
+| `solver`          | Solver name (must exist in `configs/solvers/`)   |
 | `system`          | System name (must exist in `configs/systems/`)   |
 | `parameters`      | Optional key-value params (passed to solver)      |
 | `success_criteria`| Pass/fail conditions; `returncode` (default 0)   |
+| `timeout_seconds` | Optional; job timeout in seconds (default 3600)   |
 | `schedule`        | Optional; reserved for future cron/scheduling    |
 
 The solver’s `allowed_systems` must include the job’s `system`. Otherwise the job will be skipped.
@@ -237,7 +238,7 @@ Options:
 | `--list`         | List jobs and exit                           |
 | `--list-runs`    | List last 20 runs from DB and exit           |
 | `--no-store`     | Do not persist results to database           |
-| `--solvers-dir`  | Override solvers directory (default: config_dir/solvers) |
+| `--solvers-dir`  | Override solvers directory (default: `configs/solvers`)   |
 | `--db`           | Override database path (default: data/harness.db) |
 
 You can also pass a custom config directory as the first argument:
@@ -292,9 +293,11 @@ CLI output is JSON. Results are stored in `data/harness.db` unless you use `--no
 
 ### Dashboard
 
-- **Test Runs:** Table of runs with status, processor, timestamp
-- **Run detail:** Full stdout, stderr, metrics
-- **Performance Trends:** Line chart of a metric over time (select solver and metric)
+The Streamlit UI provides:
+
+- **Home:** Metrics for each solver over the entire job history — select solver and metric, view line chart
+- **Run History:** Table of runs with status, processor, timestamp; filter by solver or processor; expand a run for full stdout, stderr, and metrics
+- **Run Jobs:** Execute jobs from the browser; view results immediately after running
 
 ---
 
@@ -302,7 +305,7 @@ CLI output is JSON. Results are stored in `data/harness.db` unless you use `--no
 
 | Issue                    | Check                                                                 |
 |--------------------------|-----------------------------------------------------------------------|
-| Solver not found         | Solver folder not under `_template` or starting with `_`; `--solvers-dir` points to configs/solvers |
+| Solver not found         | Solver folder in `configs/solvers/`; not under `_template` or starting with `_`; check `--solvers-dir` |
 | System not found for job | System exists in `configs/systems/`; solver’s `allowed_systems` includes it |
 | Metrics not extracted    | Regex has exactly one capture group; solver prints to stdout/stderr   |
 | Job fails                | Inspect returncode; view stdout/stderr in run detail or DB             |
