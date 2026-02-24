@@ -110,6 +110,31 @@ def get_run_by_id(db_path: str | Path, run_id: int) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
+def get_all_metrics_series(db_path: str | Path, limit: int = 500) -> list[tuple[str, str]]:
+    """Discover all (solver_name, metric_name) pairs that have data. For dashboard."""
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    rows = conn.execute(
+        """SELECT solver_name, metrics_json FROM runs
+           WHERE metrics_json IS NOT NULL AND metrics_json != '{}'
+           ORDER BY timestamp DESC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    seen: set[tuple[str, str]] = set()
+    result: list[tuple[str, str]] = []
+    for solver_name, mj in rows:
+        try:
+            m = json.loads(mj or "{}")
+            for k, v in m.items():
+                if isinstance(v, (int, float)) and (solver_name, k) not in seen:
+                    seen.add((solver_name, k))
+                    result.append((solver_name, k))
+        except json.JSONDecodeError:
+            pass
+    return sorted(result, key=lambda x: (x[0], x[1]))
+
+
 def get_metrics_history(
     db_path: str | Path,
     solver_name: str,

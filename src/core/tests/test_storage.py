@@ -2,7 +2,14 @@
 
 
 from harness import RunResult
-from harness.storage import init_db, store_run, get_runs, get_run_by_id, get_metrics_history
+from harness.storage import (
+    init_db,
+    store_run,
+    get_runs,
+    get_run_by_id,
+    get_all_metrics_series,
+    get_metrics_history,
+)
 
 
 def _make_result(job_name="t1", solver_name="s1", metrics=None, processor="x86_64"):
@@ -75,6 +82,21 @@ def test_get_run_by_id(tmp_path):
     assert run["processor"] == "x86_64"
 
     assert get_run_by_id(db_path, 99999) is None
+
+
+def test_get_all_metrics_series(tmp_path):
+    """Discover all (solver, metric) pairs with data."""
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    store_run(db_path, _make_result(solver_name="s1", metrics={"mlups": 1.0, "runtime": 0.5}))
+    store_run(db_path, _make_result(solver_name="s1", metrics={"mlups": 2.0}))
+    store_run(db_path, _make_result(solver_name="s2", metrics={"throughput": 100}))
+
+    series = get_all_metrics_series(db_path)
+    assert ("s1", "mlups") in series
+    assert ("s1", "runtime") in series
+    assert ("s2", "throughput") in series
+    assert len(series) == 3
 
 
 def test_get_metrics_history(tmp_path):
