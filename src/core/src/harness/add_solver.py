@@ -62,7 +62,9 @@ def add_solver(
         "version": "0.0.0",
         "entrypoint": "run.sh",
         "allowed_systems": [system],
-        "metrics": [],
+        "metrics": [
+            {"name": "runtime_seconds", "unit": "s", "required": False},
+        ],
         "log_names": [],
     }
     (solver_dir / "solver.yaml").write_text(
