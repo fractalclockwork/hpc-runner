@@ -77,12 +77,12 @@ Flow: Resource → System → Job. See [user_guide.md](user_guide.md) for detail
 ### 2.1 Copy template
 
 ```bash
-cp -r solvers/_template solvers/demo-solver
+cp -r configs/solvers/_template configs/solvers/demo-solver
 ```
 
 ### 2.2 Edit solver.yaml
 
-Edit `solvers/demo-solver/solver.yaml`:
+Edit `configs/solvers/demo-solver/solver.yaml`:
 
 ```yaml
 name: demo-solver
@@ -99,7 +99,7 @@ metrics:
 
 ### 2.3 Implement run.sh
 
-Edit `solvers/demo-solver/run.sh`:
+Edit `configs/solvers/demo-solver/run.sh`:
 
 ```bash
 #!/usr/bin/env bash
@@ -112,7 +112,7 @@ echo "Solver finished"
 
 ### 2.4 Add parser_config.yaml
 
-Edit `solvers/demo-solver/parser_config.yaml` (uncomment and adjust):
+Edit `configs/solvers/demo-solver/parser_config.yaml` (uncomment and adjust):
 
 ```yaml
 patterns:

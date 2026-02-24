@@ -1,5 +1,5 @@
 # Solver definition template
-# Copy this directory to solvers/<your-solver-name>/ and customize
+# Copy this directory to configs/solvers/<your-solver-name>/ and customize
 
 # Required: solver identifier (should match directory name)
 name: my-solver

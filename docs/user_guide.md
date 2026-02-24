@@ -70,10 +70,10 @@ A solver is a self-contained package with a run script and metadata. See [solver
 
 1. Copy the template:
    ```bash
-   cp -r solvers/_template solvers/my-solver
+   cp -r configs/solvers/_template configs/solvers/my-solver
    ```
 
-2. Edit `solvers/my-solver/solver.yaml`:
+2. Edit `configs/solvers/my-solver/solver.yaml`:
    ```yaml
    name: my-solver
    entrypoint: run.sh
@@ -83,6 +83,20 @@ A solver is a self-contained package with a run script and metadata. See [solver
 3. Implement `run.sh` (or `run.py`). The script must be executable. The platform passes system `env` variables and invokes it as a subprocess. Your script controls execution (local, SLURM, MPI, etc.).
 
 4. Add a job that uses your solver (see [Defining Jobs](#4-defining-jobs)).
+
+### Adding a solver from a command
+
+To quickly add a solver that runs a shell command:
+
+```bash
+uv run hpc-runner --add "cat /proc/cpuinfo" --system dev-system
+```
+
+This creates a minimal solver and job in `configs/solvers/` and `configs/jobs/added.yaml`, then runs the new job. Use `--name` for a custom solver/job name:
+
+```bash
+uv run hpc-runner --add "echo hello" --system dev-system --name hello-check --no-store
+```
 
 ### Key Points
 
@@ -99,7 +113,7 @@ To extract metrics from solver output, add a `parser_config.yaml` and reference 
 
 ### Parser Config
 
-Create `solvers/my-solver/parser_config.yaml`:
+Create `configs/solvers/my-solver/parser_config.yaml`:
 
 ```yaml
 patterns:
@@ -215,17 +229,21 @@ Options:
 
 | Option           | Description                                  |
 |------------------|----------------------------------------------|
+| `config_dir`     | Optional positional; path to config dir (default: `configs`) |
+| `--add CMD`      | Create solver from command and run (requires `--system`)   |
+| `--system NAME`  | System name (required with `--add`)                         |
+| `--name NAME`    | Custom solver/job name (optional with `--add`)               |
 | `--job <name>`   | Run only these jobs (repeatable)              |
 | `--list`         | List jobs and exit                           |
-| `--list-runs`    | List recent runs from DB and exit             |
+| `--list-runs`    | List last 20 runs from DB and exit           |
 | `--no-store`     | Do not persist results to database           |
-| `--solvers-dir`  | Override solvers directory                    |
+| `--solvers-dir`  | Override solvers directory (default: config_dir/solvers) |
 | `--db`           | Override database path (default: data/harness.db) |
 
 You can also pass a custom config directory as the first argument:
 
 ```bash
-uv run hpc-runner /path/to/configs --solvers-dir /path/to/solvers
+uv run hpc-runner /path/to/configs --solvers-dir /path/to/configs/solvers
 ```
 
 ### Web UI
@@ -284,7 +302,7 @@ CLI output is JSON. Results are stored in `data/harness.db` unless you use `--no
 
 | Issue                    | Check                                                                 |
 |--------------------------|-----------------------------------------------------------------------|
-| Solver not found         | Solver folder not under `_template` or starting with `_`; `--solvers-dir` points to correct path |
+| Solver not found         | Solver folder not under `_template` or starting with `_`; `--solvers-dir` points to configs/solvers |
 | System not found for job | System exists in `configs/systems/`; solver’s `allowed_systems` includes it |
 | Metrics not extracted    | Regex has exactly one capture group; solver prints to stdout/stderr   |
 | Job fails                | Inspect returncode; view stdout/stderr in run detail or DB             |
@@ -300,15 +318,12 @@ CLI output is JSON. Results are stored in `data/harness.db` unless you use `--no
 configs/
 ├── resources/   # Hardware definitions
 ├── systems/    # Resource bundles + env
-└── jobs/       # Solver+system pairings
-```
-
-**Solver layout:**
-```
-solvers/<name>/
-├── solver.yaml        # Required
-├── run.sh or run.py   # Required
-└── parser_config.yaml # Optional
+├── jobs/       # Solver+system pairings
+└── solvers/    # Solver packages
+    └── <name>/
+        ├── solver.yaml        # Required
+        ├── run.sh or run.py   # Required
+        └── parser_config.yaml # Optional
 ```
 
 **See also:** [Glossary](glossary.md) | [Solver Template](solver_template.md) | [Architecture](architecture.md)

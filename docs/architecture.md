@@ -25,7 +25,7 @@ flowchart TB
         Storage[Storage]
     end
     subgraph data [Data]
-        YAML[configs/ jobs/ solvers/]
+        YAML[configs/ resources systems jobs solvers]
         DB[(data/harness.db)]
     end
     subgraph external [External]
@@ -66,12 +66,11 @@ configs/
 ├── resources/     # Resource definitions (cpus, gpus, memory)
 ├── systems/       # System definitions (resources, env)
 ├── jobs/          # Job definitions (solver+system pairings)
-
-solvers/
-├── <solver-name>/
-│   ├── solver.yaml       # Metadata, entrypoint, parser_config path
-│   ├── run.sh or run.py  # Executed as black-box
-│   └── parser_config.yaml  # Optional: regex patterns for metrics
+└── solvers/       # Solver packages
+    └── <solver-name>/
+        ├── solver.yaml       # Metadata, entrypoint, parser_config path
+        ├── run.sh or run.py  # Executed as black-box
+        └── parser_config.yaml  # Optional: regex patterns for metrics
 ```
 
 ## 5. Job Execution Flow
@@ -136,8 +135,7 @@ Table `runs`: id, job_name, solver_name, system_name, returncode, passed, runtim
 
 ```
 DOW-1-26/
-├── configs/           # YAML configs
-├── solvers/           # Solver packages
+├── configs/           # YAML configs (resources, systems, jobs, solvers)
 ├── data/              # harness.db (gitignored)
 ├── src/
 │   ├── core/          # harness package

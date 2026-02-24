@@ -36,7 +36,7 @@ def test_cli_no_jobs_message(capsys, tmp_path):
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    exit_code = main([str(tmp_path), "--solvers-dir", str(solvers_dir), "--no-store"])
+    exit_code = main([str(tmp_path), "--no-store"])
     assert exit_code == 1
     captured = capsys.readouterr()
     assert "No jobs to run" in captured.err
@@ -68,7 +68,6 @@ def test_cli_no_matching_jobs_shows_available(capsys, tmp_path):
 
     exit_code = main([
         str(tmp_path),
-        "--solvers-dir", str(solvers_dir),
         "--job", "nonexistent-job",
         "--no-store",
     ])
@@ -103,7 +102,7 @@ def test_cli_list_success(capsys, tmp_path):
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    exit_code = main([str(tmp_path), "--solvers-dir", str(solvers_dir), "--list"])
+    exit_code = main([str(tmp_path), "--list"])
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "Available jobs:" in captured.out

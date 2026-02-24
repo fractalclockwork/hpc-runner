@@ -39,4 +39,4 @@ src/api/
 └── README.md
 ```
 
-The API loads configs and solvers from the project root (`configs/`, `solvers/`).
+The API loads configs (including solvers) from `configs/`.

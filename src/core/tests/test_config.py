@@ -66,7 +66,7 @@ def test_load_solvers_skips_template(tmp_path):
     }))
     (solvers_dir / "_template" / "run.sh").write_text("#!/bin/bash\necho template\n")
 
-    solvers = load_solvers(tmp_path, solvers_dir)
+    solvers = load_solvers(tmp_path, None)
     assert "echo-solver" in solvers
     assert "template-solver" not in solvers
     assert "_template" not in [s.name for s in solvers.values()]
@@ -107,7 +107,7 @@ def test_load_all(tmp_path):
     }))
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    resources, systems, solvers, jobs = load_all(tmp_path, solvers_dir)
+    resources, systems, solvers, jobs = load_all(tmp_path, None)
     assert "r1" in resources
     assert "s1" in systems
     assert "sol1" in solvers
@@ -147,7 +147,7 @@ def test_load_all_validates_job_solver_ref(tmp_path):
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
     with pytest.raises(ConfigError, match="references unknown solver"):
-        load_all(tmp_path, solvers_dir)
+        load_all(tmp_path, None)
 
 
 def test_load_resources_yml_extension(tmp_path):
@@ -187,7 +187,7 @@ def test_load_all_validates_job_system_ref(tmp_path):
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
     with pytest.raises(ConfigError, match="references unknown system"):
-        load_all(tmp_path, solvers_dir)
+        load_all(tmp_path, None)
 
 
 def test_load_all_validates_system_resource_ref(tmp_path):
@@ -214,7 +214,7 @@ def test_load_all_validates_system_resource_ref(tmp_path):
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
     with pytest.raises(ConfigError, match="references unknown resource"):
-        load_all(tmp_path, solvers_dir)
+        load_all(tmp_path, None)
 
 
 def test_load_all_validates_solver_allowed_systems(tmp_path):
@@ -248,7 +248,7 @@ def test_load_all_validates_solver_allowed_systems(tmp_path):
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
     with pytest.raises(ConfigError, match="allows only"):
-        load_all(tmp_path, solvers_dir)
+        load_all(tmp_path, None)
 
 
 def test_load_all_validates_solver_entrypoint_exists(tmp_path):
@@ -275,7 +275,7 @@ def test_load_all_validates_solver_entrypoint_exists(tmp_path):
     # Do NOT create run.sh - entrypoint points to nonexistent.sh
 
     with pytest.raises(ConfigError, match="entrypoint.*not found"):
-        load_all(tmp_path, solvers_dir)
+        load_all(tmp_path, None)
 
 
 def test_load_all_validate_false_skips_validation(tmp_path):
@@ -303,7 +303,7 @@ def test_load_all_validate_false_skips_validation(tmp_path):
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    resources, systems, solvers, jobs = load_all(tmp_path, solvers_dir, validate=False)
+    resources, systems, solvers, jobs = load_all(tmp_path, None, validate=False)
     assert "t1" in jobs
     assert jobs["t1"].solver == "unknown-solver"
 
@@ -323,7 +323,7 @@ def test_load_solvers_cwd_false(tmp_path):
     )
     (solvers_dir / "s1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    solvers = load_solvers(tmp_path, solvers_dir)
+    solvers = load_solvers(tmp_path, None)
     assert solvers["s1"].cwd is None
 
 
@@ -344,5 +344,5 @@ def test_load_solvers_cwd_explicit_path(tmp_path):
     )
     (solvers_dir / "s1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    solvers = load_solvers(tmp_path, solvers_dir)
+    solvers = load_solvers(tmp_path, None)
     assert solvers["s1"].cwd == str(explicit_cwd)

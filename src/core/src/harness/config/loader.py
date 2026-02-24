@@ -1,7 +1,6 @@
 # config/loader.py - Load TOML/YAML definitions for Resources, Systems, Solvers, Jobs
 from __future__ import annotations
 
-import warnings
 import yaml
 from pathlib import Path
 
@@ -16,20 +15,12 @@ def _glob_yaml(glob_dir: Path, _pattern_base: str = "") -> list[Path]:
     """Return paths matching *.yaml and *.yml, avoiding duplicates when both exist."""
     seen: set[str] = set()
     paths: list[Path] = []
-    yml_found: list[str] = []
     for ext in (".yaml", ".yml"):
         for f in glob_dir.glob(f"*{ext}"):
             stem = f.stem
             if stem not in seen:
                 seen.add(stem)
                 paths.append(f)
-                if ext == ".yml":
-                    yml_found.append(f.name)
-    if yml_found:
-        warnings.warn(
-            f".yml files are now supported; consider renaming to .yaml for consistency. Found: {yml_found}",
-            stacklevel=2,
-        )
     return paths
 
 

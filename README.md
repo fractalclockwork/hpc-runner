@@ -26,8 +26,8 @@ uv run hpc-runner configs --list
 # Run all jobs
 uv run hpc-runner configs
 
-# Run with custom config dir and solvers
-uv run hpc-runner /path/to/configs --solvers-dir /path/to/solvers
+# Run with custom config dir
+uv run hpc-runner /path/to/configs --solvers-dir /path/to/configs/solvers
 
 # Start REST API (programmatic access; root redirects to /docs)
 make api
@@ -70,6 +70,7 @@ Unit tests cover the major features:
 | `test_parser.py` | Metric extraction, validation |
 | `test_storage.py` | DB init, store_run, get_runs, get_run_by_id, get_metrics_history |
 | `test_runner.py` | End-to-end run, metric extraction from solver output |
+| `test_add_solver.py` | --add solver creation, derive_name, add_job |
 
 ```bash
 make test      # Core unit tests (quiet)
@@ -85,24 +86,25 @@ configs/
 ├── resources/     # CPU/GPU, memory, node definitions
 ├── systems/       # Resource bundles, env vars
 ├── jobs/          # Solver+system pairings, success criteria
-
-solvers/
-├── my-solver/
-│   ├── solver.yaml      # Metadata, entrypoint, parser_config
-│   ├── run.sh           # Or run.py — executed as black-box
-│   └── parser_config.yaml   # Optional: regex patterns for metrics
+└── solvers/       # Solver packages
+    └── my-solver/
+        ├── solver.yaml      # Metadata, entrypoint, parser_config
+        ├── run.sh           # Or run.py — executed as black-box
+        └── parser_config.yaml   # Optional: regex patterns for metrics
 ```
 
 ## CLI
 
 | Command | Description |
 |---------|-------------|
-| `hpc-runner configs` | Run all jobs |
-| `hpc-runner configs --list` | List available jobs |
-| `hpc-runner configs --list-runs` | List recent runs from DB |
-| `hpc-runner configs --job echo-test` | Run specific job(s) |
-| `hpc-runner configs --no-store` | Run without persisting to DB |
-| `hpc-runner configs --db PATH` | Override database path (default: data/harness.db) |
+| `hpc-runner [config_dir]` | Run all jobs (config_dir defaults to `configs`) |
+| `hpc-runner [config_dir] --list` | List available jobs |
+| `hpc-runner [config_dir] --list-runs` | List recent runs from DB (last 20) |
+| `hpc-runner [config_dir] --job NAME` | Run specific job(s); repeat `--job` for multiple |
+| `hpc-runner [config_dir] --no-store` | Run without persisting to DB |
+| `hpc-runner [config_dir] --db PATH` | Override database path |
+| `hpc-runner [config_dir] --solvers-dir PATH` | Override solvers directory |
+| `hpc-runner --add CMD --system NAME` | Create solver from command, add job, run it |
 
 ## REST API
 

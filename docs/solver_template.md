@@ -7,7 +7,7 @@ Each solver is a self-contained directory with its own config, parser config, ru
 ## Directory Structure
 
 ```
-solvers/<solver-name>/
+configs/solvers/<solver-name>/
 ├── solver.yaml           # Required: metadata, entrypoint, allowed systems
 ├── parser_config.yaml    # Optional: regex patterns for metric extraction
 ├── run.sh                # Required (or run.py): entrypoint script
@@ -52,7 +52,7 @@ Each pattern:
 
 ## Example: Minimal Solver (echo-style)
 
-**solvers/echo-solver/solver.yaml**
+**configs/solvers/echo-solver/solver.yaml**
 
 ```yaml
 name: echo-solver
@@ -63,7 +63,7 @@ metrics: []
 log_names: []
 ```
 
-**solvers/echo-solver/run.sh**
+**configs/solvers/echo-solver/run.sh**
 
 ```bash
 #!/usr/bin/env bash
@@ -75,7 +75,7 @@ echo "Solver finished successfully"
 
 ## Example: Solver with Metrics (python-solver style)
 
-**solvers/python-solver/solver.yaml**
+**configs/solvers/python-solver/solver.yaml**
 
 ```yaml
 name: python-solver
@@ -94,7 +94,7 @@ metrics:
 log_names: [stdout]
 ```
 
-**solvers/python-solver/parser_config.yaml**
+**configs/solvers/python-solver/parser_config.yaml**
 
 ```yaml
 patterns:
@@ -109,7 +109,7 @@ patterns:
     type: str
 ```
 
-**solvers/python-solver/run.py**
+**configs/solvers/python-solver/run.py**
 
 ```python
 #!/usr/bin/env python3
@@ -127,13 +127,13 @@ sys.exit(0)
 1. **Naming:** Solver directory name should match `name` in `solver.yaml`.
 2. **Path resolution:** Paths in `solver.yaml` (e.g. `parser_config`, `entrypoint`) are relative to the solver directory.
 3. **Run script:** Must exist at `entrypoint` path. Executed as black-box; platform passes env vars; script controls execution (local, SLURM, etc.).
-4. **Template directory:** `solvers/_template/` is ignored by the loader. Copy it to create new solvers.
+4. **Template directory:** `configs/solvers/_template/` is ignored by the loader. Copy it to create new solvers.
 
 ---
 
 ## Creating a New Solver
 
-1. Copy `solvers/_template/` to `solvers/<your-solver-name>/`
+1. Copy `configs/solvers/_template/` to `configs/solvers/<your-solver-name>/`
 2. Edit `solver.yaml`: set `name`, `entrypoint`, `allowed_systems`
 3. Implement the run script
 4. Optionally add `parser_config.yaml` and define metrics

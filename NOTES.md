@@ -157,8 +157,7 @@ uv sync --all-extras --dev
 ```
 DOW-1-26/
   pyproject.toml
-  configs/
-  solvers/
+  configs/         # resources, systems, jobs, solvers
   src/
     core/           # harness
       pyproject.toml

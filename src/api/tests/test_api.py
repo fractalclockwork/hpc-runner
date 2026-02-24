@@ -45,8 +45,7 @@ def test_api_config_error_returns_500(tmp_path):
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
     (tmp_path / "jobs").mkdir()
-    solvers_dir = tmp_path / "solvers"
-    solvers_dir.mkdir()
+    (tmp_path / "solvers").mkdir()
 
     # Job references unknown solver - will raise ConfigError on load
     (tmp_path / "resources" / "r.yaml").write_text(
@@ -60,15 +59,13 @@ def test_api_config_error_returns_500(tmp_path):
             "jobs": [{"name": "t1", "solver": "unknown-solver", "system": "s1"}]
         })
     )
-    (solvers_dir / "sol1").mkdir()
-    (solvers_dir / "sol1" / "solver.yaml").write_text(
+    (tmp_path / "solvers" / "sol1").mkdir()
+    (tmp_path / "solvers" / "sol1" / "solver.yaml").write_text(
         yaml.safe_dump({"name": "sol1", "entrypoint": "run.sh", "allowed_systems": ["s1"]})
     )
-    (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
+    (tmp_path / "solvers" / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    with patch("basic_restapi.fastapi_app.CONFIG_DIR", tmp_path), patch(
-        "basic_restapi.fastapi_app.SOLVERS_DIR", solvers_dir
-    ):
+    with patch("basic_restapi.fastapi_app.CONFIG_DIR", tmp_path):
         test_client = TestClient(app)
         response = test_client.get("/api/jobs")
 

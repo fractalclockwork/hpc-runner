@@ -40,7 +40,7 @@ def test_run_minimal(tmp_path):
         ]
     }))
 
-    resources, systems, solvers, jobs = load_all(tmp_path, solvers_dir)
+    resources, systems, solvers, jobs = load_all(tmp_path, None)
     assert "echo-solver" in solvers
     assert "echo-test" in jobs
 
@@ -92,7 +92,7 @@ sys.exit(0)
         "jobs": [{"name": "metrics-test", "solver": "metrics-solver", "system": "dev-system"}]
     }))
 
-    resources, systems, solvers, jobs = load_all(tmp_path, solvers_dir)
+    resources, systems, solvers, jobs = load_all(tmp_path, None)
     results = run_jobs([jobs["metrics-test"]], solvers, systems)
     assert len(results) == 1
     assert results[0].passed
@@ -119,7 +119,7 @@ def test_run_jobs_missing_solver_returns_result_with_stderr(tmp_path):
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    _, systems, solvers, _ = load_all(tmp_path, solvers_dir, validate=False)
+    _, systems, solvers, _ = load_all(tmp_path, None, validate=False)
     job = Job(name="t1", solver="unknown-solver", system="s1")
 
     results = run_jobs([job], solvers, systems)
@@ -149,7 +149,7 @@ def test_run_jobs_missing_system_returns_result_with_stderr(tmp_path):
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    _, systems, solvers, _ = load_all(tmp_path, solvers_dir, validate=False)
+    _, systems, solvers, _ = load_all(tmp_path, None, validate=False)
     job = Job(name="t1", solver="sol1", system="unknown-system")
 
     results = run_jobs([job], solvers, systems)

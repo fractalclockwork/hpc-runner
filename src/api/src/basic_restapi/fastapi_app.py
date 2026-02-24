@@ -25,12 +25,11 @@ app = FastAPI(title="HPC Regression Testing API", version="0.1.0")
 logger = structlog.get_logger()
 
 CONFIG_DIR = PROJECT_ROOT / "configs"
-SOLVERS_DIR = PROJECT_ROOT / "solvers"
 DB_PATH = PROJECT_ROOT / "data" / "harness.db"
 
 
 def _load_definitions():
-    return load_all(CONFIG_DIR, SOLVERS_DIR)
+    return load_all(CONFIG_DIR, None)
 
 
 @app.exception_handler(ConfigError)
