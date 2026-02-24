@@ -18,7 +18,7 @@ uv sync --all-extras --dev
 
 # Run the REST API
 uv run uvicorn basic_restapi.fastapi_app:app --reload --port 8000
-# Navigate to http://localhost:8000
+# Navigate to http://localhost:8000 (redirects to /docs for interactive API docs)
 ```
 
 Or use the Makefile:
@@ -26,6 +26,8 @@ Or use the Makefile:
 ```bash
 make api
 ```
+
+The root path `/` redirects to `/docs` (Swagger UI) so you can explore and test the API interactively.
 
 ## Project Structure
 

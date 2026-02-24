@@ -232,9 +232,9 @@ uv run hpc-runner /path/to/configs --solvers-dir /path/to/solvers
 
 Two interfaces are available:
 
-**REST API (FastAPI):** `uv run basic-restapi` or `make api` → http://localhost:8000
+**REST API (FastAPI):** `make api` → http://localhost:8000 (root redirects to `/docs` for interactive API documentation). Use for programmatic access or automation.
 
-**Streamlit UI:** `make ui` → http://localhost:8501
+**Streamlit UI:** `make ui` → http://localhost:8501. Use for interactive running of jobs and viewing results in a browser.
 
 Both allow you to:
 

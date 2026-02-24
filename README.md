@@ -29,11 +29,11 @@ uv run hpc-runner configs
 # Run with custom config dir and solvers
 uv run hpc-runner /path/to/configs --solvers-dir /path/to/solvers
 
-# Start REST API
-uv run basic-restapi
-# Open http://localhost:8000
+# Start REST API (programmatic access; root redirects to /docs)
+make api
+# Open http://localhost:8000 → interactive API docs at /docs
 
-# Or start Streamlit dashboard
+# Or start Streamlit dashboard (interactive UI)
 make ui
 # Open http://localhost:8501
 ```
@@ -45,7 +45,7 @@ Build and run the REST API:
 ```bash
 make docker-build
 make docker-run
-# Open http://localhost:8000
+# Open http://localhost:8000 (redirects to /docs for interactive API)
 ```
 
 Run tests in container:

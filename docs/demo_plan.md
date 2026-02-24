@@ -33,13 +33,13 @@ uv run hpc-runner configs --job echo-test
 uv run hpc-runner configs --list-runs
 ```
 
-### 1.3 Web Dashboard
+### 1.3 Interactive Web Dashboard (Streamlit)
 
 ```bash
-uv run basic-restapi
+make ui
 ```
 
-Open http://localhost:8000. You can:
+Open http://localhost:8501. You can:
 
 - **Run All Jobs** — execute all configured jobs
 - **Test Runs** — table of runs; filter by solver or processor
@@ -47,6 +47,12 @@ Open http://localhost:8000. You can:
 - **Performance Trends** — select solver and metric for a line chart over time
 
 ### 1.4 REST API (for automation)
+
+```bash
+make api
+```
+
+Open http://localhost:8000 (redirects to `/docs` for interactive Swagger UI). Available endpoints:
 
 | Request | Description |
 |---------|-------------|

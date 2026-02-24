@@ -104,7 +104,7 @@ sequenceDiagram
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | Dashboard (index.html) |
+| `/` | GET | Redirects to `/docs` (Swagger UI) |
 | `/api/solvers` | GET | List solvers |
 | `/api/jobs` | GET | List jobs |
 | `/api/run_jobs` | POST | Run jobs (body: `{"jobs": ["name1"]}`) |
@@ -114,9 +114,13 @@ sequenceDiagram
 
 ## 7. Dashboard Views
 
+The **Streamlit UI** (`make ui`, port 8501) provides:
+
 - **Test Runs**: Table of runs, "Run All Jobs" button
 - **Solvers**: Grid of configured solvers
-- **Performance Trends**: Chart.js line chart (solver + metric selector)
+- **Performance Trends**: Line chart (solver + metric selector)
+
+The **REST API** (`make api`, port 8000) serves JSON; `/docs` provides interactive Swagger UI.
 
 ## 8. Storage Schema
 

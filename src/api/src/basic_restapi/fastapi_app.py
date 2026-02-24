@@ -4,7 +4,7 @@ from pathlib import Path
 
 import structlog
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from harness import (
@@ -43,6 +43,12 @@ def config_error_handler(request, exc: ConfigError):
 
 class RunJobsRequest(BaseModel):
     jobs: list[str] | None = None
+
+
+@app.get("/")
+def root():
+    """Redirect to interactive API docs."""
+    return RedirectResponse(url="/docs", status_code=302)
 
 
 @app.get("/api/solvers")
