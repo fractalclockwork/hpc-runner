@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
-from .config import load_all
+from .config import ConfigError, load_all
 from .runner import run_jobs
 from .storage import init_db, store_run, get_runs
 
@@ -53,14 +54,18 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     args = parser.parse_args(argv)
-    config_dir = Path(args.config_dir)
+    config_dir = Path(args.config_dir).resolve()
 
     # Resolve solvers directory
-    solvers_root = Path(args.solvers_dir) if args.solvers_dir else None
+    solvers_root = Path(args.solvers_dir).resolve() if args.solvers_dir else None
     if solvers_root is None and (config_dir.parent / "solvers").exists():
         solvers_root = config_dir.parent / "solvers"
 
-    resources, systems, solvers, jobs = load_all(config_dir, solvers_root)
+    try:
+        resources, systems, solvers, jobs = load_all(config_dir, solvers_root)
+    except ConfigError as e:
+        print(f"Configuration error: {e}", file=sys.stderr)
+        return 1
 
     if args.list:
         print("Available jobs:")
@@ -82,7 +87,18 @@ def main(argv: list[str] | None = None) -> int:
         job_list = [j for j in job_list if j.name in args.jobs]
 
     if not job_list:
-        print("No jobs to run.")
+        if args.jobs:
+            available = sorted(j.name for j in jobs.values())
+            print(
+                f"No matching jobs. Requested: {args.jobs}. Available: {available}",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"No jobs to run. Config dir: {config_dir}. "
+                "Check configs/jobs/*.yaml and that jobs reference valid solvers/systems.",
+                file=sys.stderr,
+            )
         return 1
 
     results = run_jobs(job_list, solvers, systems)

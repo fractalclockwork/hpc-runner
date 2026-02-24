@@ -30,7 +30,7 @@ This glossary defines key terms for the HPC Regression Testing Platform. It help
 
 ## Configuration Entities
 
-**Job** — A pairing of a Solver with a System, plus parameters and success criteria. Defined in `configs/jobs/*.yaml`. The unit of work executed by the runner.
+**Job** — A pairing of a Solver with a System, plus parameters and success criteria. Defined in `configs/jobs/*.yaml`. The unit of work executed by the runner. Optional `schedule` field reserved for future cron/scheduling.
 
 **Resource** — Hardware definition: CPU count, GPU count, memory (GB). Defined in `configs/resources/*.yaml`. Referenced by Systems.
 
@@ -44,7 +44,11 @@ This glossary defines key terms for the HPC Regression Testing Platform. It help
 
 **allowed_systems** — List of system names a solver can run on. Jobs must pair a solver with one of its allowed systems.
 
+**cwd** — Working directory for solver execution. In `solver.yaml`: `true` (default) = solver dir; `false` = entrypoint parent; or a string path.
+
 **Entrypoint** — The script executed to run the solver (e.g. `run.sh`, `run.py`). Path is relative to the solver directory.
+
+**extra** — Optional dict on Resource, System, Solver, and Job schemas for extensibility. Unknown YAML keys are stored here.
 
 **MetricSpec** — Declarative definition of an expected metric: `name`, `unit`, `min`, `max`, `required`. Used for validation.
 
@@ -102,4 +106,4 @@ This glossary defines key terms for the HPC Regression Testing Platform. It help
 
 ## CLI and API
 
-**hpc-runner** — CLI entrypoint. Primary commands: `configs` (run jobs), `--list` (list jobs), `--list-runs` (list recent runs), `--job <name>` (run specific job), `--no-store` (skip DB persistence).
+**hpc-runner** — CLI entrypoint. Primary commands: `configs` (run jobs), `--list` (list jobs), `--list-runs` (list recent runs), `--job <name>` (run specific job), `--no-store` (skip DB persistence), `--db PATH` (override database path).

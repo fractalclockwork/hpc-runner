@@ -1,7 +1,7 @@
 [project]
 name = "basic_restapi"
 version = "0.1.0"
-description = "Minimal REST API for running the test harness using Flask and HTML"
+description = "Minimal REST API for running the test harness using FastAPI"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115.0",

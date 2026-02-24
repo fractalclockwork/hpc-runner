@@ -12,7 +12,7 @@ Execution environments are built from **Resources** (hardware) and **Systems** (
 
 ### Resources
 
-Resources define hardware capacity. Add them in `configs/resources/*.yaml`:
+Resources define hardware capacity. Add them in `configs/resources/*.yaml` (`.yml` is also supported; `.yaml` is preferred for consistency):
 
 ```yaml
 resources:
@@ -36,7 +36,7 @@ You can define multiple resources in one file or split across files. Each resour
 
 ### Systems
 
-Systems bundle one or more resources and add environment variables. Add them in `configs/systems/*.yaml`:
+Systems bundle one or more resources and add environment variables. Add them in `configs/systems/*.yaml` (`.yml` also supported):
 
 ```yaml
 systems:
@@ -89,6 +89,7 @@ A solver is a self-contained package with a run script and metadata. See [solver
 - **Paths** in `solver.yaml` (e.g. `entrypoint`, `parser_config`) are relative to the solver directory.
 - **allowed_systems** must list system names that exist in `configs/systems/`. Jobs can only pair your solver with one of these systems.
 - **Entrypoint** must exist at the specified path. Use `run.sh` or `run.py`; the platform invokes them via `bash` or `python3`.
+- **cwd** (optional): Working directory for the solver. Default `true` = use solver dir; `false` = use entrypoint parent; or a string path.
 
 ---
 
@@ -156,7 +157,7 @@ The `metrics` list is optional; it declares expected metrics and validation rang
 
 ## 4. Defining Jobs
 
-Jobs pair a solver with a system and define success criteria. Add them in `configs/jobs/*.yaml`:
+Jobs pair a solver with a system and define success criteria. Add them in `configs/jobs/*.yaml` (`.yml` also supported):
 
 ```yaml
 jobs:
@@ -181,6 +182,7 @@ jobs:
 | `system`          | System name (must exist in `configs/systems/`)   |
 | `parameters`      | Optional key-value params (passed to solver)      |
 | `success_criteria`| Pass/fail conditions; `returncode` (default 0)   |
+| `schedule`        | Optional; reserved for future cron/scheduling    |
 
 The solver’s `allowed_systems` must include the job’s `system`. Otherwise the job will be skipped.
 
@@ -228,14 +230,13 @@ uv run hpc-runner /path/to/configs --solvers-dir /path/to/solvers
 
 ### Web UI
 
-Start the dashboard:
+Two interfaces are available:
 
-```bash
-uv run basic-restapi
-# or: make api
-```
+**REST API (FastAPI):** `uv run basic-restapi` or `make api` → http://localhost:8000
 
-Open http://localhost:8000. You can:
+**Streamlit UI:** `make ui` → http://localhost:8501
+
+Both allow you to:
 
 - Run all jobs
 - View recent runs (filter by solver or processor)
@@ -267,9 +268,9 @@ Each run produces a result with:
 - `returncode`, `passed` (based on success_criteria)
 - `runtime_seconds`, `timestamp`
 - `metrics` (extracted via parser_config)
-- `processor` (e.g. x86_64, aarch64)
+- `processor` (e.g. x86_64, aarch64) — detected via `platform.machine()`
 
-CLI output is JSON. Results are stored in `data/harness.db` unless you use `--no-store`.
+CLI output is JSON. Results are stored in `data/harness.db` unless you use `--no-store`. Jobs have a 1-hour (3600s) timeout; jobs exceeding this are marked as failed.
 
 ### Dashboard
 
@@ -287,6 +288,7 @@ CLI output is JSON. Results are stored in `data/harness.db` unless you use `--no
 | System not found for job | System exists in `configs/systems/`; solver’s `allowed_systems` includes it |
 | Metrics not extracted    | Regex has exactly one capture group; solver prints to stdout/stderr   |
 | Job fails                | Inspect returncode; view stdout/stderr in run detail or DB             |
+| Job times out            | Jobs have a 1-hour limit; long runs may need to be split or optimized |
 | Entrypoint not found     | Path in `solver.yaml` is relative to solver dir; file exists           |
 
 ---

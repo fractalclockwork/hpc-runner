@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from harness import (
+    ConfigError,
     load_all,
     run_jobs,
     init_db,
@@ -30,6 +31,14 @@ DB_PATH = PROJECT_ROOT / "data" / "harness.db"
 
 def _load_definitions():
     return load_all(CONFIG_DIR, SOLVERS_DIR)
+
+
+@app.exception_handler(ConfigError)
+def config_error_handler(request, exc: ConfigError):
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Config load failed", "detail": str(exc)},
+    )
 
 
 class RunJobsRequest(BaseModel):
@@ -72,9 +81,14 @@ def api_run_jobs(body: RunJobsRequest | None = None):
         job_list = [j for j in job_list if j.name in job_names]
 
     if not job_list:
+        available = sorted(j.name for j in jobs.values())
         return JSONResponse(
             status_code=400,
-            content={"error": "No jobs to run", "results": []},
+            content={
+                "error": "No jobs to run",
+                "available_jobs": available,
+                "results": [],
+            },
         )
 
     results = run_jobs(job_list, solvers, systems)

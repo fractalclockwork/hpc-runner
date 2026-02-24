@@ -8,7 +8,7 @@ Modular, execution-agnostic HPC regression testing system for the Dow/Berkeley C
 - **Job Runner** — Execution orchestrator; runs solver scripts as black-box processes
 - **Log Parsing** — YAML-defined regex patterns for metric extraction
 - **Data Storage** — SQLite for run metadata and metrics
-- **Dashboard** — Web UI for running jobs and viewing results
+- **Web UI** — REST API (FastAPI) and Streamlit dashboard for running jobs and viewing results
 
 ## Quick Start
 
@@ -29,9 +29,13 @@ uv run hpc-runner configs
 # Run with custom config dir and solvers
 uv run hpc-runner /path/to/configs --solvers-dir /path/to/solvers
 
-# Start Web UI
+# Start REST API
 uv run basic-restapi
 # Open http://localhost:8000
+
+# Or start Streamlit dashboard
+make ui
+# Open http://localhost:8501
 ```
 
 ## Docker
@@ -98,6 +102,7 @@ solvers/
 | `hpc-runner configs --list-runs` | List recent runs from DB |
 | `hpc-runner configs --job echo-test` | Run specific job(s) |
 | `hpc-runner configs --no-store` | Run without persisting to DB |
+| `hpc-runner configs --db PATH` | Override database path (default: data/harness.db) |
 
 ## REST API
 

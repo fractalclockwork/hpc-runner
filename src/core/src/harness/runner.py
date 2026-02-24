@@ -93,13 +93,14 @@ def run_job(
     except subprocess.TimeoutExpired as e:
         end = datetime.now(timezone.utc)
         runtime = (end - start).total_seconds()
+        timeout_msg = "Job timed out after 3600s"
         run_result = RunResult(
             job_name=job.name,
             solver_name=solver.name,
             system_name=system.name,
             returncode=-1,
-            stdout=e.stdout or "" if isinstance(e, subprocess.TimeoutExpired) else "",
-            stderr=str(e),
+            stdout=(e.stdout or "") if capture_output else "",
+            stderr=timeout_msg,
             runtime_seconds=runtime,
             timestamp=end.isoformat(),
             passed=False,
@@ -110,13 +111,14 @@ def run_job(
     except Exception as e:
         end = datetime.now(timezone.utc)
         runtime = (end - start).total_seconds()
+        error_msg = f"Execution failed: {e}"
         run_result = RunResult(
             job_name=job.name,
             solver_name=solver.name,
             system_name=system.name,
             returncode=-1,
             stdout="",
-            stderr=str(e),
+            stderr=error_msg,
             runtime_seconds=runtime,
             timestamp=end.isoformat(),
             passed=False,
@@ -171,14 +173,45 @@ def run_jobs(
 ) -> list[RunResult]:
     """Run multiple jobs and return results."""
     results: list[RunResult] = []
+    now = datetime.now(timezone.utc).isoformat()
     for job in jobs:
         solver = solvers.get(job.solver)
         system = systems.get(job.system)
         if not solver:
-            logger.warning("runner.skip", job=job.name, reason=f"unknown solver: {job.solver}")
+            msg = f"Solver '{job.solver}' not found for job '{job.name}'"
+            logger.warning("runner.skip", job=job.name, reason=msg)
+            results.append(
+                RunResult(
+                    job_name=job.name,
+                    solver_name=job.solver,
+                    system_name=job.system,
+                    returncode=-1,
+                    stdout="",
+                    stderr=msg,
+                    runtime_seconds=0.0,
+                    timestamp=now,
+                    passed=False,
+                    processor=probe_processor(),
+                )
+            )
             continue
         if not system:
-            logger.warning("runner.skip", job=job.name, reason=f"unknown system: {job.system}")
+            msg = f"System '{job.system}' not found for job '{job.name}'"
+            logger.warning("runner.skip", job=job.name, reason=msg)
+            results.append(
+                RunResult(
+                    job_name=job.name,
+                    solver_name=job.solver,
+                    system_name=job.system,
+                    returncode=-1,
+                    stdout="",
+                    stderr=msg,
+                    runtime_seconds=0.0,
+                    timestamp=now,
+                    passed=False,
+                    processor=probe_processor(),
+                )
+            )
             continue
         results.append(run_job(job, solver, system))
     return results

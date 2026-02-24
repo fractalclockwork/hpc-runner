@@ -1,6 +1,6 @@
 # API (REST + Web Dashboard)
 
-A minimal REST API and web dashboard that hooks into the harness core for running jobs and viewing results.
+A minimal FastAPI REST API and web dashboard that hooks into the harness core for running jobs and viewing results.
 
 ## Requirements
 
@@ -16,8 +16,8 @@ From the project root:
 # Sync workspace (installs core + api)
 uv sync --all-extras --dev
 
-# Run the API
-uv run flask --app basic_restapi.app run --debug
+# Run the REST API
+uv run uvicorn basic_restapi.fastapi_app:app --reload --port 8000
 # Navigate to http://localhost:8000
 ```
 
@@ -33,9 +33,7 @@ make api
 src/api/
 ├── pyproject.toml
 ├── src/basic_restapi/
-│   └── app.py
-├── templates/
-├── static/
+│   └── fastapi_app.py
 └── README.md
 ```
 

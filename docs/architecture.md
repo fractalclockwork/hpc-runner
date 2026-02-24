@@ -3,7 +3,7 @@
 ## 1. High-Level Overview
 
 - **Purpose**: Execution-agnostic harness for running solver jobs (HPC regression testing)
-- **Entry points**: CLI (`hpc-runner`), Web API + Dashboard
+- **Entry points**: CLI (`hpc-runner`), REST API (FastAPI), Streamlit UI
 - **Key principle**: Solver scripts are black-box; platform never calls schedulers (SLURM, MPI, etc.)
 
 ## 2. Component Architecture
@@ -15,7 +15,8 @@ flowchart TB
         Browser[Web Browser]
     end
     subgraph api [API Layer]
-        Flask[Flask basic_restapi]
+        FastAPI[FastAPI REST API]
+        Streamlit[Streamlit UI]
     end
     subgraph core [Harness Core]
         Config[Config Loader]
@@ -33,10 +34,14 @@ flowchart TB
     CLI --> Config
     CLI --> Runner
     CLI --> Storage
-    Browser --> Flask
-    Flask --> Config
-    Flask --> Runner
-    Flask --> Storage
+    Browser --> FastAPI
+    Browser --> Streamlit
+    FastAPI --> Config
+    FastAPI --> Runner
+    FastAPI --> Storage
+    Streamlit --> Config
+    Streamlit --> Runner
+    Streamlit --> Storage
     Config --> YAML
     Runner --> Parser
     Runner --> SolverScript
@@ -119,9 +124,9 @@ Table `runs`: id, job_name, solver_name, system_name, returncode, passed, runtim
 
 ## 9. Deployment
 
-- **Local**: `make api`, `make runner`
+- **Local**: `make api` (REST API), `make ui` (Streamlit dashboard), `make runner` (CLI)
 - **Docker**: `make docker-build`, `make docker-run` (mounts `./data`)
-- **docker-compose**: `docker compose up --build`
+- **docker-compose**: `docker compose up --build` (REST API on port 8000)
 
 ## 10. Workspace Layout
 
@@ -132,7 +137,8 @@ DOW-1-26/
 ├── data/              # harness.db (gitignored)
 ├── src/
 │   ├── core/          # harness package
-│   └── api/           # basic_restapi package
+│   ├── api/           # basic_restapi package (FastAPI)
+│   └── ui/            # Streamlit dashboard
 ├── pyproject.toml     # uv workspace
 └── Makefile
 ```
