@@ -2,7 +2,7 @@
 from pathlib import Path
 
 import structlog
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, request
 
 from harness import (
     load_all,
@@ -17,11 +17,7 @@ from harness import (
 BASE_DIR = Path(__file__).resolve().parents[2]
 PROJECT_ROOT = BASE_DIR.parent.parent  # DOW-1-26/
 
-app = Flask(
-    __name__,
-    template_folder=str(BASE_DIR / "templates"),
-    static_folder=str(BASE_DIR / "static"),
-)
+app = Flask(__name__)
 
 logger = structlog.get_logger()
 
@@ -33,11 +29,6 @@ DB_PATH = PROJECT_ROOT / "data" / "harness.db"
 def _load_definitions():
     resources, systems, solvers, jobs = load_all(CONFIG_DIR, SOLVERS_DIR)
     return resources, systems, solvers, jobs
-
-
-@app.route("/")
-def root():
-    return render_template("index.html")
 
 
 @app.route("/api/solvers")
