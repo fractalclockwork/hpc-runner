@@ -57,7 +57,14 @@ make docker-test
 Or with docker-compose:
 
 ```bash
-docker compose up --build
+make docker-up
+# or: docker compose -f docker/docker-compose.yml up --build
+```
+
+Validate Docker images (build + API health check):
+
+```bash
+make docker-validate
 ```
 
 ## Testing
@@ -73,10 +80,11 @@ Unit tests cover the major features:
 | `test_add_solver.py` | --add solver creation, derive_name, add_job |
 
 ```bash
-make test      # Core unit tests (quiet)
-make testv     # Core unit tests (verbose)
-make e2e       # Playwright E2E tests (Streamlit UI)
-make e2e-docker # E2E tests in Docker (Streamlit + Playwright)
+make test           # Core unit tests (quiet)
+make testv          # Core unit tests (verbose)
+make e2e            # Playwright E2E tests (Streamlit UI)
+make e2e-docker     # E2E tests in Docker (Streamlit + Playwright)
+make docker-validate # Validate Docker images (build + API health check)
 ```
 
 ## Configuration Structure

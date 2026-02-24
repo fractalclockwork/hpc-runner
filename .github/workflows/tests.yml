@@ -25,3 +25,12 @@ jobs:
       - name: Run tests
         run: uv run pytest src/core/tests -q
 
+  docker-validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate Docker images
+        run: make docker-validate

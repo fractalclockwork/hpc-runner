@@ -129,7 +129,7 @@ Table `runs`: id, job_name, solver_name, system_name, returncode, passed, runtim
 
 - **Local**: `make api` (REST API), `make ui` (Streamlit dashboard), `make runner` (CLI)
 - **Docker**: `make docker-build`, `make docker-run` (mounts `./data`)
-- **docker-compose**: `docker compose up --build` (REST API on port 8000)
+- **docker-compose**: `make docker-up` or `docker compose -f docker/docker-compose.yml up --build` (REST API on port 8000)
 
 ## 10. Workspace Layout
 
@@ -137,6 +137,7 @@ Table `runs`: id, job_name, solver_name, system_name, returncode, passed, runtim
 DOW-1-26/
 ├── configs/           # YAML configs (resources, systems, jobs, solvers)
 ├── data/              # harness.db (gitignored)
+├── docker/            # Dockerfiles and compose configs
 ├── src/
 │   ├── core/          # harness package
 │   ├── api/           # basic_restapi package (FastAPI)

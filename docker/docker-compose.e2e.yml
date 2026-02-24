@@ -1,16 +1,17 @@
 services:
   streamlit:
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     command: uv run streamlit run src/ui/app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
-    ports:
-      - "8501:8501"
+    # No host port mapping - Playwright connects via internal network (streamlit:8501)
     volumes:
-      - ./data:/app/data
+      - ../data:/app/data
 
   playwright:
     build:
-      context: .
-      dockerfile: Dockerfile.playwright
+      context: ..
+      dockerfile: docker/Dockerfile.playwright
     depends_on:
       - streamlit
     environment:
