@@ -9,6 +9,15 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from runner import run_tests  # noqa: E402
 
+
+def _testid(id: str) -> None:
+    """Inject hidden data-testid marker for Playwright."""
+    st.markdown(
+        f'<span data-testid="{id}" style="display:none" aria-hidden="true"></span>',
+        unsafe_allow_html=True,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Session state initialisation
 # ---------------------------------------------------------------------------
@@ -23,11 +32,16 @@ if "test_result" not in st.session_state:
 # ---------------------------------------------------------------------------
 PAGES = ["Home", "Test Results"]
 
+st.sidebar.markdown(
+    '<span data-testid="nav-sidebar" style="display:none" aria-hidden="true"></span>',
+    unsafe_allow_html=True,
+)
 st.sidebar.title("Navigation")
 selected_page = st.sidebar.radio(
     "Go to",
     PAGES,
     index=PAGES.index(st.session_state.page),
+    key="nav-pages",
 )
 st.session_state.page = selected_page
 
@@ -36,12 +50,14 @@ st.session_state.page = selected_page
 # ---------------------------------------------------------------------------
 
 def page_home() -> None:
+    _testid("page-home")
     st.header("HPC Regression Testing Platform")
     st.write("")
     st.write("Click the button below to execute the full test suite.")
     st.write("")
 
-    if st.button("Run Test"):
+    _testid("btn-run-test")
+    if st.button("Run Test", key="btn-run-test"):
         with st.spinner("Running tests…"):
             result = run_tests()
 
@@ -55,6 +71,7 @@ def page_home() -> None:
 # ---------------------------------------------------------------------------
 
 def page_test_results() -> None:
+    _testid("page-test-results")
     st.header("Test Results")
     st.write("")
 
