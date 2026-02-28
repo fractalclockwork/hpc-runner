@@ -70,7 +70,7 @@ This glossary defines key terms for the HPC Regression Platform. It helps **deve
 
 **Run** — A single execution of a Job. Produces a RunResult.
 
-**RunResult** — Dataclass holding: `job_name`, `solver_name`, `system_name`, `returncode`, `stdout`, `stderr`, `runtime_seconds`, `timestamp`, `metrics`, `passed`, `processor`.
+**RunResult** — Dataclass holding: `job_name`, `solver_name`, `system_name`, `returncode`, `stdout`, `stderr`, `runtime_seconds`, `timestamp`, `metrics`, `passed`, `processor`, `validation_errors` (list of strings when metric validation fails).
 
 **runtime_seconds** — Wall-clock time from job start to finish.
 
@@ -98,7 +98,7 @@ This glossary defines key terms for the HPC Regression Platform. It helps **deve
 
 **load_all** — Config loader function returning `(resources, systems, solvers, jobs)` from a config directory.
 
-**runs table** — Schema: `id`, `job_name`, `solver_name`, `system_name`, `returncode`, `passed`, `runtime_seconds`, `timestamp`, `stdout`, `stderr`, `metrics_json`, `processor`.
+**runs table** — Schema: `id`, `job_name`, `solver_name`, `system_name`, `returncode`, `passed`, `runtime_seconds`, `timestamp`, `stdout`, `stderr`, `metrics_json`, `processor`, `validation_errors` (TEXT JSON array).
 
 **solvers_dir** — Directory containing solver packages. Lives inside config_dir: `config_dir/solvers` (e.g. `configs/solvers/`). Overridable via `--solvers-dir`.
 

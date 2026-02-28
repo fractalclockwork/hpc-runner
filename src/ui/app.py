@@ -155,7 +155,12 @@ def page_run_history() -> None:
     import json
     for r in filtered:
         passed = "Passed" if r.get("passed") else "Failed"
-        icon = "\u2705" if r.get("passed") else "\u274c"  # checkmark / cross mark
+        if r.get("passed"):
+            icon = "✅"
+        elif r.get("validation_errors"):
+            icon = "⚠️"
+        else:
+            icon = "❌"
         with st.expander(f"{icon} {r['job_name']} — {passed} ({r.get('timestamp', '')})"):
             st.write(f"**Solver:** {r['solver_name']} | **System:** {r['system_name']} | **Returncode:** {r.get('returncode')} | **Runtime:** {r.get('runtime_seconds')}s")
             if r.get("stdout"):
@@ -171,6 +176,14 @@ def page_run_history() -> None:
                     st.json(metrics)
                 except json.JSONDecodeError:
                     st.text(r["metrics_json"])
+            # if validation errors are present, show them
+            if r.get("validation_errors") and r.get("validation_errors") != "[]":
+                try:
+                    validation_errors = json.loads(r["validation_errors"])
+                    st.subheader("Validation Errors")
+                    st.json(validation_errors)
+                except json.JSONDecodeError:
+                    st.text(r["validation_errors"])
 
 
 # ---------------------------------------------------------------------------
@@ -232,9 +245,16 @@ def page_run_jobs() -> None:
         results = st.session_state.run_job_results
         st.subheader("Results")
         for r in results:
-            status = "Passed" if r.passed else "Failed"
-            icon = "✅" if r.passed else "❌"
+            if r.passed:
+                status, icon = "Passed", "✅"
+            elif getattr(r, "validation_errors", None):
+                status, icon = "Validation failed", "⚠️"
+            else:
+                status, icon = "Run failed", "❌"
             st.write(f"{icon} **{r.job_name}** — {status} (returncode={r.returncode}, runtime={r.runtime_seconds:.2f}s)")
+            if getattr(r, "validation_errors", None) and r.validation_errors:
+                for err in r.validation_errors:
+                    st.caption(f"  • {err}")
 
 
 # ---------------------------------------------------------------------------

@@ -113,8 +113,9 @@ def main(argv: list[str] | None = None) -> int:
             init_db(args.db)
             for r in results:
                 store_run(args.db, r)
-        output = [
-            {
+        output = []
+        for r in results:
+            item = {
                 "job_name": r.job_name,
                 "solver_name": r.solver_name,
                 "system_name": r.system_name,
@@ -124,9 +125,9 @@ def main(argv: list[str] | None = None) -> int:
                 "timestamp": r.timestamp,
                 "metrics": r.metrics,
                 "processor": r.processor,
+                "validation_errors": r.validation_errors,
             }
-            for r in results
-        ]
+            output.append(item)
         print(json.dumps(output, indent=2))
         return 0 if all(r.passed for r in results) else 1
 
@@ -146,9 +147,23 @@ def main(argv: list[str] | None = None) -> int:
         init_db(args.db)
         runs = get_runs(args.db, limit=20)
         for r in runs:
-            status = "PASS" if r.get("passed") else "FAIL"
+            if r.get("passed"):
+                status = "PASS"
+            elif r.get("validation_errors"):
+                status = "VALIDATION_ERROR"
+            else:
+                status = "FAIL"
             proc = r.get("processor") or "-"
-            print(f"  {r['id']}: {r['job_name']} | {status} | {proc} | {r['timestamp']}")
+            err_info = ""
+            # if validation errors are present, show them
+            try:
+                validation_errors = json.loads(r.get("validation_errors") or "[]")
+                if validation_errors:
+                    n = len(validation_errors)
+                    err_info = f" | {n} validation error{'s' if n != 1 else ''}"
+            except (json.JSONDecodeError, TypeError):
+                pass
+            print(f"  {r['id']}: {r['job_name']} | {status} | {proc} | {r['timestamp']}{err_info}")
         return 0
 
     job_list = list(jobs.values())
@@ -178,8 +193,9 @@ def main(argv: list[str] | None = None) -> int:
             store_run(args.db, r)
 
     # Output as JSON for CLI/API consumption
-    output = [
-        {
+    output = []
+    for r in results:
+        item = {
             "job_name": r.job_name,
             "solver_name": r.solver_name,
             "system_name": r.system_name,
@@ -189,9 +205,9 @@ def main(argv: list[str] | None = None) -> int:
             "timestamp": r.timestamp,
             "metrics": r.metrics,
             "processor": r.processor,
+            "validation_errors": r.validation_errors,
         }
-        for r in results
-    ]
+        output.append(item)
     print(json.dumps(output, indent=2))
     return 0 if all(r.passed for r in results) else 1
 

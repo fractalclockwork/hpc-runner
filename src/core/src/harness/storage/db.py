@@ -14,7 +14,8 @@ def init_db(path: str | Path) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(path) as conn:
-        conn.executescript("""
+        conn.executescript(
+            """
             CREATE TABLE IF NOT EXISTS runs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 job_name TEXT NOT NULL,
@@ -27,16 +28,20 @@ def init_db(path: str | Path) -> None:
                 stdout TEXT,
                 stderr TEXT,
                 metrics_json TEXT,
-                processor TEXT
+                processor TEXT,
+                validation_errors TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_runs_solver ON runs(solver_name);
             CREATE INDEX IF NOT EXISTS idx_runs_timestamp ON runs(timestamp);
-        """)
-        # Migration: add processor column if missing (existing DBs)
+        """
+        )
+        # Migration: add processor / validation_errors columns if missing (existing DBs)
         cur = conn.execute("PRAGMA table_info(runs)")
         columns = [row[1] for row in cur.fetchall()]
         if "processor" not in columns:
             conn.execute("ALTER TABLE runs ADD COLUMN processor TEXT")
+        if "validation_errors" not in columns:
+            conn.execute("ALTER TABLE runs ADD COLUMN validation_errors TEXT")
         conn.commit()
 
 
@@ -44,12 +49,26 @@ def store_run(db_path: str | Path, result: RunResult) -> int:
     """Store a run result and return the inserted row id."""
     init_db(db_path)
     metrics_json = json.dumps(result.metrics) if result.metrics else None
+    validation_errors_json = json.dumps(result.validation_errors or [])
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
-            """INSERT INTO runs (
-                job_name, solver_name, system_name, returncode, passed,
-                runtime_seconds, timestamp, stdout, stderr, metrics_json, processor
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """
+            INSERT INTO runs (
+                job_name,
+                solver_name,
+                system_name,
+                returncode,
+                passed,
+                runtime_seconds,
+                timestamp,
+                stdout,
+                stderr,
+                metrics_json,
+                processor,
+                validation_errors
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
             (
                 result.job_name,
                 result.solver_name,
@@ -62,6 +81,7 @@ def store_run(db_path: str | Path, result: RunResult) -> int:
                 result.stderr,
                 metrics_json,
                 result.processor,
+                validation_errors_json,
             ),
         )
         row_id = cur.lastrowid or 0
