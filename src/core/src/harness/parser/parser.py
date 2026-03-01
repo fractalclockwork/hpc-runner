@@ -77,12 +77,27 @@ def validate_metrics(
         for name, (lo, hi) in ranges.items():
             if name not in metrics:
                 continue
+            #need to convert to float scientific notation is captured as a string
+            try:
+                lo_val = float(lo) if lo is not None else None
+            except (TypeError, ValueError): #catch conversion errors
+                errors.append(f"Invalid min for metric {name}")
+                continue
+            try:
+                hi_val = float(hi) if hi is not None else None
+            except (TypeError, ValueError):
+                errors.append(f"Invalid max for metric {name}")
+                continue
+
             try:
                 v = float(metrics[name])
-                if lo is not None and v < lo:
-                    errors.append(f"Metric {name}={v} below min {lo}")
-                if hi is not None and v > hi:
-                    errors.append(f"Metric {name}={v} above max {hi}")
             except (TypeError, ValueError):
-                pass
+                errors.append(f"Metric {name} could not be converted to number (got {metrics[name]!r})")
+                continue
+
+            if lo_val is not None and v < lo_val:
+                errors.append(f"Metric {name}={v} below min {lo_val}")
+            if hi_val is not None and v > hi_val:
+                errors.append(f"Metric {name}={v} above max {hi_val}")
+
     return len(errors) == 0, errors

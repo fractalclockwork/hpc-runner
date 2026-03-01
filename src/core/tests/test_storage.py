@@ -1,5 +1,6 @@
 # tests/test_storage.py - SQLite storage
 
+import json
 
 from harness import RunResult
 from harness.storage import (
@@ -12,7 +13,13 @@ from harness.storage import (
 )
 
 
-def _make_result(job_name="t1", solver_name="s1", metrics=None, processor="x86_64"):
+def _make_result(
+    job_name="t1",
+    solver_name="s1",
+    metrics=None,
+    processor="x86_64",
+    validation_errors=None,
+):
     return RunResult(
         job_name=job_name,
         solver_name=solver_name,
@@ -22,6 +29,7 @@ def _make_result(job_name="t1", solver_name="s1", metrics=None, processor="x86_6
         stderr="err",
         runtime_seconds=1.5,
         timestamp="2026-02-14T12:00:00+00:00",
+        validation_errors=validation_errors if validation_errors is not None else [],
         passed=True,
         metrics=metrics or {},
         processor=processor,
@@ -82,6 +90,23 @@ def test_get_run_by_id(tmp_path):
     assert run["processor"] == "x86_64"
 
     assert get_run_by_id(db_path, 99999) is None
+
+
+def test_validation_errors_stored_and_retrieved(tmp_path):
+    """Store a run with validation_errors and assert they round-trip correctly."""
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    errors = ["output mismatch on line 42", "max residual exceeded"]
+    result = _make_result(
+        job_name="val-test",
+        validation_errors=errors,
+    )
+    row_id = store_run(db_path, result)
+    run = get_run_by_id(db_path, row_id)
+    assert run is not None
+    assert run.get("validation_errors") is not None
+    stored_errors = json.loads(run["validation_errors"])
+    assert stored_errors == errors
 
 
 def test_get_all_metrics_series(tmp_path):

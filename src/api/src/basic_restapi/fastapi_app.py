@@ -1,5 +1,7 @@
 """FastAPI REST API for HPC Regression Platform."""
 
+import json
+
 import structlog
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -105,8 +107,9 @@ def api_run_jobs(body: RunJobsRequest | None = None):
     for r in results:
         store_run(DB_PATH, r)
 
-    return [
-        {
+    response: list[dict] = []
+    for r in results:
+        item = {
             "job_name": r.job_name,
             "solver_name": r.solver_name,
             "system_name": r.system_name,
@@ -117,8 +120,10 @@ def api_run_jobs(body: RunJobsRequest | None = None):
             "metrics": r.metrics,
             "processor": r.processor,
         }
-        for r in results
-    ]
+        if hasattr(r, "validation_errors"):
+            item["validation_errors"] = r.validation_errors
+        response.append(item)
+    return response
 
 
 @app.get("/api/runs")
@@ -134,11 +139,17 @@ def api_runs(
     runs = get_runs(DB_PATH, solver=solver, processor=processor, limit=limit, offset=offset)
     for r in runs:
         if r.get("metrics_json"):
-            import json
             try:
                 r["metrics"] = json.loads(r["metrics_json"])
             except Exception:
                 r["metrics"] = {}
+        if r.get("validation_errors") is not None:
+            try:
+                r["validation_errors"] = json.loads(r["validation_errors"])
+            except Exception:
+                r["validation_errors"] = []
+        else:
+            r["validation_errors"] = []
         r["passed"] = bool(r.get("passed"))
     return runs
 
@@ -152,11 +163,17 @@ def api_run_detail(run_id: int):
         raise HTTPException(status_code=404, detail="Run not found")
     run = dict(run)
     if run.get("metrics_json"):
-        import json
         try:
             run["metrics"] = json.loads(run["metrics_json"])
         except Exception:
             run["metrics"] = {}
+    if run.get("validation_errors") is not None:
+        try:
+            run["validation_errors"] = json.loads(run["validation_errors"])
+        except Exception:
+            run["validation_errors"] = []
+    else:
+        run["validation_errors"] = []
     run["passed"] = bool(run.get("passed"))
     return run
 

@@ -12,7 +12,7 @@ from typing import Any
 import structlog
 
 from .config import Solver, System, Job
-from .parser import extract_metrics
+from .parser import extract_metrics, validate_metrics
 
 logger = structlog.get_logger()
 
@@ -34,6 +34,7 @@ class RunResult:
     runtime_seconds: float
     timestamp: str
     metrics: dict[str, Any] = field(default_factory=dict)
+    validation_errors: list[str] = field(default_factory=list)
     passed: bool = False
     raw_logs: str = ""
     processor: str | None = None
@@ -105,6 +106,7 @@ def run_job(
             stderr=timeout_msg,
             runtime_seconds=runtime,
             timestamp=end.isoformat(),
+            validation_errors=[],
             passed=False,
             metrics={"runtime_seconds": runtime},
             processor=processor,
@@ -124,6 +126,7 @@ def run_job(
             stderr=error_msg,
             runtime_seconds=runtime,
             timestamp=end.isoformat(),
+            validation_errors=[],
             passed=False,
             metrics={"runtime_seconds": runtime},
             processor=processor,
@@ -140,13 +143,35 @@ def run_job(
     expected_rc = success_criteria.get("returncode", 0)
     passed = result.returncode == expected_rc
 
-    # Extract metrics if solver has parser_config
+    # Extract metrics if solver has parser_config (resolve relative to solver dir if needed)
     metrics: dict[str, Any] = {}
-    if solver.parser_config and Path(solver.parser_config).exists():
-        metrics = extract_metrics(raw_logs, config_path=solver.parser_config)
+    validation_errors: list[str] = []
+    parser_config_path = Path(solver.parser_config) if solver.parser_config else None
+    if parser_config_path is not None:
+        if not parser_config_path.exists():
+            parser_config_path = (entrypoint_path.parent / parser_config_path).resolve()
+        if parser_config_path.exists():
+            metrics = extract_metrics(raw_logs, config_path=parser_config_path)
     # Always include runtime_seconds so all solvers show metrics on the Home page
     metrics["runtime_seconds"] = runtime
 
+    # if defined min/max bounds, check extracted metrics against them
+    # fail the job if any metric is outside the bounds
+    if solver.metrics:
+        required = [m.name for m in (solver.metrics or []) if m.required]
+        ranges = {m.name: (m.min_, m.max_) for m in (solver.metrics or [])}
+        valid, errors = validate_metrics(metrics, required=required, ranges=ranges)
+        if not valid:
+            passed = False
+            validation_errors = errors
+            logger.warning(
+                "runner.metrics_invalid",
+                job=job.name,
+                errors=errors,
+                metrics=metrics,
+            )
+        else:
+            validation_errors = []
     run_result = RunResult(
         job_name=job.name,
         solver_name=solver.name,
@@ -156,6 +181,7 @@ def run_job(
         stderr=result.stderr or "",
         runtime_seconds=runtime,
         timestamp=end.isoformat(),
+        validation_errors=validation_errors,
         passed=passed,
         raw_logs=raw_logs,
         metrics=metrics,
@@ -196,6 +222,7 @@ def run_jobs(
                     stderr=msg,
                     runtime_seconds=0.0,
                     timestamp=now,
+                    validation_errors=[],
                     passed=False,
                     metrics={"runtime_seconds": 0.0},
                     processor=probe_processor(),
@@ -215,6 +242,7 @@ def run_jobs(
                     stderr=msg,
                     runtime_seconds=0.0,
                     timestamp=now,
+                    validation_errors=[],
                     passed=False,
                     metrics={"runtime_seconds": 0.0},
                     processor=probe_processor(),
