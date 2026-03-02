@@ -16,8 +16,10 @@ Within this set of goals, the UI is critical to ensure that the user can:
 - Run tests, schedule jobs, and trigger the execution of the test runner harness from the UI
 - Display results of said jobs, including key metrics parsed from the metric extraction and logging layer
 - Provide visualizations of current and historical data in a variety of interactive methods to ensure proper exploration of the system. This includes but is not limited to: heatmaps, performance trend tracking, and system health reports
+
 ### Non-Goals
 - For the current implementation, we do not want to specify a way to author new solvers within the UI interface
+- The UI should not specify a way to modify configuration files for the test harness. Where appropriate parameters for web UI should be handled without modifying configuration files through the UI. 
   
 ## Proposed Architecture
 To accomplish these goals, the following architecture is proposed:
@@ -26,13 +28,6 @@ To accomplish these goals, the following architecture is proposed:
 The goal of this page is to provide a quick, high-level overview of the system to the user with some CTA to promote engagement with the features of the platform.
 #### Components:
 **Run Tests Button**: A button in the primary accent color of the platform for a user to click, which triggers the running of jobs through the test harness. The UI should call 
-
-
-
-
-
-
-
 In the future, it is possible that the scope of this page contains solver authoring by the user. Thus, it may make sense to leave white space at the bottom of this page for that. In addition, when "run tests" is at the bottom, the click action upon it should take the user to the next page where the results are shown 
 
 ### Page 2: Run Jobs
@@ -71,9 +66,12 @@ This page details the performance of the system, averaging across multiple tests
 Harness with Jenkins 2017 presentation)
 
 ### Page 5: Configuration
-This page shows settings that the user can toggle, or this could be a spot to upload configurations as well, given the needs!
+This page shows settings that the user can toggle, or this could be a spot to upload configurations as well, given the needs! (Shawn: we may consider just splitting the settings for our application with another page for uploading or managing runner configurations, or just call this page "settings" and don't allow the uploading of configurations through the web UI at all. I'd lean towards the latter but it's fine either way)
 
 ## Design System
+
+The UI should have a clear, consistent and appealing visual theme and design language. Streamlit has its own configuration file that includes the ability to configure the theme (see https://docs.streamlit.io/develop/concepts/configuration/theming#working-with-theme-configuration-during-development and https://docs.streamlit.io/develop/api-reference/configuration/config.toml#theme) which should be the preferred method of modifying the visual theme of the UI. Note, it is also possible to fully customize the visual look of any component in streamlit, which can be done by loading a .css file with custom styling for a streamlit component. If a particular styling is desired outside of what is easy to configure using streamlit, note that you can use this method: https://medium.com/pythoneers/how-to-customize-css-in-streamlit-a-step-by-step-guide-761375318e05. 
+
 Fonts: Streamlit basic font is fine imo
 
 Forms: For buttons, I think they should be in a different blue color for user attention.
@@ -81,12 +79,14 @@ Forms: For buttons, I think they should be in a different blue color for user at
 Colors: I think a blue scheme would complement black or white well, and signals proficiency, innovation, and steamlined-ness for the user. See these two color suggestions:
 ![image](https://github.berkeley.edu/Chem-283/DOW-1-26/assets/3735/48601f78-bfc4-446c-a9bf-a9204b776163)
 
+If not these, then we can go with Dow red, or some other accent color (not purple, not pink, not orange, not yellow, and not a pastel).
+
+Icons: I don't think being an emoji-heavy platform is professional, but we can use gears and other icons for the sidebar for better user interactivity. Agree regarding avoiding emojis. Perhaps we could consult with Dow/capstone mentors about this topic, there are lots of good open source icon libraries we could use in addition to the free templates on figma and other platforms (see https://iconoir.com/ which has figma integration as one possibility). 
+
 ## State Management
 
 The UI should maintain the minimum state possible to meet user experience requirements. To this end, a few aspects of the UI state need to be tracked, such as date filters, any performance metric filters and other manipulations of the UI a user makes. Streamlit provides an idiomatic method to save/cache some of this information in it's session management component: https://docs.streamlit.io/develop/api-reference/caching-and-state/st.session_state
 
-A few key data should be kept in a streamlit session state, namely: the date range for the test results page, the date range for long term trend visualization, the tests currently selected to run as a group on the run jobs page, whether to run the selected tests as a dry run or full run. 
+A few key data should be kept in a streamlit session state, namely: the date range for the test results page, the date range for long term trend visualization, the tests currently selected to run as a group on the run jobs page, whether to run the selected tests as a dry run or full run. In general though we would like to maintain the minimum possible state necessary to create the required user experience in the UI. 
 
-If not these, then we can go with Dow red, or some other accent color (not purple, not pink, not orange, not yellow, and not a pastel)
 
-Icons: I don't think being an emoji-heavy platform is professional, but we can use gears and other icons for the sidebar for better user interactivity. Perhaps we could consult with Dow/capstone mentors about 
