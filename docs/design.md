@@ -87,6 +87,11 @@ Icons: I don't think being an emoji-heavy platform is professional, but we can u
 
 The UI should maintain the minimum state possible to meet user experience requirements. To this end, a few aspects of the UI state need to be tracked, such as date filters, any performance metric filters and other manipulations of the UI a user makes. Streamlit provides an idiomatic method to save/cache some of this information in it's session management component: https://docs.streamlit.io/develop/api-reference/caching-and-state/st.session_state
 
+
 A few key data should be kept in a streamlit session state, namely: the date range for the test results page, the date range for long term trend visualization, the tests currently selected to run as a group on the run jobs page, whether to run the selected tests as a dry run or full run. In general though we would like to maintain the minimum possible state necessary to create the required user experience in the UI. 
+
+## Backend Communication
+
+Where necessary, backend communication will be facilitated via REST API requests using python requests or another http server library called via the UI. POST requests are exposed in the backend api where query parameters exceed 2-3 simple parameters or where a data structure such as a list or object dictionary is appropriate as a query parameter. The streamlit frontend will avoid calling the command line interface directly or calling backend functions directly to maintain abstraction between the frontend and backend as well as to utilize the existing asynchronous request model used in FastAPI. 
 
 
