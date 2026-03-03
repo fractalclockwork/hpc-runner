@@ -176,19 +176,23 @@ def page_run_history() -> None:
         data.reverse()
         # Min-max normalization (0 to 1)
         df = pd.DataFrame(data, columns=column_names, index=row_names)
-        numeric_df = df.select_dtypes(include=['float64', 'int64', 'float32', 'int32'])
+        numeric_df = df.apply(pd.to_numeric, errors='coerce')
+        # numeric_df = df.select_dtypes(include=['float64', 'int64', 'float32', 'int32'])
+        numeric_df = numeric_df.dropna(axis=1, how="all")
         normalized = (numeric_df - numeric_df.min()) / (numeric_df.max() - numeric_df.min())
-        normalized = normalized.dropna(axis=1, how="all")
-        print(df)
+        normalized = normalized.fillna(0)
+        print(normalized)
         fig = go.Figure(data=go.Heatmap(
+            customdata=numeric_df,
             z=normalized,
             x=normalized.columns,
             y=normalized.index,
             colorscale='Viridis',
             xgap=2,  # Makes vertical gridlines
             ygap=2,  # Makes horizontal gridlines
+            hovertemplate='Non-Normalized Value: %{customdata:.4f}<extra></extra>',
         ))
-        st.header("Metrics Heatmap")
+        st.header(f"{solver_filter} Metrics Heatmap",help="Heatmap compares numeric metrics using per metric normalized values. You can hover over to see the true value for reference")
         # Display in Streamlit
         st.plotly_chart(fig)
 
