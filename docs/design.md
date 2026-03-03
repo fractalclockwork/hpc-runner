@@ -92,6 +92,6 @@ A few key data should be kept in a streamlit session state, namely: the date ran
 
 ## Backend Communication
 
-Where necessary, backend communication will be facilitated via REST API requests using python requests or another http server library called via the UI. POST requests are exposed in the backend api where query parameters exceed 2-3 simple parameters or where a data structure such as a list, dictionary, or object is appropriate as a query parameter. The streamlit frontend will avoid calling the command line interface directly or calling backend functions directly to maintain abstraction between the frontend and backend as well as to utilize the existing asynchronous request available through FastAPI running on a ASGI server. 
+Where necessary, backend communication will be facilitated via REST API requests using python requests or another http server library called via the UI. POST requests are exposed in the backend api where query parameters exceed 2-3 simple parameters or where a data structure such as a list, dictionary, or object is appropriate as a query parameter. The streamlit frontend will avoid calling the command line interface directly or calling backend functions directly to maintain abstraction between the frontend and backend, keep the user's underlying system abstracted from the web browser interface, as well as to utilize the existing asynchronous request available through FastAPI running on a ASGI server. 
 
 
