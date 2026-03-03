@@ -89,8 +89,10 @@ def page_home() -> None:
         return
 
     idx = options.index(selected)
-    solver_name, metric_name = available[idx]
+    solver_name, metric_name = available[idx]["solver"], available[idx]["metric"]
+    print(available)
     # history = get_metric_history(solver_name, metric_name, limit=500)
+    print(API_URL + "/api/metrics/" + solver_name + "/" + metric_name)
     history: list[dict[str, Any]]  = requests.get(API_URL + "/api/metrics/" + solver_name + "/" + metric_name).json()
     print(f"history: {history}")
 
