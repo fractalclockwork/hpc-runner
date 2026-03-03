@@ -13,6 +13,7 @@ dependencies = [
 members = [
   "src/core",
   "src/api",
+  "src/ui",
 ]
 
 [tool.uv.sources]

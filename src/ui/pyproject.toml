@@ -1,0 +1,12 @@
+[project]
+name = "hpc_regression_ui"
+version = "0.1.0"
+description = "The Frontend UI for hpc regression platform"
+requires-python = ">=3.10"
+dependencies = [
+    "streamlit>=1.54.0",
+    "harness",
+]
+
+[tool.uv.sources]
+harness = { workspace = true }

@@ -16,6 +16,7 @@ from harness import (
     get_runs,
     get_run_by_id,
     get_metrics_history,
+    get_all_metrics_series,
     get_config_dir,
     get_db_path,
 )
@@ -70,6 +71,20 @@ def api_solvers():
         for s in solvers.values()
     ]
 
+@app.get("/api/systems")
+def api_systems():
+    """List configured solvers."""
+    _, systems, _, _ = _load_definitions()
+    return [
+        {
+            "name": s.name,
+            "resources": s.resources,
+            "env": s.env,
+            "constriants": s.constraints,
+            "extra": s.extra,
+        }
+        for s in systems.values()
+    ]
 
 @app.get("/api/jobs")
 def api_jobs():
@@ -187,9 +202,18 @@ def api_metrics_history(
     """Get metric history for trend visualization."""
     limit = min(limit, 500)
     init_db(DB_PATH)
-    history = get_metrics_history(DB_PATH, solver_name, metric_name, limit=limit)
+    history: list[tuple[str, str]] = get_metrics_history(DB_PATH, solver_name, metric_name, limit=limit)
     return [{"timestamp": ts, "value": v} for ts, v in history]
 
+@app.get("/api/available_metrics")
+def api_available_metrics(
+    limit: int = 100,
+):
+    """Get a list of all metrics/solver combos. by default limits the output to 100"""
+    limit = min(limit, 500)
+    init_db(DB_PATH)
+    available_metrics: list[tuple[str, str]] = get_all_metrics_series(DB_PATH)
+    return [{"solver": s, "metric": m} for s, m in available_metrics]
 
 def main():
     import uvicorn

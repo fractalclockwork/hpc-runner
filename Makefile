@@ -49,7 +49,7 @@ api:
 
 # Run the Streamlit UI
 ui:
-	uv run streamlit run src/ui/app.py
+	uv run streamlit run src/ui/src/app.py
 
 # ---------------------------------------------------------------------------
 # Docker

@@ -4,10 +4,10 @@ import sys
 from pathlib import Path
 
 import streamlit as st
+import requests
+import typing
 
 # Allow importing runner from the same directory when launched via `streamlit run`
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from runner import run_tests  # noqa: E402
 from config_editor import (  # noqa: E402
     discover_config_files,
     read_config,
@@ -17,14 +17,11 @@ from config_editor import (  # noqa: E402
     ConfigFile,
     CONFIGS_DIR,
 )
-from metrics_dashboard import (  # noqa: E402
-    get_available_metrics,
-    get_metric_history,
-)
 
 from harness import get_db_path
 
 DB_PATH = get_db_path()
+API_URL = "http://localhost:8000"
 
 
 def _testid(id: str) -> None:
@@ -76,6 +73,7 @@ def page_home() -> None:
     st.header("HPC Regression Platform")
     st.write("Metrics for each solver over the entire job history.")
 
+    available: list[dict[str, str]]  = requests.get(API_URL + "/" + solver_name + "/" + metric_name).json()
     available = get_available_metrics()
     if not available:
         st.info("No metrics data yet. Run jobs via Run Jobs or the CLI to collect metrics.")
@@ -92,7 +90,8 @@ def page_home() -> None:
 
     idx = options.index(selected)
     solver_name, metric_name = available[idx]
-    history = get_metric_history(solver_name, metric_name, limit=500)
+    # history = get_metric_history(solver_name, metric_name, limit=500)
+    history: list[dict[str, Any]]  = requests.get(API_URL + "/" + solver_name + "/" + metric_name).json()
 
     if not history:
         st.warning("No history for this metric.")
@@ -120,19 +119,7 @@ def page_run_history() -> None:
     st.header("Run History")
     st.write("Browse past runs. Filter by solver or processor.")
 
-    try:
-        from harness.storage import get_runs, init_db
-    except ImportError as e:
-        st.error(f"Cannot load harness: {e}")
-        return
-
-    if not DB_PATH.exists():
-        st.info("No runs yet. Run jobs via Run Jobs or the CLI to collect data.")
-        return
-
-    init_db(DB_PATH)
-
-    runs_all = get_runs(DB_PATH, limit=500)
+    runs_all = requests.get(API_URL + "/api/runs")
     if not runs_all:
         st.info("No runs in database.")
         return
@@ -148,7 +135,10 @@ def page_run_history() -> None:
 
     solver_arg = solver_filter if solver_filter != "(all)" else None
     processor_arg = processor_filter if processor_filter != "(all)" else None
-    filtered = get_runs(DB_PATH, solver=solver_arg, processor=processor_arg, limit=100)
+
+    params = {"solver": solver_arg, "processor": processor_arg}
+    filtered = requests.get(API_URL + "/api/runs", params=params)
+    # filtered = get_runs(DB_PATH, solver=solver_arg, processor=processor_arg, limit=100)
 
     st.write(f"Showing {len(filtered)} run(s)")
 
@@ -196,13 +186,10 @@ def page_run_jobs() -> None:
     st.write("Execute HPC regression jobs. Select jobs and run them.")
 
     try:
-        from harness import load_all, run_jobs, init_db, store_run, ConfigError
-    except ImportError as e:
-        st.error(f"Cannot load harness: {e}")
-        return
-
-    try:
-        _, systems, solvers, jobs = load_all(CONFIGS_DIR)
+        #_, systems, solvers, jobs = load_all(CONFIGS_DIR)
+        systems: list[dict[str, Any]]  = requests.get(API_URL + "/api/systems").json()
+        solvers: list[dict[str, Any]]  = requests.get(API_URL + "/api/solvers").json()
+        jobs: list[dict[str, Any]]  = requests.get(API_URL + "/api/jobs").json()
     except ConfigError as e:
         st.error(f"Config error: {e}")
         return
@@ -261,6 +248,8 @@ def page_run_jobs() -> None:
 # Page: Configs
 # ---------------------------------------------------------------------------
 
+# Shawn: Would be better to have the backend handle what we need from this
+# but its less of a headache to remove dependencies so will keep for now
 def page_configs() -> None:
     _testid("page-configs")
     st.header("Configs")
@@ -366,41 +355,41 @@ def page_configs() -> None:
 # Page: Tests
 # ---------------------------------------------------------------------------
 
-def page_tests() -> None:
-    _testid("page-tests")
-    st.header("Tests")
-    st.write("")
-
-    _testid("btn-run-test")
-    if st.button("Run Test", key="btn-run-test"):
-        with st.spinner("Running tests…"):
-            result = run_tests()
-
-        st.session_state.test_result = result
-        st.rerun()
-
-    st.write("")
-
-    if st.session_state.test_result is None:
-        st.info("No test results yet. Click Run Test above to execute the suite.")
-        return
-
-    result = st.session_state.test_result
-
-    if result.success:
-        st.success(f"All tests passed  (exit code {result.returncode})")
-    else:
-        st.error(f"Tests failed  (exit code {result.returncode})")
-
-    st.write("")
-
-    if result.stdout:
-        st.subheader("stdout")
-        st.code(result.stdout, language="text")
-
-    if result.stderr:
-        st.subheader("stderr")
-        st.code(result.stderr, language="text")
+#def page_tests() -> None:
+#    _testid("page-tests")
+#    st.header("Tests")
+#    st.write("")
+#
+#    _testid("btn-run-test")
+#    if st.button("Run Test", key="btn-run-test"):
+#        with st.spinner("Running tests…"):
+#            result = run_tests()
+#
+#        st.session_state.test_result = result
+#        st.rerun()
+#
+#    st.write("")
+#
+#    if st.session_state.test_result is None:
+#        st.info("No test results yet. Click Run Test above to execute the suite.")
+#        return
+#
+#    result = st.session_state.test_result
+#
+#    if result.success:
+#        st.success(f"All tests passed  (exit code {result.returncode})")
+#    else:
+#        st.error(f"Tests failed  (exit code {result.returncode})")
+#
+#    st.write("")
+#
+#    if result.stdout:
+#        st.subheader("stdout")
+#        st.code(result.stdout, language="text")
+#
+#    if result.stderr:
+#        st.subheader("stderr")
+#        st.code(result.stderr, language="text")
 
 
 # ---------------------------------------------------------------------------
@@ -413,7 +402,7 @@ elif st.session_state.page == "Run Jobs":
     page_run_jobs()
 elif st.session_state.page == "Run History":
     page_run_history()
-elif st.session_state.page == "Tests":
-    page_tests()
+#elif st.session_state.page == "Tests":
+#    page_tests()
 elif st.session_state.page == "Configs":
     page_configs()
