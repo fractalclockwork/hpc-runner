@@ -6,6 +6,8 @@ from pathlib import Path
 import streamlit as st
 import requests
 import typing
+import pandas as pd
+import plotly.graph_objects as go
 
 # Allow importing runner from the same directory when launched via `streamlit run`
 from config_editor import (  # noqa: E402
@@ -74,7 +76,11 @@ def page_home() -> None:
     st.write("Metrics for each solver over the entire job history.")
 
     #available = get_available_metrics()
-    available: list[dict[str, str]]  = requests.get(API_URL + "/api/available_metrics").json()
+    try:
+        available: list[dict[str, str]]  = requests.get(API_URL + "/api/available_metrics").json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error making request: {e}")
+
     if not available:
         st.info("No metrics data yet. Run jobs via Run Jobs or the CLI to collect metrics.")
         return
@@ -93,7 +99,12 @@ def page_home() -> None:
     print(available)
     # history = get_metric_history(solver_name, metric_name, limit=500)
     print(API_URL + "/api/metrics/" + solver_name + "/" + metric_name)
-    history: list[dict[str, Any]]  = requests.get(API_URL + "/api/metrics/" + solver_name + "/" + metric_name).json()
+
+    try:
+        history: list[dict[str, Any]]  = requests.get(API_URL + "/api/metrics/" + solver_name + "/" + metric_name).json()
+    except requests.exceptions.RequestException as e:
+
+        print(f"Error making request: {e}")
     print(f"history: {history}")
 
 
@@ -144,6 +155,36 @@ def page_run_history() -> None:
     params = {"solver": solver_arg, "processor": processor_arg}
     filtered = requests.get(API_URL + "/api/runs", params=params).json()
     # filtered = get_runs(DB_PATH, solver=solver_arg, processor=processor_arg, limit=100)
+    import json
+    if solver_filter != "(all)":
+        column_names = [key for key in json.loads(filtered[0]['metrics_json'])]
+        row_names = [x['timestamp'] for x in filtered]
+        truncated_names = [name[:8] + '...' if len(name) > 8 else name for name in row_names]
+        # idk way its very wonky trying to use the timestamp as the row name
+        row_names = [i for i in range(len(filtered))]
+        print((row_names, column_names))
+        data = []
+        # blegh this will have NaN data if some dates are missing metrics
+        for i in range(len(filtered)):
+            row = []
+            metrics_json = json.loads(filtered[i]['metrics_json'])
+            for key, value in metrics_json.items():
+                row.append(value)
+            data.append(row)
+        df = pd.DataFrame(data)
+        print(df)
+        fig = go.Figure(data=go.Heatmap(
+            z=data,
+            x=column_names,
+            y=row_names,
+            colorscale='Viridis',
+            xgap=2,  # Makes vertical gridlines
+            ygap=2,  # Makes horizontal gridlines
+        ))
+        st.title("Metrics Heatmap")
+        # Display in Streamlit
+        st.plotly_chart(fig)
+
 
     st.write(f"Showing {len(filtered)} run(s)")
 

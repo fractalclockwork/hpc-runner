@@ -5,6 +5,7 @@ description = "The Frontend UI for hpc regression platform"
 requires-python = ">=3.10"
 dependencies = [
     "streamlit>=1.54.0",
+    "plotly>=6.6.0",
     "harness",
 ]
 
