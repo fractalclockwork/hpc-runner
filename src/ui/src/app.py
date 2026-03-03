@@ -48,7 +48,7 @@ if "run_job_results" not in st.session_state:
 # ---------------------------------------------------------------------------
 # Sidebar navigation
 # ---------------------------------------------------------------------------
-PAGES = ["Home", "Run Jobs", "Run History", "Tests", "Configs"]
+PAGES = ["Home", "Run Jobs", "Run History", "Configs"]
 
 st.sidebar.markdown(
     '<span data-testid="nav-sidebar" style="display:none" aria-hidden="true"></span>',
@@ -119,11 +119,12 @@ def page_run_history() -> None:
     st.header("Run History")
     st.write("Browse past runs. Filter by solver or processor.")
 
-    runs_all = requests.get(API_URL + "/api/runs")
+    runs_all = requests.get(API_URL + "/api/runs").json()
     if not runs_all:
         st.info("No runs in database.")
         return
 
+    print(f"runs_all: {runs_all}")
     solvers = sorted({r["solver_name"] for r in runs_all})
     processors = sorted({r.get("processor") or "unknown" for r in runs_all})
 
@@ -137,7 +138,7 @@ def page_run_history() -> None:
     processor_arg = processor_filter if processor_filter != "(all)" else None
 
     params = {"solver": solver_arg, "processor": processor_arg}
-    filtered = requests.get(API_URL + "/api/runs", params=params)
+    filtered = requests.get(API_URL + "/api/runs", params=params).json()
     # filtered = get_runs(DB_PATH, solver=solver_arg, processor=processor_arg, limit=100)
 
     st.write(f"Showing {len(filtered)} run(s)")
@@ -190,7 +191,7 @@ def page_run_jobs() -> None:
         systems: list[dict[str, Any]]  = requests.get(API_URL + "/api/systems").json()
         solvers: list[dict[str, Any]]  = requests.get(API_URL + "/api/solvers").json()
         jobs: list[dict[str, Any]]  = requests.get(API_URL + "/api/jobs").json()
-    except requests.exception.RequestException as e:
+    except requests.exceptions.RequestException as e:
         print(f"Error making request: {e}")
 
     print(f"jobs: {jobs}")
@@ -222,6 +223,7 @@ def page_run_jobs() -> None:
                 # results = run_jobs(job_objs, solvers, systems)
                 # use the post request to run jobs
                 payload = {"jobs": to_run}
+                endpoint = API_URL + "/api/run_jobs"
                 try:
                     # Make the POST request with JSON body
                     response = requests.post(
@@ -231,7 +233,9 @@ def page_run_jobs() -> None:
 
                     # Check if request was successful
                     response.raise_for_status()
-                except requests.exception.RequestException as e:
+                    results = response.json()
+                    print(f"results: {results}")
+                except requests.exceptions.RequestException as e:
                     print(f"Error making request: {e}")
 
             st.session_state.run_job_results = results
@@ -241,14 +245,14 @@ def page_run_jobs() -> None:
         results = st.session_state.run_job_results
         st.subheader("Results")
         for r in results:
-            if r.passed:
+            if r['passed']:
                 status, icon = "Passed", "✅"
             elif getattr(r, "validation_errors", None):
                 status, icon = "Validation failed", "⚠️"
             else:
                 status, icon = "Run failed", "❌"
-            st.write(f"{icon} **{r.job_name}** — {status} (returncode={r.returncode}, runtime={r.runtime_seconds:.2f}s)")
-            if getattr(r, "validation_errors", None) and r.validation_errors:
+            st.write(f"{icon} **{r['job_name']}** — {status} (returncode={r['returncode']}, runtime={r['runtime_seconds']:.2f}s)")
+            if getattr(r, "validation_errors", None) and r['validation_errors']:
                 for err in r.validation_errors:
                     st.caption(f"  • {err}")
 
