@@ -206,7 +206,7 @@ def api_metrics_history(
     return [{"timestamp": ts, "value": v} for ts, v in history]
 
 @app.get("/api/available_metrics")
-def api_available_metrics(
+uef api_available_metrics(
     limit: int = 100,
 ):
     """Get a list of all metrics/solver combos. by default limits the output to 100"""

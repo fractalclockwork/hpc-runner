@@ -73,13 +73,14 @@ def page_home() -> None:
     st.header("HPC Regression Platform")
     st.write("Metrics for each solver over the entire job history.")
 
-    available: list[dict[str, str]]  = requests.get(API_URL + "/" + solver_name + "/" + metric_name).json()
-    available = get_available_metrics()
+    #available = get_available_metrics()
+    available: list[dict[str, str]]  = requests.get(API_URL + "/api/available_metrics").json()
     if not available:
         st.info("No metrics data yet. Run jobs via Run Jobs or the CLI to collect metrics.")
         return
 
-    options = [f"{solver} / {metric}" for solver, metric in available]
+    print(available)
+    options = [f"{dictionary['solver']} / {dictionary['metric']}" for dictionary in available]
     selected = st.selectbox(
         "Select solver and metric to view",
         options=options,
@@ -190,16 +191,16 @@ def page_run_jobs() -> None:
         systems: list[dict[str, Any]]  = requests.get(API_URL + "/api/systems").json()
         solvers: list[dict[str, Any]]  = requests.get(API_URL + "/api/solvers").json()
         jobs: list[dict[str, Any]]  = requests.get(API_URL + "/api/jobs").json()
-    except ConfigError as e:
-        st.error(f"Config error: {e}")
-        return
+    except requests.exception.RequestException as e:
+        print(f"Error making request: {e}")
 
-    job_list = list(jobs.values())
+    print(f"jobs: {jobs}")
+    job_list = jobs
     if not job_list:
         st.warning("No jobs configured. Add jobs in configs/jobs/.")
         return
 
-    job_names = [j.name for j in job_list]
+    job_names = [j["name"] for j in job_list]
     selected = st.multiselect(
         "Select jobs to run",
         options=job_names,
@@ -218,12 +219,21 @@ def page_run_jobs() -> None:
         if not to_run:
             st.warning("Select at least one job.")
         else:
-            job_objs = [j for j in job_list if j.name in to_run]
-            with st.spinner(f"Running {len(job_objs)} job(s)…"):
-                results = run_jobs(job_objs, solvers, systems)
-                init_db(DB_PATH)
-                for r in results:
-                    store_run(DB_PATH, r)
+            with st.spinner(f"Running {len(job_names)} job(s)…"):
+                # results = run_jobs(job_objs, solvers, systems)
+                # use the post request to run jobs
+                payload = {"jobs": to_run}
+                try:
+                    # Make the POST request with JSON body
+                    response = requests.post(
+                        endpoint,
+                        json=payload
+                    )
+
+                    # Check if request was successful
+                    response.raise_for_status()
+                except requests.exception.RequestException as e:
+                    print(f"Error making request: {e}")
 
             st.session_state.run_job_results = results
             st.rerun()

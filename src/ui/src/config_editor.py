@@ -6,6 +6,7 @@ import yaml
 from dataclasses import dataclass
 from pathlib import Path
 
+
 def get_project_root() -> Path:
     """Find project root by walking up to directory containing pyproject.toml and configs/."""
     p = Path(__file__).resolve()
@@ -21,6 +22,8 @@ def get_project_root() -> Path:
 def get_config_dir() -> Path:
     """Return path to configs directory."""
     return get_project_root() / "configs"
+
+CONFIGS_DIR = get_config_dir()
 
 @dataclass
 class ConfigFile:
