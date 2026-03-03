@@ -79,7 +79,6 @@ def page_home() -> None:
         st.info("No metrics data yet. Run jobs via Run Jobs or the CLI to collect metrics.")
         return
 
-    print(available)
     options = [f"{dictionary['solver']} / {dictionary['metric']}" for dictionary in available]
     selected = st.selectbox(
         "Select solver and metric to view",
