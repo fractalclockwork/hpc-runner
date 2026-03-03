@@ -97,16 +97,13 @@ def page_home() -> None:
 
     idx = options.index(selected)
     solver_name, metric_name = available[idx]["solver"], available[idx]["metric"]
-    print(available)
     # history = get_metric_history(solver_name, metric_name, limit=500)
-    print(API_URL + "/api/metrics/" + solver_name + "/" + metric_name)
 
     try:
         history: list[dict[str, Any]]  = requests.get(API_URL + "/api/metrics/" + solver_name + "/" + metric_name).json()
     except requests.exceptions.RequestException as e:
 
         print(f"Error making request: {e}")
-    print(f"history: {history}")
 
 
     if not history:
@@ -140,7 +137,6 @@ def page_run_history() -> None:
         st.info("No runs in database.")
         return
 
-    print(f"runs_all: {runs_all}")
     solvers = sorted({r["solver_name"] for r in runs_all})
     processors = sorted({r.get("processor") or "unknown" for r in runs_all})
 
@@ -163,7 +159,6 @@ def page_run_history() -> None:
         truncated_names = [name[:8] + '...' if len(name) > 8 else name for name in row_names]
         # idk way its very wonky trying to use the timestamp as the row name
         row_names = [i for i in range(len(filtered))]
-        print((row_names, column_names))
         data = []
         # blegh this will have NaN data if some dates are missing metrics
         for i in range(len(filtered)):
@@ -181,7 +176,6 @@ def page_run_history() -> None:
         numeric_df = numeric_df.dropna(axis=1, how="all")
         normalized = (numeric_df - numeric_df.min()) / (numeric_df.max() - numeric_df.min())
         normalized = normalized.fillna(0)
-        print(normalized)
         fig = go.Figure(data=go.Heatmap(
             customdata=numeric_df,
             z=normalized,
@@ -250,7 +244,6 @@ def page_run_jobs() -> None:
     except requests.exceptions.RequestException as e:
         print(f"Error making request: {e}")
 
-    print(f"jobs: {jobs}")
     job_list = jobs
     if not job_list:
         st.warning("No jobs configured. Add jobs in configs/jobs/.")
@@ -290,7 +283,6 @@ def page_run_jobs() -> None:
                     # Check if request was successful
                     response.raise_for_status()
                     results = response.json()
-                    print(f"results: {results}")
                 except requests.exceptions.RequestException as e:
                     print(f"Error making request: {e}")
 
