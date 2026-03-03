@@ -8,6 +8,7 @@ import requests
 import typing
 import pandas as pd
 import plotly.graph_objects as go
+import numpy as np
 
 # Allow importing runner from the same directory when launched via `streamlit run`
 from config_editor import (  # noqa: E402
@@ -171,17 +172,23 @@ def page_run_history() -> None:
             for key, value in metrics_json.items():
                 row.append(value)
             data.append(row)
-        df = pd.DataFrame(data)
+        # descending time order is more intuitive
+        data.reverse()
+        # Min-max normalization (0 to 1)
+        df = pd.DataFrame(data, columns=column_names, index=row_names)
+        numeric_df = df.select_dtypes(include=['float64', 'int64', 'float32', 'int32'])
+        normalized = (numeric_df - numeric_df.min()) / (numeric_df.max() - numeric_df.min())
+        normalized = normalized.dropna(axis=1, how="all")
         print(df)
         fig = go.Figure(data=go.Heatmap(
-            z=data,
-            x=column_names,
-            y=row_names,
+            z=normalized,
+            x=normalized.columns,
+            y=normalized.index,
             colorscale='Viridis',
             xgap=2,  # Makes vertical gridlines
             ygap=2,  # Makes horizontal gridlines
         ))
-        st.title("Metrics Heatmap")
+        st.header("Metrics Heatmap")
         # Display in Streamlit
         st.plotly_chart(fig)
 
