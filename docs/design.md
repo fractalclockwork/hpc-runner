@@ -1,6 +1,6 @@
 # UI Design 
 Authors: Shree Patel and Shawn Schulz
-Last Updated: 28 February 2026
+Last Updated: 3 March 2026
 
 ## Objective
 This file details the goals, design, and scope of the UI components of this project. 
