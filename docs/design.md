@@ -49,7 +49,7 @@ This page details how to select and run a handful of jobs at once
 ### Page 3: Individual Test Performance
 This page details how the most recent test has performed. 
 #### Components:
-**The Graphs Brent Made Alr for Metrics per Individual Test:** This graph allows a drop down menu to select your job, and then you can see the runtime plotted. Improvements to this include being able to choose from a multiple-choice side panel to minimize the number of clicks, since users can choose multiple things to see per run.
+**Grasphs of Individual Test Metric performance:** This graph allows a drop down menu to select your job, and then you can see the runtime plotted. Improvements to this include being able to choose from a multiple-choice side panel to minimize the number of clicks, since users can choose multiple things to see per run.
 
 ### Page 4: Long-Term Trend Performance
 This page details the performance of the system, averaging across multiple tests. Results from individual tests is not within the scope of this page, and they can be included on another page for better user flow. The Long-Term trends view shows a default date range of its components, with an input for the user to set a different desired date range. This date range parameter should use streamlit's session state or other state management tool to keep this date range filter when the user clicks between tabs.  
@@ -65,8 +65,8 @@ This page details the performance of the system, averaging across multiple tests
 ![image](https://github.berkeley.edu/Chem-283/DOW-1-26/assets/3736/4f8a5252-1cac-45af-9981-3c5be5f60112) (From Texas Advanced Computing Center: High Performance Computing Test
 Harness with Jenkins 2017 presentation)
 
-### Page 5: Configuration
-This page shows settings that the user can toggle, or this could be a spot to upload configurations as well, given the needs! (Shawn: we may consider just splitting the settings for our application with another page for uploading or managing runner configurations, or just call this page "settings" and don't allow the uploading of configurations through the web UI at all. I'd lean towards the latter but it's fine either way)
+### Page 5: Settings
+This page shows basic settings that the user can edit. If more control over configurations such as uploading is required, that will also be exposed here. The settings page should primarily expose settings to configure the web browser UI and unless dictated as a requirement should avoid allowing a large number of user inputs or configuration of backend state.
 
 ## Design System
 
