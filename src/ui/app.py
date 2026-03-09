@@ -215,10 +215,13 @@ def page_run_history() -> None:
         passed = "Passed" if r.get("passed") else "Failed"
         if r.get("passed"):
             icon = "✅"
-        elif r.get("validation_errors"):
-            icon = "⚠️"
         else:
-            icon = "❌"
+            # ⚠️ only when failed due to validation (non-empty validation_errors)
+            try:
+                errs = json.loads(r.get("validation_errors") or "[]")
+                icon = "⚠️" if (isinstance(errs, list) and len(errs) > 0) else "❌"
+            except (json.JSONDecodeError, TypeError):
+                icon = "❌"
         with st.expander(f"{icon} {r['job_name']} — {passed} ({r.get('timestamp', '')})"):
             st.write(f"**Solver:** {r['solver_name']} | **System:** {r['system_name']} | **Returncode:** {r.get('returncode')} | **Runtime:** {r.get('runtime_seconds')}s")
             if r.get("stdout"):
@@ -278,6 +281,7 @@ def page_run_jobs() -> None:
     ]
     schedule_df = pd.DataFrame(schedule_data)
     with st.expander("Job schedule", expanded=True):
+        _testid("run-jobs-schedule")
         st.caption("When each job is configured to run (cron or manual).")
         st.dataframe(schedule_df, use_container_width=True, hide_index=True)
 
