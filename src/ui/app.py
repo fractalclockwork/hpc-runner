@@ -276,13 +276,13 @@ def page_run_jobs() -> None:
         st.warning("No jobs configured. Add jobs in configs/jobs/.")
         return
 
-    # Job schedule summary
+    # Job schedule summary # test
     schedule_data = [
         {
-            "Job": j.name,
-            "Solver": j.solver,
-            "System": j.system,
-            "Schedule": j.schedule if j.schedule else "Manual",
+            "Job": j["name"],
+            "Solver": j["solver"],
+            "System": j["system"],
+            "Schedule": j.get("schedule") or "Manual",
         }
         for j in job_list
     ]
@@ -339,15 +339,15 @@ def page_run_jobs() -> None:
         for r in results:
             if r['passed']:
                 status, icon = "Passed", "✅"
-            elif r.returncode != 0:
+            elif r.get("returncode", 0) != 0:
                 status, icon = "Run failed", "❌"  # system/process failure
-            elif getattr(r, "validation_errors", None) and r.validation_errors:
+            elif r.get("validation_errors"):
                 status, icon = "Validation failed", "⚠️"  # validation only (returncode was 0)
             else:
                 status, icon = "Run failed", "❌"
             st.write(f"{icon} **{r['job_name']}** — {status} (returncode={r['returncode']}, runtime={r['runtime_seconds']:.2f}s)")
-            if getattr(r, "validation_errors", None) and r['validation_errors']:
-                for err in r.validation_errors:
+            if r.get("validation_errors"):
+                for err in (r.get("validation_errors") or []):
                     st.caption(f"  • {err}")
 
 
