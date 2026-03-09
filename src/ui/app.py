@@ -245,13 +245,19 @@ def page_run_history() -> None:
                 except json.JSONDecodeError:
                     st.text(r["metrics_json"])
             # if validation errors are present, show them
-            if r.get("validation_errors") and r.get("validation_errors") != "[]":
-                try:
-                    validation_errors = json.loads(r["validation_errors"])
+            raw_errors = r.get("validation_errors")
+            if raw_errors and raw_errors != "[]":
+                if isinstance(raw_errors, str):
+                    try:
+                        validation_errors = json.loads(raw_errors)
+                        st.subheader("Validation Errors")
+                        st.json(validation_errors)
+                    except json.JSONDecodeError:
+                        st.subheader("Validation Errors")
+                        st.text(raw_errors)
+                else:
                     st.subheader("Validation Errors")
-                    st.json(validation_errors)
-                except json.JSONDecodeError:
-                    st.text(r["validation_errors"])
+                    st.json(raw_errors)
 
 
 # ---------------------------------------------------------------------------
