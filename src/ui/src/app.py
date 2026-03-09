@@ -424,10 +424,10 @@ def page_configs() -> None:
 
 def single_solver_heatmap(filtered, solver_name: str = ""):
     column_names = [key for key in json.loads(filtered[0]['metrics_json'])]
- #   row_names = [x['timestamp'] for x in filtered]
+    row_names = [x['timestamp'] for x in filtered]
  #   truncated_names = [name[:8] + '...' if len(name) > 8 else name for name in row_names]
     # idk way its very wonky trying to use the timestamp as the row name
-    row_names = [i for i in range(len(filtered))]
+    #row_names = [i for i in range(len(filtered))]
     data = []
     # blegh this will have NaN data if some dates are missing metrics
     for i in range(len(filtered)):
@@ -446,8 +446,10 @@ def single_solver_heatmap(filtered, solver_name: str = ""):
     numeric_df = numeric_df.dropna(axis=1, how="all")
     normalized = (numeric_df - numeric_df.min()) / (numeric_df.max() - numeric_df.min())
     normalized = normalized.fillna(0)
+    normalized= normalized.transpose()
+    print(normalized)
     fig = go.Figure(data=go.Heatmap(
-        customdata=numeric_df,
+        customdata=numeric_df.transpose(),
         z=normalized,
         x=normalized.columns,
         y=normalized.index,
@@ -456,7 +458,12 @@ def single_solver_heatmap(filtered, solver_name: str = ""):
         ygap=2,  # Makes horizontal gridlines
         hovertemplate='Non-Normalized Value: %{customdata:.4f}<extra></extra>',
     ))
-    st.header(f"Single Metric Heatmap",help="Heatmap compares numeric metrics using per metric normalized values. You can hover over to see the true value for reference.")
+    fig.update_layout(
+        xaxis=dict(
+            type="category"
+        )
+    )
+    st.header(f"Single Metric Heatmap",help="Heatmap compares numeric metrics for a single solver using per metric normalized values. You can hover over to see the true value for reference.")
     # Display in Streamlit
     st.plotly_chart(fig)
 
@@ -488,8 +495,9 @@ def multi_solver_heatmap(metric_name: str, filtered):
     df = pd.DataFrame(data, index=row_names)
     print(df)
     pivot = pd.pivot_table(df, values = 0, columns = 3, index = 1)
-    pivot = pivot.reset_index()
-    pivot = pivot.drop(labels = 1, axis = 1)
+    # pivot = pivot.reset_index()
+    #pivot = pivot.drop(labels = 1, axis = 1)
+    pivot = pivot.transpose()
     print(pivot)
     #numeric_df = df.apply(pd.to_numeric, errors='coerce')
     ## numeric_df = df.select_dtypes(include=['float64', 'int64', 'float32', 'int32'])
@@ -502,10 +510,16 @@ def multi_solver_heatmap(metric_name: str, filtered):
         x=pivot.columns,
         y=pivot.index,
         colorscale='Viridis',
+        hovertemplate='Non-Normalized Value: %{customdata:.4f}<extra></extra>',
         xgap=2,  # Makes vertical gridlines
         ygap=2,  # Makes horizontal gridlines
-        hovertemplate='Non-Normalized Value: %{customdata:.4f}<extra></extra>',
     ))
+
+    fig.update_layout(
+        xaxis=dict(
+            type="category"
+        )
+    )
     st.header(f"{metric_name} Heatmap",help=f"Heatmap compares the shared metric {metric_name} for all solvers with available data for that metic.")
     # Display in Streamlit
     st.plotly_chart(fig)
