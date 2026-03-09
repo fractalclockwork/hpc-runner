@@ -68,10 +68,6 @@ Harness with Jenkins 2017 presentation)
 ### Page 5: Settings
 This page shows basic settings that the user can edit. If more control over configurations such as uploading is required, that will also be exposed here. The settings page should primarily expose settings to configure the web browser UI and unless dictated as a requirement should avoid allowing a large number of user inputs or configuration of backend state.
 
-## Design System
-
-The UI should have a clear, consistent and appealing visual theme and design language. Streamlit has its own configuration file that includes the ability to configure the theme (see https://docs.streamlit.io/develop/concepts/configuration/theming#working-with-theme-configuration-during-development and https://docs.streamlit.io/develop/api-reference/configuration/config.toml#theme) which should be the preferred method of modifying the visual theme of the UI. Note, it is also possible to fully customize the visual look of any component in streamlit, which can be done by loading a .css file with custom styling for a streamlit component. If a particular styling is desired outside of what is easy to configure using streamlit, note that you can use this method: https://medium.com/pythoneers/how-to-customize-css-in-streamlit-a-step-by-step-guide-761375318e05. 
-
 Fonts: Streamlit basic font is fine imo
 
 Forms: For buttons, I think they should be in a different blue color for user attention.

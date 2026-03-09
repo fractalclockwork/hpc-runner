@@ -49,6 +49,53 @@ if "run_job_results" not in st.session_state:
     st.session_state.run_job_results = None
 
 # ---------------------------------------------------------------------------
+# Global theme overrides (dark sidebar, card styles)
+# ---------------------------------------------------------------------------
+st.markdown(
+    """
+    <style>
+    /* ── Dark sidebar ── */
+    section[data-testid="stSidebar"],
+    section[data-testid="stSidebar"] > div:first-child {
+        background-color: #111827;
+    }
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] span,
+    section[data-testid="stSidebar"] h1,
+    section[data-testid="stSidebar"] h2,
+    section[data-testid="stSidebar"] h3 {
+        color: rgba(255, 255, 255, 0.85) !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stRadio"] label {
+        border-radius: 6px;
+        padding: 0.35rem 0.75rem;
+        transition: background-color 0.15s ease;
+    }
+    section[data-testid="stSidebar"] [data-testid="stRadio"] label:hover {
+        background-color: rgba(255, 255, 255, 0.07);
+    }
+    /* ── Metric cards ── */
+    [data-testid="metric-container"] {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
+    }
+    /* ── Expanders ── */
+    details {
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 8px !important;
+    }
+    /* ── Dividers ── */
+    hr { border-color: #E2E8F0; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ---------------------------------------------------------------------------
 # Sidebar navigation
 # ---------------------------------------------------------------------------
 PAGES = ["Home", "Run Jobs", "Run History", "Tests", "Configs"]
