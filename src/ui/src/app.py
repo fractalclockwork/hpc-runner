@@ -4,11 +4,14 @@ import sys
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 import typing
 import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
+import uuid
+import json
 
 # Allow importing runner from the same directory when launched via `streamlit run`
 from config_editor import (  # noqa: E402
@@ -76,7 +79,6 @@ def page_home() -> None:
     st.header("HPC Regression Platform")
     st.write("Metrics for each solver over the entire job history.")
 
-    #available = get_available_metrics()
     try:
         available: list[dict[str, str]]  = requests.get(API_URL + "/api/available_metrics").json()
     except requests.exceptions.RequestException as e:
@@ -91,6 +93,7 @@ def page_home() -> None:
         "Select solver and metric to view",
         options=options,
         key="home-metric-select",
+        help="Solver metric combinations are defined in the backend configuration .yaml files. To add more, edit your configuration files on your backen host's filesystem.",
     )
     if not selected:
         return
@@ -152,48 +155,14 @@ def page_run_history() -> None:
     params = {"solver": solver_arg, "processor": processor_arg}
     filtered = requests.get(API_URL + "/api/runs", params=params).json()
     # filtered = get_runs(DB_PATH, solver=solver_arg, processor=processor_arg, limit=100)
-    import json
     if solver_filter != "(all)":
-        column_names = [key for key in json.loads(filtered[0]['metrics_json'])]
-        row_names = [x['timestamp'] for x in filtered]
-        truncated_names = [name[:8] + '...' if len(name) > 8 else name for name in row_names]
-        # idk way its very wonky trying to use the timestamp as the row name
-        row_names = [i for i in range(len(filtered))]
-        data = []
-        # blegh this will have NaN data if some dates are missing metrics
-        for i in range(len(filtered)):
-            row = []
-            metrics_json = json.loads(filtered[i]['metrics_json'])
-            for key, value in metrics_json.items():
-                row.append(value)
-            data.append(row)
-        # descending time order is more intuitive
-        data.reverse()
-        # Min-max normalization (0 to 1)
-        df = pd.DataFrame(data, columns=column_names, index=row_names)
-        numeric_df = df.apply(pd.to_numeric, errors='coerce')
-        # numeric_df = df.select_dtypes(include=['float64', 'int64', 'float32', 'int32'])
-        numeric_df = numeric_df.dropna(axis=1, how="all")
-        normalized = (numeric_df - numeric_df.min()) / (numeric_df.max() - numeric_df.min())
-        normalized = normalized.fillna(0)
-        fig = go.Figure(data=go.Heatmap(
-            customdata=numeric_df,
-            z=normalized,
-            x=normalized.columns,
-            y=normalized.index,
-            colorscale='Viridis',
-            xgap=2,  # Makes vertical gridlines
-            ygap=2,  # Makes horizontal gridlines
-            hovertemplate='Non-Normalized Value: %{customdata:.4f}<extra></extra>',
-        ))
-        st.header(f"{solver_filter} Metrics Heatmap",help="Heatmap compares numeric metrics using per metric normalized values. You can hover over to see the true value for reference")
-        # Display in Streamlit
-        st.plotly_chart(fig)
+        single_solver_heatmap(filtered)
+    else:
+        multi_solver_heatmap("runtime_seconds", filtered)
 
 
     st.write(f"Showing {len(filtered)} run(s)")
 
-    import json
     for r in filtered:
         passed = "Passed" if r.get("passed") else "Failed"
         if r.get("passed"):
@@ -255,6 +224,7 @@ def page_run_jobs() -> None:
         options=job_names,
         default=job_names,
         key="run-jobs-select",
+        help = "Solver and job configurations are defined in /configs/solvers and /configs/jobs respectively. Once a job is properly configured and validated, it will appear here. Please apply validation to check if your configuration is valid if it does not appear in the list."
     )
 
     col1, col2, col3 = st.columns([1, 1, 4])
@@ -435,7 +405,7 @@ def page_configs() -> None:
 #        st.info("No test results yet. Click Run Test above to execute the suite.")
 #        return
 #
-#    result = st.session_state.test_result
+#    result = st.session_state.test_resul
 #
 #    if result.success:
 #        st.success(f"All tests passed  (exit code {result.returncode})")
@@ -452,6 +422,93 @@ def page_configs() -> None:
 #        st.subheader("stderr")
 #        st.code(result.stderr, language="text")
 
+def single_solver_heatmap(filtered, solver_name: str = ""):
+    column_names = [key for key in json.loads(filtered[0]['metrics_json'])]
+ #   row_names = [x['timestamp'] for x in filtered]
+ #   truncated_names = [name[:8] + '...' if len(name) > 8 else name for name in row_names]
+    # idk way its very wonky trying to use the timestamp as the row name
+    row_names = [i for i in range(len(filtered))]
+    data = []
+    # blegh this will have NaN data if some dates are missing metrics
+    for i in range(len(filtered)):
+        row = []
+        metrics_json = json.loads(filtered[i]['metrics_json'])
+        for key, value in metrics_json.items():
+            row.append(value)
+        data.append(row)
+    # descending time order is more intuitive
+    data.reverse()
+    # Min-max normalization (0 to 1)
+    df = pd.DataFrame(data, columns=column_names, index=row_names)
+    print(df)
+    numeric_df = df.apply(pd.to_numeric, errors='coerce')
+    # numeric_df = df.select_dtypes(include=['float64', 'int64', 'float32', 'int32'])
+    numeric_df = numeric_df.dropna(axis=1, how="all")
+    normalized = (numeric_df - numeric_df.min()) / (numeric_df.max() - numeric_df.min())
+    normalized = normalized.fillna(0)
+    fig = go.Figure(data=go.Heatmap(
+        customdata=numeric_df,
+        z=normalized,
+        x=normalized.columns,
+        y=normalized.index,
+        colorscale='Viridis',
+        xgap=2,  # Makes vertical gridlines
+        ygap=2,  # Makes horizontal gridlines
+        hovertemplate='Non-Normalized Value: %{customdata:.4f}<extra></extra>',
+    ))
+    st.header(f"Single Metric Heatmap",help="Heatmap compares numeric metrics using per metric normalized values. You can hover over to see the true value for reference.")
+    # Display in Streamlit
+    st.plotly_chart(fig)
+
+def multi_solver_heatmap(metric_name: str, filtered):
+    solvers: list[dict[str, Any]]  = requests.get(API_URL + "/api/solvers").json()
+    column_names = [x['name'] for x in solvers]
+#    row_names = [x['timestamp'] for x in filtered]
+#    truncated_names = [name[:8] + '...' if len(name) > 8 else name for name in row_names]
+    # idk way its very wonky trying to use the timestamp as the row name
+    row_names = [i for i in range(len(filtered))]
+    data = []
+    # blegh this will have NaN data if some dates are missing metrics
+    for i in range(len(filtered)):
+        solver_name = filtered[i]['solver_name']
+        row = []
+        metrics_json = json.loads(filtered[i]['metrics_json'])
+        for key, value in metrics_json.items():
+            if key == metric_name:
+                row.append(value)
+        # row.append(filtered[i]['name'])
+                row.append(filtered[i]['timestamp'][:10])
+                row.append(metric_name)
+                row.append(solver_name)
+
+        data.append(row)
+    # descending time order is more intuitive
+    data.reverse()
+    # Min-max normalization (0 to 1)
+    df = pd.DataFrame(data, index=row_names)
+    print(df)
+    pivot = pd.pivot_table(df, values = 0, columns = 3, index = 1)
+    pivot = pivot.reset_index()
+    pivot = pivot.drop(labels = 1, axis = 1)
+    print(pivot)
+    #numeric_df = df.apply(pd.to_numeric, errors='coerce')
+    ## numeric_df = df.select_dtypes(include=['float64', 'int64', 'float32', 'int32'])
+    #numeric_df = numeric_df.dropna(axis=1, how="all")
+    #normalized = (numeric_df - numeric_df.min()) / (numeric_df.max() - numeric_df.min())
+    #normalized = normalized.fillna(0)
+    fig = go.Figure(data=go.Heatmap(
+        customdata=pivot,
+        z=pivot,
+        x=pivot.columns,
+        y=pivot.index,
+        colorscale='Viridis',
+        xgap=2,  # Makes vertical gridlines
+        ygap=2,  # Makes horizontal gridlines
+        hovertemplate='Non-Normalized Value: %{customdata:.4f}<extra></extra>',
+    ))
+    st.header(f"{metric_name} Heatmap",help=f"Heatmap compares the shared metric {metric_name} for all solvers with available data for that metic.")
+    # Display in Streamlit
+    st.plotly_chart(fig)
 
 # ---------------------------------------------------------------------------
 # Router
