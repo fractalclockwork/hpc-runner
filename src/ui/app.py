@@ -2,6 +2,7 @@
 
 import sys
 from pathlib import Path
+import pandas as pd
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -214,10 +215,20 @@ def page_run_history() -> None:
         passed = "Passed" if r.get("passed") else "Failed"
         if r.get("passed"):
             icon = "✅"
-        elif r.get("validation_errors"):
-            icon = "⚠️"
         else:
-            icon = "❌"
+            # ❌ if system failed (returncode != 0); ⚠️ only when failed solely due to validation
+            returncode = r.get("returncode", 0)
+            try:
+                errs = json.loads(r.get("validation_errors") or "[]")
+                has_validation_errors = isinstance(errs, list) and len(errs) > 0
+            except (json.JSONDecodeError, TypeError):
+                has_validation_errors = False
+            if returncode != 0:
+                icon = "❌"  # system/run failed (e.g. crash, non-zero exit)
+            elif has_validation_errors:
+                icon = "⚠️"  # validation only (returncode was 0 but metrics out of range)
+            else:
+                icon = "❌"
         with st.expander(f"{icon} {r['job_name']} — {passed} ({r.get('timestamp', '')})"):
             st.write(f"**Solver:** {r['solver_name']} | **System:** {r['system_name']} | **Returncode:** {r.get('returncode')} | **Runtime:** {r.get('runtime_seconds')}s")
             if r.get("stdout"):
@@ -234,13 +245,19 @@ def page_run_history() -> None:
                 except json.JSONDecodeError:
                     st.text(r["metrics_json"])
             # if validation errors are present, show them
-            if r.get("validation_errors") and r.get("validation_errors") != "[]":
-                try:
-                    validation_errors = json.loads(r["validation_errors"])
+            raw_errors = r.get("validation_errors")
+            if raw_errors and raw_errors != "[]":
+                if isinstance(raw_errors, str):
+                    try:
+                        validation_errors = json.loads(raw_errors)
+                        st.subheader("Validation Errors")
+                        st.json(validation_errors)
+                    except json.JSONDecodeError:
+                        st.subheader("Validation Errors")
+                        st.text(raw_errors)
+                else:
                     st.subheader("Validation Errors")
-                    st.json(validation_errors)
-                except json.JSONDecodeError:
-                    st.text(r["validation_errors"])
+                    st.json(raw_errors)
 
 
 # ---------------------------------------------------------------------------
@@ -265,7 +282,23 @@ def page_run_jobs() -> None:
         st.warning("No jobs configured. Add jobs in configs/jobs/.")
         return
 
-    job_names = [j["name"] for j in job_list]
+    # Job schedule summary # test
+    schedule_data = [
+        {
+            "Job": j["name"],
+            "Solver": j["solver"],
+            "System": j["system"],
+            "Schedule": j.get("schedule") or "Manual",
+        }
+        for j in job_list
+    ]
+    schedule_df = pd.DataFrame(schedule_data)
+    with st.expander("Job schedule", expanded=True):
+        _testid("run-jobs-schedule")
+        st.caption("When each job is configured to run (cron or manual).")
+        st.dataframe(schedule_df, use_container_width=True, hide_index=True)
+
+    job_names = [j["name"] for j in job_list] 
     selected = st.multiselect(
         "Select jobs to run",
         options=job_names,
@@ -312,13 +345,15 @@ def page_run_jobs() -> None:
         for r in results:
             if r['passed']:
                 status, icon = "Passed", "✅"
-            elif getattr(r, "validation_errors", None):
-                status, icon = "Validation failed", "⚠️"
+            elif r.get("returncode", 0) != 0:
+                status, icon = "Run failed", "❌"  # system/process failure
+            elif r.get("validation_errors"):
+                status, icon = "Validation failed", "⚠️"  # validation only (returncode was 0)
             else:
                 status, icon = "Run failed", "❌"
             st.write(f"{icon} **{r['job_name']}** — {status} (returncode={r['returncode']}, runtime={r['runtime_seconds']:.2f}s)")
-            if getattr(r, "validation_errors", None) and r['validation_errors']:
-                for err in r.validation_errors:
+            if r.get("validation_errors"):
+                for err in (r.get("validation_errors") or []):
                     st.caption(f"  • {err}")
 
 
