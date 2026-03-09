@@ -2,6 +2,7 @@
 
 import sys
 from pathlib import Path
+import pandas as pd
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -265,7 +266,22 @@ def page_run_jobs() -> None:
         st.warning("No jobs configured. Add jobs in configs/jobs/.")
         return
 
-    job_names = [j["name"] for j in job_list]
+    # Job schedule summary
+    schedule_data = [
+        {
+            "Job": j.name,
+            "Solver": j.solver,
+            "System": j.system,
+            "Schedule": j.schedule if j.schedule else "Manual",
+        }
+        for j in job_list
+    ]
+    schedule_df = pd.DataFrame(schedule_data)
+    with st.expander("Job schedule", expanded=True):
+        st.caption("When each job is configured to run (cron or manual).")
+        st.dataframe(schedule_df, use_container_width=True, hide_index=True)
+
+    job_names = [j["name"] for j in job_list] 
     selected = st.multiselect(
         "Select jobs to run",
         options=job_names,
