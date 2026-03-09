@@ -216,11 +216,18 @@ def page_run_history() -> None:
         if r.get("passed"):
             icon = "✅"
         else:
-            # ⚠️ only when failed due to validation (non-empty validation_errors)
+            # ❌ if system failed (returncode != 0); ⚠️ only when failed solely due to validation
+            returncode = r.get("returncode", 0)
             try:
                 errs = json.loads(r.get("validation_errors") or "[]")
-                icon = "⚠️" if (isinstance(errs, list) and len(errs) > 0) else "❌"
+                has_validation_errors = isinstance(errs, list) and len(errs) > 0
             except (json.JSONDecodeError, TypeError):
+                has_validation_errors = False
+            if returncode != 0:
+                icon = "❌"  # system/run failed (e.g. crash, non-zero exit)
+            elif has_validation_errors:
+                icon = "⚠️"  # validation only (returncode was 0 but metrics out of range)
+            else:
                 icon = "❌"
         with st.expander(f"{icon} {r['job_name']} — {passed} ({r.get('timestamp', '')})"):
             st.write(f"**Solver:** {r['solver_name']} | **System:** {r['system_name']} | **Returncode:** {r.get('returncode')} | **Runtime:** {r.get('runtime_seconds')}s")
@@ -332,8 +339,10 @@ def page_run_jobs() -> None:
         for r in results:
             if r['passed']:
                 status, icon = "Passed", "✅"
-            elif getattr(r, "validation_errors", None):
-                status, icon = "Validation failed", "⚠️"
+            elif r.returncode != 0:
+                status, icon = "Run failed", "❌"  # system/process failure
+            elif getattr(r, "validation_errors", None) and r.validation_errors:
+                status, icon = "Validation failed", "⚠️"  # validation only (returncode was 0)
             else:
                 status, icon = "Run failed", "❌"
             st.write(f"{icon} **{r['job_name']}** — {status} (returncode={r['returncode']}, runtime={r['runtime_seconds']:.2f}s)")
