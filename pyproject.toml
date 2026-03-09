@@ -7,6 +7,7 @@ dependencies = [
     "streamlit>=1.35.0",
     "harness",
     "basic_restapi",
+    "plotly>=6.6.0",
 ]
 
 [tool.uv.workspace]

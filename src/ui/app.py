@@ -20,7 +20,9 @@ from config_editor import (  # noqa: E402
 from metrics_dashboard import (  # noqa: E402
     get_available_metrics,
     get_metric_history,
+    get_runtime_trend_data,
 )
+from charts import render_runtime_trend  # noqa: E402
 
 from harness import get_db_path
 
@@ -51,7 +53,7 @@ if "run_job_results" not in st.session_state:
 # ---------------------------------------------------------------------------
 # Sidebar navigation
 # ---------------------------------------------------------------------------
-PAGES = ["Home", "Run Jobs", "Run History", "Tests", "Configs"]
+PAGES = ["Home", "Run Jobs", "Run History", "Long-Term Trends", "Tests", "Configs"]
 
 st.sidebar.markdown(
     '<span data-testid="nav-sidebar" style="display:none" aria-hidden="true"></span>',
@@ -363,6 +365,90 @@ def page_configs() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Page: Long-Term Trends (Page 4)
+# ---------------------------------------------------------------------------
+
+def page_long_term_trends() -> None:
+    _testid("page-long-term-trends")
+    st.header("Long-Term Trends")
+    st.write("Performance of solvers over time. Use the sidebar to filter by solver, system, and date range.")
+
+    df_all = get_runtime_trend_data(str(DB_PATH))
+
+    if df_all.empty:
+        st.info("No run data available yet. Run jobs via Run Jobs or the CLI to collect data.")
+        return
+
+    # --- Sidebar filters ---------------------------------------------------
+    all_solvers = sorted(df_all["solver_name"].unique().tolist())
+    all_systems = sorted(df_all["system_name"].unique().tolist())
+
+    min_date = df_all["timestamp"].dt.date.min()
+    max_date = df_all["timestamp"].dt.date.max()
+
+    # Persist date range in session state so it survives page navigation
+    if "trend_date_start" not in st.session_state:
+        st.session_state.trend_date_start = min_date
+    if "trend_date_end" not in st.session_state:
+        st.session_state.trend_date_end = max_date
+
+    st.sidebar.markdown("### Long-Term Trends Filters")
+
+    selected_solvers = st.sidebar.multiselect(
+        "Solver(s)",
+        options=all_solvers,
+        default=all_solvers,
+        key="trend-solver-filter",
+    )
+    selected_systems = st.sidebar.multiselect(
+        "System(s)",
+        options=all_systems,
+        default=all_systems,
+        key="trend-system-filter",
+    )
+    date_range = st.sidebar.date_input(
+        "Date range",
+        value=(st.session_state.trend_date_start, st.session_state.trend_date_end),
+        min_value=min_date,
+        max_value=max_date,
+        key="trend-date-filter",
+    )
+
+    # Update session state whenever the widget changes
+    if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
+        st.session_state.trend_date_start = date_range[0]
+        st.session_state.trend_date_end = date_range[1]
+        start_date, end_date = date_range
+    else:
+        start_date = end_date = date_range[0] if date_range else min_date
+
+    # --- Filter DataFrame --------------------------------------------------
+    import pandas as pd
+
+    mask = (
+        df_all["solver_name"].isin(selected_solvers)
+        & df_all["system_name"].isin(selected_systems)
+        & (df_all["timestamp"].dt.date >= start_date)
+        & (df_all["timestamp"].dt.date <= end_date)
+    )
+    df_filtered = df_all[mask]
+
+    # --- Runtime trend chart -----------------------------------------------
+    st.subheader("Runtime (wall-clock) Trend")
+    render_runtime_trend(df_filtered)
+
+    # --- Raw data expander -------------------------------------------------
+    with st.expander("View raw data"):
+        if df_filtered.empty:
+            st.info("No rows match the current filters.")
+        else:
+            st.dataframe(
+                df_filtered[["timestamp", "solver_name", "system_name", "job_name", "runtime_seconds", "passed"]],
+                use_container_width=True,
+            )
+
+
+# ---------------------------------------------------------------------------
 # Page: Tests
 # ---------------------------------------------------------------------------
 
@@ -413,6 +499,8 @@ elif st.session_state.page == "Run Jobs":
     page_run_jobs()
 elif st.session_state.page == "Run History":
     page_run_history()
+elif st.session_state.page == "Long-Term Trends":
+    page_long_term_trends()
 elif st.session_state.page == "Tests":
     page_tests()
 elif st.session_state.page == "Configs":
