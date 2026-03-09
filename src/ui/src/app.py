@@ -93,7 +93,7 @@ def page_home() -> None:
         "Select solver and metric to view",
         options=options,
         key="home-metric-select",
-        help="Solver metric combinations are defined in the backend configuration .yaml files. To add more, edit your configuration files on your backen host's filesystem.",
+        help="Solver metric combinations are defined in the backend configuration .yaml files. To add more, edit your configuration files on your backend host's filesystem.",
     )
     if not selected:
         return
@@ -118,7 +118,7 @@ def page_home() -> None:
     df = pd.DataFrame(history, columns=["timestamp", "value"])
     df = df.set_index("timestamp")
 
-    st.subheader(f"{solver_name} — {metric_name}")
+    st.subheader(f"{solver_name} — {metric_name}", help = "Displays a single variable line chart for the solver/metric combination showing time series changes for the metric.")
     st.line_chart(df)
 
     with st.expander("View raw data"):
@@ -463,9 +463,11 @@ def single_solver_heatmap(filtered, solver_name: str = ""):
             type="category"
         )
     )
-    st.header(f"Single Metric Heatmap",help="Heatmap compares numeric metrics for a single solver using per metric normalized values. You can hover over to see the true value for reference.")
+    st.header(f"Single Metric Heatmap",help="Heatmap compares numeric metrics for a single solver using per metric normalized values. You can hover over to see the non-normalized value for reference.  The raw data table shows non normalized values for each metric.")
     # Display in Streamlit
     st.plotly_chart(fig)
+    with st.expander("View raw data"):
+        st.dataframe(numeric_df, use_container_width=True)
 
 def multi_solver_heatmap(metric_name: str, filtered):
     solvers: list[dict[str, Any]]  = requests.get(API_URL + "/api/solvers").json()
@@ -520,9 +522,11 @@ def multi_solver_heatmap(metric_name: str, filtered):
             type="category"
         )
     )
-    st.header(f"{metric_name} Heatmap",help=f"Heatmap compares the shared metric {metric_name} for all solvers with available data for that metic.")
+    st.header(f"{metric_name} Heatmap",help=f"Heatmap compares the shared metric {metric_name} for all solvers with available data for that metic. The raw data table shows daily metrics information for the shared metric across solvers")
     # Display in Streamlit
     st.plotly_chart(fig)
+    with st.expander("View raw data"):
+        st.dataframe(df, use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # Router
