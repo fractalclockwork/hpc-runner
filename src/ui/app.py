@@ -109,29 +109,61 @@ st.markdown(
 # ---------------------------------------------------------------------------
 # Sidebar navigation
 # ---------------------------------------------------------------------------
-PAGES = ["Home", "Run Jobs", "Run History", "Long-Term Trends", "Configs"]
+PAGES = ["Home", "Run Jobs", "Individual Trends", "Run History", "Long-Term Trends", "Configs"]
 
 st.sidebar.markdown(
     '<span data-testid="nav-sidebar" style="display:none" aria-hidden="true"></span>',
     unsafe_allow_html=True,
 )
-st.sidebar.title("Navigation")
+st.sidebar.title("HPC Regression Testing Platform")
+st.sidebar.markdown("---")
 page_index = PAGES.index(st.session_state.page) if st.session_state.page in PAGES else 0
 selected_page = st.sidebar.radio(
     "Go to",
     PAGES,
     index=page_index,
-    key="nav-pages",
 )
 st.session_state.page = selected_page
 
 # ---------------------------------------------------------------------------
-# Page: Home (Metrics over job history)
+# Page: Home
 # ---------------------------------------------------------------------------
 
 def page_home() -> None:
     _testid("page-home")
-    st.header("HPC Regression Platform")
+    st.header("Welcome to the HPC Regression Testing Platform")
+
+    st.markdown(
+        """
+        The **HPC Regression Testing Platform** is an execution-agnostic harness for running
+        solver jobs and tracking their performance over time. Submit jobs through the UI or
+        the CLI, monitor runtime and throughput trends, inspect raw run history, and manage
+        your solver and job configurations — all in one place.
+
+        Solvers are treated as black-box scripts, so the platform works with any HPC workload
+        without needing access to schedulers like SLURM or MPI.
+        """
+    )
+
+    st.info(
+        "For a detailed breakdown of the system design and component architecture, see "
+        "`docs/architecture.md` in the repository."
+    )
+
+    st.markdown("")
+
+    if st.button("Get Started →", type="primary", key="home-get-started"):
+        st.session_state.page = "Run Jobs"
+        st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Page: Individual Trends (formerly Home — Metrics over job history)
+# ---------------------------------------------------------------------------
+
+def page_individual_trends() -> None:
+    _testid("page-individual-trends")
+    st.header("Individual Trends")
     st.write("Metrics for each solver over the entire job history.")
 
     available: list[dict[str, str]] = []
@@ -387,7 +419,7 @@ def page_run_jobs() -> None:
 def page_configs() -> None:
     _testid("page-configs")
     st.header("Configs")
-    st.write("View and edit jobs, resources, solvers, and systems. Edits are validated before saving.")
+    st.write("View jobs, resources, solvers, and systems configurations.")
 
     config_files = discover_config_files()
     if not config_files:
@@ -422,67 +454,7 @@ def page_configs() -> None:
         st.error(f"Cannot read file: {e}")
         return
 
-    edited = st.text_area(
-        "Edit YAML",
-        value=current_content,
-        height=400,
-        key=f"config-editor-{selected.path}",
-    )
-
-    col1, col2, col3 = st.columns([1, 1, 4])
-    def _build_temp_config(tmp_path: Path, edited_content: str) -> None:
-        """Populate temp config dir with edited file applied."""
-        for sub in ("resources", "systems", "jobs"):
-            (tmp_path / sub).mkdir(exist_ok=True)
-            src = CONFIGS_DIR / sub
-            if src.exists():
-                for f in list(src.glob("*.yaml")) + list(src.glob("*.yml")):
-                    c = edited_content if f == selected.path else f.read_text()
-                    (tmp_path / sub / f.name).write_text(c)
-        (tmp_path / "solvers").mkdir(exist_ok=True)
-        solvers_src = CONFIGS_DIR / "solvers"
-        if solvers_src.exists():
-            for d in solvers_src.iterdir():
-                if d.is_dir():
-                    (tmp_path / "solvers" / d.name).mkdir(exist_ok=True)
-                    for f in d.iterdir():
-                        if f.is_file():
-                            c = edited_content if f == selected.path else f.read_text()
-                            (tmp_path / "solvers" / d.name / f.name).write_text(c)
-
-    with col1:
-        if st.button("Validate", key="config-validate"):
-            yaml_data, yaml_err = parse_yaml(edited)
-            if yaml_err:
-                st.error(f"YAML syntax error: {yaml_err}")
-            else:
-                import tempfile
-                with tempfile.TemporaryDirectory() as tmp:
-                    tmp_path = Path(tmp)
-                    _build_temp_config(tmp_path, edited)
-                    ok, msg = validate_all_configs(tmp_path)
-                    if ok:
-                        st.success(msg)
-                    else:
-                        st.error(msg)
-
-    with col2:
-        if st.button("Save", key="config-save"):
-            yaml_data, yaml_err = parse_yaml(edited)
-            if yaml_err:
-                st.error(f"YAML syntax error: {yaml_err}")
-            else:
-                import tempfile
-                with tempfile.TemporaryDirectory() as tmp:
-                    tmp_path = Path(tmp)
-                    _build_temp_config(tmp_path, edited)
-                    ok, msg = validate_all_configs(tmp_path)
-                    if not ok:
-                        st.error(f"Validation failed: {msg}")
-                    else:
-                        write_config(selected.path, edited)
-                        st.success("Saved successfully.")
-                        st.rerun()
+    st.code(current_content, language="yaml")
 
 
 # ---------------------------------------------------------------------------
@@ -795,6 +767,8 @@ if st.session_state.page == "Home":
     page_home()
 elif st.session_state.page == "Run Jobs":
     page_run_jobs()
+elif st.session_state.page == "Individual Trends":
+    page_individual_trends()
 elif st.session_state.page == "Run History":
     page_run_history()
 elif st.session_state.page == "Long-Term Trends":
