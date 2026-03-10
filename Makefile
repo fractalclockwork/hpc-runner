@@ -52,6 +52,24 @@ ui:
 	uv run streamlit run src/ui/app.py
 
 # ---------------------------------------------------------------------------
+# Services (stop / start / restart API and UI)
+# ---------------------------------------------------------------------------
+
+# Stop API (port 8000) and UI (port 8501)
+stop-services:
+	./scripts/stop-services.sh
+
+# Start API and UI in background; logs: .api.log, .ui.log; PIDs: .api.pid, .ui.pid
+start-services:
+	@nohup uv run uvicorn basic_restapi.fastapi_app:app --reload --port 8000 >> .api.log 2>&1 & echo $$! > .api.pid
+	@nohup uv run streamlit run src/ui/app.py --server.port 8501 --server.headless true >> .ui.log 2>&1 & echo $$! > .ui.pid
+	@echo "API (8000) and UI (8501) started in background. Logs: .api.log, .ui.log"
+
+# Stop then start API and UI in background
+restart-services: stop-services
+	@$(MAKE) start-services
+
+# ---------------------------------------------------------------------------
 # Docker
 # ---------------------------------------------------------------------------
 
@@ -172,6 +190,8 @@ clear-db:
 # ---------------------------------------------------------------------------
 # Meta
 # ---------------------------------------------------------------------------
+
+.PHONY: stop-services start-services restart-services
 
 # Default target
 default: sync

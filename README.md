@@ -38,6 +38,14 @@ make ui
 # Open http://localhost:8501
 ```
 
+Stop or restart API and UI (ports 8000 and 8501):
+
+```bash
+make stop-services    # Stop API and UI
+make start-services   # Start API and UI in background (logs: .api.log, .ui.log)
+make restart-services # Stop then start API and UI in background
+```
+
 ## Docker
 
 Build and run the REST API:
