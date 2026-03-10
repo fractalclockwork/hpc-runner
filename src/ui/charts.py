@@ -93,3 +93,69 @@ def render_mlups_trend(df: pd.DataFrame) -> None:
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
+
+def render_metric_heatmap(
+    pivot: pd.DataFrame,
+    title: str,
+    normalize_rows: bool = True,
+) -> None:
+    """Render a Plotly heatmap from a pre-pivoted DataFrame.
+
+    pivot: rows = labels (metrics or solver/system series),
+           columns = run labels (short timestamps),
+           values = numeric.
+    normalize_rows: normalize each row to [0,1] so metrics with different
+    units are visually comparable. Raw values are always shown on hover.
+    """
+    import numpy as np
+
+    if pivot is None or pivot.empty:
+        st.info("No data for the selected heatmap configuration.")
+        return
+
+    raw = pivot.values.astype(float)
+
+    if normalize_rows:
+        row_min = np.nanmin(raw, axis=1, keepdims=True)
+        row_max = np.nanmax(raw, axis=1, keepdims=True)
+        denom = np.where((row_max - row_min) == 0, 1.0, row_max - row_min)
+        display = (raw - row_min) / denom
+    else:
+        display = raw
+
+    # Build hover text with raw values; show "—" for NaN
+    hover = np.where(
+        np.isnan(raw),
+        "—",
+        np.vectorize(lambda v: f"{v:.4g}")(raw),
+    )
+
+    fig = px.imshow(
+        display,
+        x=list(pivot.columns),
+        y=list(pivot.index),
+        color_continuous_scale="Blues",
+        aspect="auto",
+        title=title,
+    )
+    fig.update_traces(
+        customdata=hover,
+        hovertemplate="<b>%{y}</b> | %{x}<br>Value: %{customdata}<extra></extra>",
+        text=None,
+    )
+    fig.update_layout(
+        xaxis_title="Run",
+        yaxis_title="",
+        xaxis_tickangle=-45,
+        coloraxis_showscale=normalize_rows,
+    )
+    if normalize_rows:
+        fig.update_coloraxes(colorbar_title="Normalized")
+
+    st.plotly_chart(fig, use_container_width=True)
+    if normalize_rows:
+        st.caption(
+            "Color is normalized per row so metrics with different units are visually comparable. "
+            "Hover over any cell for the raw value."
+        )

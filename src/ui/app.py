@@ -22,8 +22,9 @@ from metrics_dashboard import (  # noqa: E402
     get_metric_history,
     get_runtime_trend_data,
     get_mlups_trend_data,
+    get_all_metrics_flat,
 )
-from charts import render_runtime_trend, render_mlups_trend  # noqa: E402
+from charts import render_runtime_trend, render_mlups_trend, render_metric_heatmap  # noqa: E402
 
 from harness import get_db_path
 
@@ -452,6 +453,82 @@ def page_long_term_trends() -> None:
     else:
         df_mlups_filtered = df_mlups_all
     render_mlups_trend(df_mlups_filtered)
+
+    # --- Heatmap -----------------------------------------------------------
+    st.subheader("Metrics Heatmap")
+
+    heatmap_mode = st.radio(
+        "Heatmap mode",
+        options=["All metrics for one solver/system", "One metric across all solvers/systems"],
+        horizontal=True,
+        key="heatmap-mode",
+    )
+
+    df_flat_all = get_all_metrics_flat(str(DB_PATH))
+
+    if df_flat_all.empty:
+        st.info("No data available for heatmap yet.")
+    else:
+        date_mask = (
+            (df_flat_all["timestamp"].dt.date >= start_date)
+            & (df_flat_all["timestamp"].dt.date <= end_date)
+        )
+        df_flat = df_flat_all[date_mask]
+
+        if heatmap_mode == "All metrics for one solver/system":
+            available_series = sorted(df_flat["series"].unique().tolist())
+            if not available_series:
+                st.info("No data for the selected date range.")
+            else:
+                selected_heatmap_series = st.selectbox(
+                    "Solver / System",
+                    options=available_series,
+                    key="heatmap-series-select",
+                )
+                df_series = df_flat[df_flat["series"] == selected_heatmap_series].copy()
+                df_series = df_series.sort_values("timestamp")
+                # Limit to 30 most recent unique run timestamps to keep heatmap readable
+                recent_ts = df_series["timestamp"].drop_duplicates().nlargest(30)
+                df_series = df_series[df_series["timestamp"].isin(recent_ts)]
+                df_series["run_label"] = df_series["timestamp"].dt.strftime("%m-%d %H:%M")
+                pivot = df_series.pivot_table(
+                    index="metric_name", columns="run_label", values="value", aggfunc="mean"
+                )
+                render_metric_heatmap(
+                    pivot,
+                    title=f"All Metrics — {selected_heatmap_series}",
+                    normalize_rows=True,
+                )
+        else:
+            # Apply sidebar solver/system filter so users can narrow scope
+            df_flat_filtered = df_flat[
+                df_flat["solver_name"].isin(selected_solvers)
+                & df_flat["system_name"].isin(selected_systems)
+            ]
+            available_metrics = sorted(df_flat_filtered["metric_name"].unique().tolist())
+            if not available_metrics:
+                st.info("No metrics found for the selected filters.")
+            else:
+                selected_hm_metric = st.selectbox(
+                    "Metric",
+                    options=available_metrics,
+                    key="heatmap-metric-select",
+                )
+                df_metric = df_flat_filtered[
+                    df_flat_filtered["metric_name"] == selected_hm_metric
+                ].copy()
+                df_metric = df_metric.sort_values("timestamp")
+                recent_ts = df_metric["timestamp"].drop_duplicates().nlargest(30)
+                df_metric = df_metric[df_metric["timestamp"].isin(recent_ts)]
+                df_metric["run_label"] = df_metric["timestamp"].dt.strftime("%m-%d %H:%M")
+                pivot = df_metric.pivot_table(
+                    index="series", columns="run_label", values="value", aggfunc="mean"
+                )
+                render_metric_heatmap(
+                    pivot,
+                    title=f"{selected_hm_metric} — All Solvers/Systems",
+                    normalize_rows=False,
+                )
 
     # --- Raw data expander -------------------------------------------------
     with st.expander("View raw data"):

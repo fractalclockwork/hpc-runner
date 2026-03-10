@@ -97,6 +97,69 @@ def get_mlups_trend_data(db_path: str) -> pd.DataFrame:
     return df
 
 
+@st.cache_data(ttl=_TREND_QUERY_TTL)
+def get_all_metrics_flat(db_path: str) -> pd.DataFrame:
+    """Return all numeric metric values per run in long format.
+
+    Columns: timestamp, solver_name, system_name, job_name, metric_name, value, series
+    Includes runtime_seconds, returncode, passed (0/1) from fixed columns,
+    plus all numeric keys from metrics_json.  Non-numeric values (e.g. 'status')
+    are silently skipped.
+    """
+    path = Path(db_path)
+    empty = pd.DataFrame(
+        columns=["timestamp", "solver_name", "system_name", "job_name", "metric_name", "value", "series"]
+    )
+    if not path.exists():
+        return empty
+
+    with sqlite3.connect(path) as conn:
+        df = pd.read_sql_query(
+            """
+            SELECT timestamp, solver_name, system_name, job_name,
+                   runtime_seconds, returncode, passed, metrics_json
+            FROM runs
+            ORDER BY timestamp ASC
+            """,
+            conn,
+        )
+
+    if df.empty:
+        return empty
+
+    import json
+
+    rows = []
+    for _, run in df.iterrows():
+        base = {
+            "timestamp": run["timestamp"],
+            "solver_name": run["solver_name"],
+            "system_name": run["system_name"],
+            "job_name": run["job_name"],
+        }
+        for col in ("runtime_seconds", "returncode"):
+            if run[col] is not None:
+                rows.append({**base, "metric_name": col, "value": float(run[col])})
+        rows.append({**base, "metric_name": "passed", "value": 1.0 if run["passed"] else 0.0})
+        if run["metrics_json"]:
+            try:
+                for k, v in json.loads(run["metrics_json"]).items():
+                    try:
+                        rows.append({**base, "metric_name": k, "value": float(v)})
+                    except (TypeError, ValueError):
+                        pass  # skip non-numeric values like status strings
+            except json.JSONDecodeError:
+                pass
+
+    if not rows:
+        return empty
+
+    result = pd.DataFrame(rows)
+    result["timestamp"] = pd.to_datetime(result["timestamp"], utc=True)
+    result["series"] = result["solver_name"] + " / " + result["system_name"]
+    return result
+
+
 def get_available_metrics() -> list[tuple[str, str]]:
     """Return list of (solver_name, metric_name) with data."""
     try:
