@@ -520,10 +520,12 @@ def page_long_term_trends() -> None:
     df_filtered = df_all[mask]
 
     # --- Runtime trend chart -----------------------------------------------
+    _testid("section-runtime-trend")
     st.subheader("Runtime (wall-clock) Trend")
     render_runtime_trend(df_filtered)
 
     # --- MLUPS trend chart -------------------------------------------------
+    _testid("section-mlups-trend")
     st.subheader("Throughput Trend (MLUPS)")
     df_mlups_all = get_mlups_trend_data(str(DB_PATH))
     if not df_mlups_all.empty:
