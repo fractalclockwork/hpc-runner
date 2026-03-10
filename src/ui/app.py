@@ -220,12 +220,6 @@ def page_run_history() -> None:
     except requests.exceptions.RequestException as e:
         st.error(f"API unavailable: {e}")
         return
-    # filtered = get_runs(DB_PATH, solver=solver_arg, processor=processor_arg, limit=100)
-    if solver_filter != "(all)":
-        single_solver_heatmap(filtered)
-    else:
-        multi_solver_heatmap("runtime_seconds", filtered)
-
 
     st.write(f"Showing {len(filtered)} run(s)")
 
