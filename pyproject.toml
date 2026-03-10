@@ -5,6 +5,7 @@ requires-python = ">=3.10"
 dependencies = [
     "structlog>=25.5.0",
     "streamlit>=1.35.0",
+    "plotly>=6.6.0",
     "harness",
     "basic_restapi",
     "plotly>=6.6.0",
@@ -14,6 +15,7 @@ dependencies = [
 members = [
   "src/core",
   "src/api",
+  "src/ui",
 ]
 
 [tool.uv.sources]

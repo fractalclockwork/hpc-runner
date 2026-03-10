@@ -4,10 +4,16 @@ import sys
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
+import requests
+import typing
+import pandas as pd
+import plotly.graph_objects as go
+import numpy as np
+import uuid
+import json
 
 # Allow importing runner from the same directory when launched via `streamlit run`
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from runner import run_tests  # noqa: E402
 from config_editor import (  # noqa: E402
     discover_config_files,
     read_config,
@@ -22,13 +28,13 @@ from metrics_dashboard import (  # noqa: E402
     get_metric_history,
     get_runtime_trend_data,
     get_mlups_trend_data,
-    get_all_metrics_flat,
 )
-from charts import render_runtime_trend, render_mlups_trend, render_metric_heatmap  # noqa: E402
+from charts import render_runtime_trend, render_mlups_trend  # noqa: E402
 
 from harness import get_db_path
 
 DB_PATH = get_db_path()
+API_URL = "http://localhost:8000"
 
 
 def _testid(id: str) -> None:
@@ -53,9 +59,56 @@ if "run_job_results" not in st.session_state:
     st.session_state.run_job_results = None
 
 # ---------------------------------------------------------------------------
+# Global theme overrides (dark sidebar, card styles)
+# ---------------------------------------------------------------------------
+st.markdown(
+    """
+    <style>
+    /* ── Dark sidebar ── */
+    section[data-testid="stSidebar"],
+    section[data-testid="stSidebar"] > div:first-child {
+        background-color: #111827;
+    }
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] span,
+    section[data-testid="stSidebar"] h1,
+    section[data-testid="stSidebar"] h2,
+    section[data-testid="stSidebar"] h3 {
+        color: rgba(255, 255, 255, 0.85) !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stRadio"] label {
+        border-radius: 6px;
+        padding: 0.35rem 0.75rem;
+        transition: background-color 0.15s ease;
+    }
+    section[data-testid="stSidebar"] [data-testid="stRadio"] label:hover {
+        background-color: rgba(255, 255, 255, 0.07);
+    }
+    /* ── Metric cards ── */
+    [data-testid="metric-container"] {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
+    }
+    /* ── Expanders ── */
+    details {
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 8px !important;
+    }
+    /* ── Dividers ── */
+    hr { border-color: #E2E8F0; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ---------------------------------------------------------------------------
 # Sidebar navigation
 # ---------------------------------------------------------------------------
-PAGES = ["Home", "Run Jobs", "Run History", "Long-Term Trends", "Tests", "Configs"]
+PAGES = ["Home", "Run Jobs", "Run History", "Long-Term Trends", "Configs"]
 
 st.sidebar.markdown(
     '<span data-testid="nav-sidebar" style="display:none" aria-hidden="true"></span>',
@@ -80,23 +133,35 @@ def page_home() -> None:
     st.header("HPC Regression Platform")
     st.write("Metrics for each solver over the entire job history.")
 
-    available = get_available_metrics()
+    try:
+        available: list[dict[str, str]]  = requests.get(API_URL + "/api/available_metrics").json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error making request: {e}")
+
     if not available:
         st.info("No metrics data yet. Run jobs via Run Jobs or the CLI to collect metrics.")
         return
 
-    options = [f"{solver} / {metric}" for solver, metric in available]
+    options = [f"{dictionary['solver']} / {dictionary['metric']}" for dictionary in available]
     selected = st.selectbox(
         "Select solver and metric to view",
         options=options,
         key="home-metric-select",
+        help="Solver metric combinations are defined in the backend configuration .yaml files. To add more, edit your configuration files on your backend host's filesystem.",
     )
     if not selected:
         return
 
     idx = options.index(selected)
-    solver_name, metric_name = available[idx]
-    history = get_metric_history(solver_name, metric_name, limit=500)
+    solver_name, metric_name = available[idx]["solver"], available[idx]["metric"]
+    # history = get_metric_history(solver_name, metric_name, limit=500)
+
+    try:
+        history: list[dict[str, Any]]  = requests.get(API_URL + "/api/metrics/" + solver_name + "/" + metric_name).json()
+    except requests.exceptions.RequestException as e:
+
+        print(f"Error making request: {e}")
+
 
     if not history:
         st.warning("No history for this metric.")
@@ -107,7 +172,7 @@ def page_home() -> None:
     df = pd.DataFrame(history, columns=["timestamp", "value"])
     df = df.set_index("timestamp")
 
-    st.subheader(f"{solver_name} — {metric_name}")
+    st.subheader(f"{solver_name} — {metric_name}", help = "Displays a single variable line chart for the solver/metric combination showing time series changes for the metric.")
     st.line_chart(df)
 
     with st.expander("View raw data"):
@@ -124,19 +189,7 @@ def page_run_history() -> None:
     st.header("Run History")
     st.write("Browse past runs. Filter by solver or processor.")
 
-    try:
-        from harness.storage import get_runs, init_db
-    except ImportError as e:
-        st.error(f"Cannot load harness: {e}")
-        return
-
-    if not DB_PATH.exists():
-        st.info("No runs yet. Run jobs via Run Jobs or the CLI to collect data.")
-        return
-
-    init_db(DB_PATH)
-
-    runs_all = get_runs(DB_PATH, limit=500)
+    runs_all = requests.get(API_URL + "/api/runs").json()
     if not runs_all:
         st.info("No runs in database.")
         return
@@ -152,11 +205,18 @@ def page_run_history() -> None:
 
     solver_arg = solver_filter if solver_filter != "(all)" else None
     processor_arg = processor_filter if processor_filter != "(all)" else None
-    filtered = get_runs(DB_PATH, solver=solver_arg, processor=processor_arg, limit=100)
+
+    params = {"solver": solver_arg, "processor": processor_arg}
+    filtered = requests.get(API_URL + "/api/runs", params=params).json()
+    # filtered = get_runs(DB_PATH, solver=solver_arg, processor=processor_arg, limit=100)
+    if solver_filter != "(all)":
+        single_solver_heatmap(filtered)
+    else:
+        multi_solver_heatmap("runtime_seconds", filtered)
+
 
     st.write(f"Showing {len(filtered)} run(s)")
 
-    import json
     for r in filtered:
         passed = "Passed" if r.get("passed") else "Failed"
         if r.get("passed"):
@@ -200,28 +260,25 @@ def page_run_jobs() -> None:
     st.write("Execute HPC regression jobs. Select jobs and run them.")
 
     try:
-        from harness import load_all, run_jobs, init_db, store_run, ConfigError
-    except ImportError as e:
-        st.error(f"Cannot load harness: {e}")
-        return
+        #_, systems, solvers, jobs = load_all(CONFIGS_DIR)
+        systems: list[dict[str, Any]]  = requests.get(API_URL + "/api/systems").json()
+        solvers: list[dict[str, Any]]  = requests.get(API_URL + "/api/solvers").json()
+        jobs: list[dict[str, Any]]  = requests.get(API_URL + "/api/jobs").json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error making request: {e}")
 
-    try:
-        _, systems, solvers, jobs = load_all(CONFIGS_DIR)
-    except ConfigError as e:
-        st.error(f"Config error: {e}")
-        return
-
-    job_list = list(jobs.values())
+    job_list = jobs
     if not job_list:
         st.warning("No jobs configured. Add jobs in configs/jobs/.")
         return
 
-    job_names = [j.name for j in job_list]
+    job_names = [j["name"] for j in job_list]
     selected = st.multiselect(
         "Select jobs to run",
         options=job_names,
         default=job_names,
         key="run-jobs-select",
+        help = "Solver and job configurations are defined in /configs/solvers and /configs/jobs respectively. Once a job is properly configured and validated, it will appear here. Please apply validation to check if your configuration is valid if it does not appear in the list."
     )
 
     col1, col2, col3 = st.columns([1, 1, 4])
@@ -235,12 +292,23 @@ def page_run_jobs() -> None:
         if not to_run:
             st.warning("Select at least one job.")
         else:
-            job_objs = [j for j in job_list if j.name in to_run]
-            with st.spinner(f"Running {len(job_objs)} job(s)…"):
-                results = run_jobs(job_objs, solvers, systems)
-                init_db(DB_PATH)
-                for r in results:
-                    store_run(DB_PATH, r)
+            with st.spinner(f"Running {len(job_names)} job(s)…"):
+                # results = run_jobs(job_objs, solvers, systems)
+                # use the post request to run jobs
+                payload = {"jobs": to_run}
+                endpoint = API_URL + "/api/run_jobs"
+                try:
+                    # Make the POST request with JSON body
+                    response = requests.post(
+                        endpoint,
+                        json=payload
+                    )
+
+                    # Check if request was successful
+                    response.raise_for_status()
+                    results = response.json()
+                except requests.exceptions.RequestException as e:
+                    print(f"Error making request: {e}")
 
             st.session_state.run_job_results = results
             st.rerun()
@@ -249,14 +317,14 @@ def page_run_jobs() -> None:
         results = st.session_state.run_job_results
         st.subheader("Results")
         for r in results:
-            if r.passed:
+            if r['passed']:
                 status, icon = "Passed", "✅"
             elif getattr(r, "validation_errors", None):
                 status, icon = "Validation failed", "⚠️"
             else:
                 status, icon = "Run failed", "❌"
-            st.write(f"{icon} **{r.job_name}** — {status} (returncode={r.returncode}, runtime={r.runtime_seconds:.2f}s)")
-            if getattr(r, "validation_errors", None) and r.validation_errors:
+            st.write(f"{icon} **{r['job_name']}** — {status} (returncode={r['returncode']}, runtime={r['runtime_seconds']:.2f}s)")
+            if getattr(r, "validation_errors", None) and r['validation_errors']:
                 for err in r.validation_errors:
                     st.caption(f"  • {err}")
 
@@ -265,6 +333,8 @@ def page_run_jobs() -> None:
 # Page: Configs
 # ---------------------------------------------------------------------------
 
+# Shawn: Would be better to have the backend handle what we need from this
+# but its less of a headache to remove dependencies so will keep for now
 def page_configs() -> None:
     _testid("page-configs")
     st.header("Configs")
@@ -464,71 +534,47 @@ def page_long_term_trends() -> None:
         key="heatmap-mode",
     )
 
-    df_flat_all = get_all_metrics_flat(str(DB_PATH))
+    # Fetch runs from API and apply date + system filters in Python
+    try:
+        params = {}
+        if len(selected_solvers) == 1:
+            params["solver"] = selected_solvers[0]
+        heatmap_runs = requests.get(API_URL + "/api/runs", params=params).json()
+        heatmap_runs = [
+            r for r in heatmap_runs
+            if r.get("metrics_json")
+            and start_date <= pd.Timestamp(r["timestamp"]).date() <= end_date
+            and r.get("system_name") in selected_systems
+        ]
+    except requests.exceptions.RequestException as e:
+        st.warning(f"Could not fetch runs for heatmap: {e}")
+        heatmap_runs = []
 
-    if df_flat_all.empty:
-        st.info("No data available for heatmap yet.")
-    else:
-        date_mask = (
-            (df_flat_all["timestamp"].dt.date >= start_date)
-            & (df_flat_all["timestamp"].dt.date <= end_date)
-        )
-        df_flat = df_flat_all[date_mask]
-
-        if heatmap_mode == "All metrics for one solver/system":
-            available_series = sorted(df_flat["series"].unique().tolist())
-            if not available_series:
-                st.info("No data for the selected date range.")
-            else:
-                selected_heatmap_series = st.selectbox(
-                    "Solver / System",
-                    options=available_series,
-                    key="heatmap-series-select",
-                )
-                df_series = df_flat[df_flat["series"] == selected_heatmap_series].copy()
-                df_series = df_series.sort_values("timestamp")
-                # Limit to 30 most recent unique run timestamps to keep heatmap readable
-                recent_ts = df_series["timestamp"].drop_duplicates().nlargest(30)
-                df_series = df_series[df_series["timestamp"].isin(recent_ts)]
-                df_series["run_label"] = df_series["timestamp"].dt.strftime("%m-%d %H:%M")
-                pivot = df_series.pivot_table(
-                    index="metric_name", columns="run_label", values="value", aggfunc="mean"
-                )
-                render_metric_heatmap(
-                    pivot,
-                    title=f"All Metrics — {selected_heatmap_series}",
-                    normalize_rows=True,
-                )
+    if not heatmap_runs:
+        st.info("No data available for heatmap with the current filters.")
+    elif heatmap_mode == "All metrics for one solver/system":
+        solver_runs = [
+            r for r in heatmap_runs if r.get("solver_name") in selected_solvers
+        ]
+        if not solver_runs:
+            st.info("No metric data for the selected solver/system in this date range.")
         else:
-            # Apply sidebar solver/system filter so users can narrow scope
-            df_flat_filtered = df_flat[
-                df_flat["solver_name"].isin(selected_solvers)
-                & df_flat["system_name"].isin(selected_systems)
-            ]
-            available_metrics = sorted(df_flat_filtered["metric_name"].unique().tolist())
-            if not available_metrics:
-                st.info("No metrics found for the selected filters.")
-            else:
-                selected_hm_metric = st.selectbox(
-                    "Metric",
-                    options=available_metrics,
-                    key="heatmap-metric-select",
-                )
-                df_metric = df_flat_filtered[
-                    df_flat_filtered["metric_name"] == selected_hm_metric
-                ].copy()
-                df_metric = df_metric.sort_values("timestamp")
-                recent_ts = df_metric["timestamp"].drop_duplicates().nlargest(30)
-                df_metric = df_metric[df_metric["timestamp"].isin(recent_ts)]
-                df_metric["run_label"] = df_metric["timestamp"].dt.strftime("%m-%d %H:%M")
-                pivot = df_metric.pivot_table(
-                    index="series", columns="run_label", values="value", aggfunc="mean"
-                )
-                render_metric_heatmap(
-                    pivot,
-                    title=f"{selected_hm_metric} — All Solvers/Systems",
-                    normalize_rows=False,
-                )
+            single_solver_heatmap(solver_runs)
+    else:
+        available_metrics_hm = sorted({
+            k
+            for r in heatmap_runs
+            for k in json.loads(r["metrics_json"]).keys()
+        })
+        if not available_metrics_hm:
+            st.info("No dynamic metrics available for the selected filters.")
+        else:
+            selected_hm_metric = st.selectbox(
+                "Metric",
+                options=available_metrics_hm,
+                key="heatmap-metric-select",
+            )
+            multi_solver_heatmap(selected_hm_metric, heatmap_runs)
 
     # --- Raw data expander -------------------------------------------------
     with st.expander("View raw data"):
@@ -545,42 +591,147 @@ def page_long_term_trends() -> None:
 # Page: Tests
 # ---------------------------------------------------------------------------
 
-def page_tests() -> None:
-    _testid("page-tests")
-    st.header("Tests")
-    st.write("")
+#def page_tests() -> None:
+#    _testid("page-tests")
+#    st.header("Tests")
+#    st.write("")
+#
+#    _testid("btn-run-test")
+#    if st.button("Run Test", key="btn-run-test"):
+#        with st.spinner("Running tests…"):
+#            result = run_tests()
+#
+#        st.session_state.test_result = result
+#        st.rerun()
+#
+#    st.write("")
+#
+#    if st.session_state.test_result is None:
+#        st.info("No test results yet. Click Run Test above to execute the suite.")
+#        return
+#
+#    result = st.session_state.test_resul
+#
+#    if result.success:
+#        st.success(f"All tests passed  (exit code {result.returncode})")
+#    else:
+#        st.error(f"Tests failed  (exit code {result.returncode})")
+#
+#    st.write("")
+#
+#    if result.stdout:
+#        st.subheader("stdout")
+#        st.code(result.stdout, language="text")
+#
+#    if result.stderr:
+#        st.subheader("stderr")
+#        st.code(result.stderr, language="text")
 
-    _testid("btn-run-test")
-    if st.button("Run Test", key="btn-run-test"):
-        with st.spinner("Running tests…"):
-            result = run_tests()
+def single_solver_heatmap(filtered, solver_name: str = ""):
+    column_names = [key for key in json.loads(filtered[0]['metrics_json'])]
+    row_names = [x['timestamp'] for x in filtered]
+ #   truncated_names = [name[:8] + '...' if len(name) > 8 else name for name in row_names]
+    # idk way its very wonky trying to use the timestamp as the row name
+    #row_names = [i for i in range(len(filtered))]
+    data = []
+    # blegh this will have NaN data if some dates are missing metrics
+    for i in range(len(filtered)):
+        row = []
+        metrics_json = json.loads(filtered[i]['metrics_json'])
+        for key, value in metrics_json.items():
+            row.append(value)
+        data.append(row)
+    # descending time order is more intuitive
+    data.reverse()
+    # Min-max normalization (0 to 1)
+    df = pd.DataFrame(data, columns=column_names, index=row_names)
+    print(df)
+    numeric_df = df.apply(pd.to_numeric, errors='coerce')
+    # numeric_df = df.select_dtypes(include=['float64', 'int64', 'float32', 'int32'])
+    numeric_df = numeric_df.dropna(axis=1, how="all")
+    normalized = (numeric_df - numeric_df.min()) / (numeric_df.max() - numeric_df.min())
+    normalized = normalized.fillna(0)
+    normalized= normalized.transpose()
+    print(normalized)
+    fig = go.Figure(data=go.Heatmap(
+        customdata=numeric_df.transpose(),
+        z=normalized,
+        x=normalized.columns,
+        y=normalized.index,
+        colorscale='Viridis',
+        xgap=2,  # Makes vertical gridlines
+        ygap=2,  # Makes horizontal gridlines
+        hovertemplate='Non-Normalized Value: %{customdata:.4f}<extra></extra>',
+    ))
+    fig.update_layout(
+        xaxis=dict(
+            type="category"
+        )
+    )
+    st.header(f"Single Metric Heatmap",help="Heatmap compares numeric metrics for a single solver using per metric normalized values. You can hover over to see the non-normalized value for reference.  The raw data table shows non normalized values for each metric.")
+    # Display in Streamlit
+    st.plotly_chart(fig)
+    with st.expander("View raw data"):
+        st.dataframe(numeric_df, use_container_width=True)
 
-        st.session_state.test_result = result
-        st.rerun()
+def multi_solver_heatmap(metric_name: str, filtered):
+    solvers: list[dict[str, Any]]  = requests.get(API_URL + "/api/solvers").json()
+    column_names = [x['name'] for x in solvers]
+#    row_names = [x['timestamp'] for x in filtered]
+#    truncated_names = [name[:8] + '...' if len(name) > 8 else name for name in row_names]
+    # idk way its very wonky trying to use the timestamp as the row name
+    row_names = [i for i in range(len(filtered))]
+    data = []
+    # blegh this will have NaN data if some dates are missing metrics
+    for i in range(len(filtered)):
+        solver_name = filtered[i]['solver_name']
+        row = []
+        metrics_json = json.loads(filtered[i]['metrics_json'])
+        for key, value in metrics_json.items():
+            if key == metric_name:
+                row.append(value)
+        # row.append(filtered[i]['name'])
+                row.append(filtered[i]['timestamp'][:10])
+                row.append(metric_name)
+                row.append(solver_name)
 
-    st.write("")
+        data.append(row)
+    # descending time order is more intuitive
+    data.reverse()
+    # Min-max normalization (0 to 1)
+    df = pd.DataFrame(data, index=row_names)
+    print(df)
+    pivot = pd.pivot_table(df, values = 0, columns = 3, index = 1)
+    # pivot = pivot.reset_index()
+    #pivot = pivot.drop(labels = 1, axis = 1)
+    pivot = pivot.transpose()
+    print(pivot)
+    #numeric_df = df.apply(pd.to_numeric, errors='coerce')
+    ## numeric_df = df.select_dtypes(include=['float64', 'int64', 'float32', 'int32'])
+    #numeric_df = numeric_df.dropna(axis=1, how="all")
+    #normalized = (numeric_df - numeric_df.min()) / (numeric_df.max() - numeric_df.min())
+    #normalized = normalized.fillna(0)
+    fig = go.Figure(data=go.Heatmap(
+        customdata=pivot,
+        z=pivot,
+        x=pivot.columns,
+        y=pivot.index,
+        colorscale='Viridis',
+        hovertemplate='Non-Normalized Value: %{customdata:.4f}<extra></extra>',
+        xgap=2,  # Makes vertical gridlines
+        ygap=2,  # Makes horizontal gridlines
+    ))
 
-    if st.session_state.test_result is None:
-        st.info("No test results yet. Click Run Test above to execute the suite.")
-        return
-
-    result = st.session_state.test_result
-
-    if result.success:
-        st.success(f"All tests passed  (exit code {result.returncode})")
-    else:
-        st.error(f"Tests failed  (exit code {result.returncode})")
-
-    st.write("")
-
-    if result.stdout:
-        st.subheader("stdout")
-        st.code(result.stdout, language="text")
-
-    if result.stderr:
-        st.subheader("stderr")
-        st.code(result.stderr, language="text")
-
+    fig.update_layout(
+        xaxis=dict(
+            type="category"
+        )
+    )
+    st.header(f"{metric_name} Heatmap",help=f"Heatmap compares the shared metric {metric_name} for all solvers with available data for that metic. The raw data table shows daily metrics information for the shared metric across solvers")
+    # Display in Streamlit
+    st.plotly_chart(fig)
+    with st.expander("View raw data"):
+        st.dataframe(df, use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # Router
@@ -594,7 +745,7 @@ elif st.session_state.page == "Run History":
     page_run_history()
 elif st.session_state.page == "Long-Term Trends":
     page_long_term_trends()
-elif st.session_state.page == "Tests":
-    page_tests()
+#elif st.session_state.page == "Tests":
+#    page_tests()
 elif st.session_state.page == "Configs":
     page_configs()
