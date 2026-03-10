@@ -24,6 +24,13 @@ from config_editor import (  # noqa: E402
     ConfigFile,
     CONFIGS_DIR,
 )
+from metrics_dashboard import (  # noqa: E402
+    get_available_metrics,
+    get_metric_history,
+    get_runtime_trend_data,
+    get_mlups_trend_data,
+)
+from charts import render_runtime_trend, render_mlups_trend  # noqa: E402
 
 from harness import get_db_path
 
@@ -102,7 +109,7 @@ st.markdown(
 # ---------------------------------------------------------------------------
 # Sidebar navigation
 # ---------------------------------------------------------------------------
-PAGES = ["Home", "Run Jobs", "Run History", "Configs"]
+PAGES = ["Home", "Run Jobs", "Run History", "Long-Term Trends", "Configs"]
 
 st.sidebar.markdown(
     '<span data-testid="nav-sidebar" style="display:none" aria-hidden="true"></span>',
@@ -127,8 +134,9 @@ def page_home() -> None:
     st.header("HPC Regression Platform")
     st.write("Metrics for each solver over the entire job history.")
 
+    available: list[dict[str, str]] = []
     try:
-        available: list[dict[str, str]]  = requests.get(API_URL + "/api/available_metrics").json()
+        available = requests.get(API_URL + "/api/available_metrics").json()
     except requests.exceptions.RequestException as e:
         print(f"Error making request: {e}")
 
@@ -150,12 +158,11 @@ def page_home() -> None:
     solver_name, metric_name = available[idx]["solver"], available[idx]["metric"]
     # history = get_metric_history(solver_name, metric_name, limit=500)
 
+    history: list[dict[str, Any]] = []
     try:
-        history: list[dict[str, Any]]  = requests.get(API_URL + "/api/metrics/" + solver_name + "/" + metric_name).json()
+        history = requests.get(API_URL + "/api/metrics/" + solver_name + "/" + metric_name).json()
     except requests.exceptions.RequestException as e:
-
         print(f"Error making request: {e}")
-
 
     if not history:
         st.warning("No history for this metric.")
@@ -183,7 +190,13 @@ def page_run_history() -> None:
     st.header("Run History")
     st.write("Browse past runs. Filter by solver or processor.")
 
-    runs_all = requests.get(API_URL + "/api/runs").json()
+    runs_all: list[dict[str, Any]] = []
+    try:
+        runs_all = requests.get(API_URL + "/api/runs").json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"API unavailable: {e}")
+        return
+
     if not runs_all:
         st.info("No runs in database.")
         return
@@ -201,7 +214,12 @@ def page_run_history() -> None:
     processor_arg = processor_filter if processor_filter != "(all)" else None
 
     params = {"solver": solver_arg, "processor": processor_arg}
-    filtered = requests.get(API_URL + "/api/runs", params=params).json()
+    filtered: list[dict[str, Any]] = []
+    try:
+        filtered = requests.get(API_URL + "/api/runs", params=params).json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"API unavailable: {e}")
+        return
     # filtered = get_runs(DB_PATH, solver=solver_arg, processor=processor_arg, limit=100)
     if solver_filter != "(all)":
         single_solver_heatmap(filtered)
@@ -269,11 +287,14 @@ def page_run_jobs() -> None:
     st.header("Run Jobs")
     st.write("Execute HPC regression jobs. Select jobs and run them.")
 
+    systems: list[dict[str, Any]] = []
+    solvers: list[dict[str, Any]] = []
+    jobs: list[dict[str, Any]] = []
     try:
         #_, systems, solvers, jobs = load_all(CONFIGS_DIR)
-        systems: list[dict[str, Any]]  = requests.get(API_URL + "/api/systems").json()
-        solvers: list[dict[str, Any]]  = requests.get(API_URL + "/api/solvers").json()
-        jobs: list[dict[str, Any]]  = requests.get(API_URL + "/api/jobs").json()
+        systems = requests.get(API_URL + "/api/systems").json()
+        solvers = requests.get(API_URL + "/api/solvers").json()
+        jobs = requests.get(API_URL + "/api/jobs").json()
     except requests.exceptions.RequestException as e:
         print(f"Error making request: {e}")
 
@@ -465,6 +486,159 @@ def page_configs() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Page: Long-Term Trends (Page 4)
+# ---------------------------------------------------------------------------
+
+def page_long_term_trends() -> None:
+    _testid("page-long-term-trends")
+    st.header("Long-Term Trends")
+    st.write("Performance of solvers over time. Use the sidebar to filter by solver, system, and date range.")
+
+    df_all = get_runtime_trend_data(str(DB_PATH))
+
+    if df_all.empty:
+        st.info("No run data available yet. Run jobs via Run Jobs or the CLI to collect data.")
+        return
+
+    # --- Sidebar filters ---------------------------------------------------
+    all_solvers = sorted(df_all["solver_name"].unique().tolist())
+    all_systems = sorted(df_all["system_name"].unique().tolist())
+
+    min_date = df_all["timestamp"].dt.date.min()
+    max_date = df_all["timestamp"].dt.date.max()
+
+    # Persist date range in session state so it survives page navigation
+    if "trend_date_start" not in st.session_state:
+        st.session_state.trend_date_start = min_date
+    if "trend_date_end" not in st.session_state:
+        st.session_state.trend_date_end = max_date
+
+    st.sidebar.markdown("### Long-Term Trends Filters")
+
+    selected_solvers = st.sidebar.multiselect(
+        "Solver(s)",
+        options=all_solvers,
+        default=all_solvers,
+        key="trend-solver-filter",
+    )
+    selected_systems = st.sidebar.multiselect(
+        "System(s)",
+        options=all_systems,
+        default=all_systems,
+        key="trend-system-filter",
+    )
+    date_range = st.sidebar.date_input(
+        "Date range",
+        value=(st.session_state.trend_date_start, st.session_state.trend_date_end),
+        min_value=min_date,
+        max_value=max_date,
+        key="trend-date-filter",
+    )
+
+    # Update session state whenever the widget changes
+    if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
+        st.session_state.trend_date_start = date_range[0]
+        st.session_state.trend_date_end = date_range[1]
+        start_date, end_date = date_range
+    else:
+        start_date = end_date = date_range[0] if date_range else min_date
+
+    # --- Filter DataFrame --------------------------------------------------
+    import pandas as pd
+
+    mask = (
+        df_all["solver_name"].isin(selected_solvers)
+        & df_all["system_name"].isin(selected_systems)
+        & (df_all["timestamp"].dt.date >= start_date)
+        & (df_all["timestamp"].dt.date <= end_date)
+    )
+    df_filtered = df_all[mask]
+
+    # --- Runtime trend chart -----------------------------------------------
+    _testid("section-runtime-trend")
+    st.subheader("Runtime (wall-clock) Trend")
+    render_runtime_trend(df_filtered)
+
+    # --- MLUPS trend chart -------------------------------------------------
+    _testid("section-mlups-trend")
+    st.subheader("Throughput Trend (MLUPS)")
+    df_mlups_all = get_mlups_trend_data(str(DB_PATH))
+    if not df_mlups_all.empty:
+        mlups_mask = (
+            df_mlups_all["solver_name"].isin(selected_solvers)
+            & df_mlups_all["system_name"].isin(selected_systems)
+            & (df_mlups_all["timestamp"].dt.date >= start_date)
+            & (df_mlups_all["timestamp"].dt.date <= end_date)
+        )
+        df_mlups_filtered = df_mlups_all[mlups_mask]
+    else:
+        df_mlups_filtered = df_mlups_all
+    render_mlups_trend(df_mlups_filtered)
+
+    # --- Heatmap -----------------------------------------------------------
+    st.subheader("Metrics Heatmap")
+
+    heatmap_mode = st.radio(
+        "Heatmap mode",
+        options=["All metrics for one solver/system", "One metric across all solvers/systems"],
+        horizontal=True,
+        key="heatmap-mode",
+    )
+
+    # Fetch runs from API and apply date + system filters in Python
+    try:
+        params = {}
+        if len(selected_solvers) == 1:
+            params["solver"] = selected_solvers[0]
+        heatmap_runs = requests.get(API_URL + "/api/runs", params=params).json()
+        heatmap_runs = [
+            r for r in heatmap_runs
+            if r.get("metrics_json")
+            and start_date <= pd.Timestamp(r["timestamp"]).date() <= end_date
+            and r.get("system_name") in selected_systems
+        ]
+    except requests.exceptions.RequestException as e:
+        st.warning(f"Could not fetch runs for heatmap: {e}")
+        heatmap_runs = []
+
+    if not heatmap_runs:
+        st.info("No data available for heatmap with the current filters.")
+    elif heatmap_mode == "All metrics for one solver/system":
+        solver_runs = [
+            r for r in heatmap_runs if r.get("solver_name") in selected_solvers
+        ]
+        if not solver_runs:
+            st.info("No metric data for the selected solver/system in this date range.")
+        else:
+            single_solver_heatmap(solver_runs)
+    else:
+        available_metrics_hm = sorted({
+            k
+            for r in heatmap_runs
+            for k in json.loads(r["metrics_json"]).keys()
+        })
+        if not available_metrics_hm:
+            st.info("No dynamic metrics available for the selected filters.")
+        else:
+            selected_hm_metric = st.selectbox(
+                "Metric",
+                options=available_metrics_hm,
+                key="heatmap-metric-select",
+            )
+            multi_solver_heatmap(selected_hm_metric, heatmap_runs)
+
+    # --- Raw data expander -------------------------------------------------
+    with st.expander("View raw data"):
+        if df_filtered.empty:
+            st.info("No rows match the current filters.")
+        else:
+            st.dataframe(
+                df_filtered[["timestamp", "solver_name", "system_name", "job_name", "runtime_seconds", "passed"]],
+                use_container_width=True,
+            )
+
+
+# ---------------------------------------------------------------------------
 # Page: Tests
 # ---------------------------------------------------------------------------
 
@@ -552,7 +726,10 @@ def single_solver_heatmap(filtered, solver_name: str = ""):
         st.dataframe(numeric_df, use_container_width=True)
 
 def multi_solver_heatmap(metric_name: str, filtered):
-    solvers: list[dict[str, Any]]  = requests.get(API_URL + "/api/solvers").json()
+    try:
+        solvers: list[dict[str, Any]] = requests.get(API_URL + "/api/solvers").json()
+    except requests.exceptions.RequestException:
+        solvers = []
     column_names = [x['name'] for x in solvers]
 #    row_names = [x['timestamp'] for x in filtered]
 #    truncated_names = [name[:8] + '...' if len(name) > 8 else name for name in row_names]
@@ -620,6 +797,8 @@ elif st.session_state.page == "Run Jobs":
     page_run_jobs()
 elif st.session_state.page == "Run History":
     page_run_history()
+elif st.session_state.page == "Long-Term Trends":
+    page_long_term_trends()
 #elif st.session_state.page == "Tests":
 #    page_tests()
 elif st.session_state.page == "Configs":
