@@ -574,7 +574,7 @@ def page_long_term_trends() -> None:
                 metric_dictionary = {"python-solver":(2.1e6, 4e6)}
                 multi_solver_heatmap(selected_hm_metric, heatmap_runs, metric_dictionary)
             elif selected_hm_metric == "runtime_seconds":
-                metric_dictionary = {"python-solver":(0.0, 0.01), "echo-solver":(0.0, 0.01), "cpuinfo-test":(0.0, 0.01)}
+                metric_dictionary = {"python-solver":(0.008, 0.01), "echo-solver":(0.0, 0.01), "cpuinfo-test":(0.0, 0.01)}
                 multi_solver_heatmap(selected_hm_metric, heatmap_runs, metric_dictionary)
             else:
                 st.info("Define the spec ranges for each metric for each solver to show a specification range heatmap.")
@@ -699,7 +699,11 @@ def multi_solver_heatmap(metric_name: str, filtered, min_max_dictionary: dict[st
     def normalize_row(row):
         print(min_max_dictionary)
         print(row)
-        min_value, max_value = min_max_dictionary[row.name]   # row.name is the index label
+        if row.name in min_max_dictionary:
+            min_value, max_value = min_max_dictionary[row.name]   # row.name is the index label
+        else:
+            st.warning(f"Supplied min_max dictionary does not have entry for {row.name}, will use observed max/min to set ranges")
+            min_value, max_value = 0, 1
         return (row - min_value) / (max_value - min_value)
     try:
         solvers: list[dict[str, Any]] = requests.get(API_URL + "/api/solvers").json()
@@ -759,7 +763,7 @@ def multi_solver_heatmap(metric_name: str, filtered, min_max_dictionary: dict[st
             type="category"
         )
     )
-    st.header(f"{metric_name} Heatmap",help=f"Heatmap compares the shared metric {metric_name} for all solvers with available data for that metic. The raw data table shows daily metrics information for the shared metric across solvers")
+    st.header(f"{metric_name} Heatmap",help=f"Heatmap shows whether {metric_name} is within a specified per solver normalized range over the time seires if a range was properly supplied, otherwise reverts to showing the normalized min max range. The raw data table shows daily metrics information for the shared metric across solvers. You can hover over heatmap values to see the non normalized value of the metric.")
     # Display in Streamlit
     st.plotly_chart(fig)
     with st.expander(f"View heatmap data"):
