@@ -548,27 +548,6 @@ def page_long_term_trends() -> None:
     )
     df_filtered = df_all[mask]
 
-    # --- Runtime trend chart -----------------------------------------------
-    _testid("section-runtime-trend")
-    st.subheader("Runtime (wall-clock) Trend")
-    render_runtime_trend(df_filtered)
-
-    # --- MLUPS trend chart -------------------------------------------------
-    _testid("section-mlups-trend")
-    st.subheader("Throughput Trend (MLUPS)")
-    df_mlups_all = get_mlups_trend_data(str(DB_PATH))
-    if not df_mlups_all.empty:
-        mlups_mask = (
-            df_mlups_all["solver_name"].isin(selected_solvers)
-            & df_mlups_all["system_name"].isin(selected_systems)
-            & (df_mlups_all["timestamp"].dt.date >= start_date)
-            & (df_mlups_all["timestamp"].dt.date <= end_date)
-        )
-        df_mlups_filtered = df_mlups_all[mlups_mask]
-    else:
-        df_mlups_filtered = df_mlups_all
-    render_mlups_trend(df_mlups_filtered)
-
     # --- Heatmap -----------------------------------------------------------
     st.subheader("Metrics Heatmap")
 
@@ -619,7 +598,10 @@ def page_long_term_trends() -> None:
                 options=available_metrics_hm,
                 key="heatmap-metric-select",
             )
-            multi_solver_heatmap(selected_hm_metric, heatmap_runs)
+            if selected_hm_metric == "mlups":
+                multi_solver_heatmap(selected_hm_metric, heatmap_runs, 2.1e6, 4e6)
+            else:
+                multi_solver_heatmap(selected_hm_metric, heatmap_runs)
 
     # --- Raw data expander -------------------------------------------------
     with st.expander("View raw data"):
@@ -630,6 +612,27 @@ def page_long_term_trends() -> None:
                 df_filtered[["timestamp", "solver_name", "system_name", "job_name", "runtime_seconds", "passed"]],
                 use_container_width=True,
             )
+    # --- Runtime trend chart -----------------------------------------------
+    _testid("section-runtime-trend")
+    st.subheader("Runtime (wall-clock) Trend")
+    render_runtime_trend(df_filtered)
+
+    # --- MLUPS trend chart -------------------------------------------------
+    _testid("section-mlups-trend")
+    st.subheader("Throughput Trend (MLUPS)")
+    df_mlups_all = get_mlups_trend_data(str(DB_PATH))
+    if not df_mlups_all.empty:
+        mlups_mask = (
+            df_mlups_all["solver_name"].isin(selected_solvers)
+            & df_mlups_all["system_name"].isin(selected_systems)
+            & (df_mlups_all["timestamp"].dt.date >= start_date)
+            & (df_mlups_all["timestamp"].dt.date <= end_date)
+        )
+        df_mlups_filtered = df_mlups_all[mlups_mask]
+    else:
+        df_mlups_filtered = df_mlups_all
+    render_mlups_trend(df_mlups_filtered)
+
 
 
 # ---------------------------------------------------------------------------
@@ -719,15 +722,12 @@ def single_solver_heatmap(filtered, solver_name: str = ""):
     with st.expander("View raw data"):
         st.dataframe(numeric_df, use_container_width=True)
 
-def multi_solver_heatmap(metric_name: str, filtered):
+def multi_solver_heatmap(metric_name: str, filtered, min_value: float = 0.0, max_value: float = 0.01):
     try:
         solvers: list[dict[str, Any]] = requests.get(API_URL + "/api/solvers").json()
     except requests.exceptions.RequestException:
         solvers = []
     column_names = [x['name'] for x in solvers]
-#    row_names = [x['timestamp'] for x in filtered]
-#    truncated_names = [name[:8] + '...' if len(name) > 8 else name for name in row_names]
-    # idk way its very wonky trying to use the timestamp as the row name
     row_names = [i for i in range(len(filtered))]
     data = []
     # blegh this will have NaN data if some dates are missing metrics
@@ -738,8 +738,7 @@ def multi_solver_heatmap(metric_name: str, filtered):
         for key, value in metrics_json.items():
             if key == metric_name:
                 row.append(value)
-        # row.append(filtered[i]['name'])
-                row.append(filtered[i]['timestamp'][:10])
+                row.append(filtered[i]['timestamp'][:19])
                 row.append(metric_name)
                 row.append(solver_name)
 
@@ -748,23 +747,27 @@ def multi_solver_heatmap(metric_name: str, filtered):
     data.reverse()
     # Min-max normalization (0 to 1)
     df = pd.DataFrame(data, index=row_names)
-    print(df)
     pivot = pd.pivot_table(df, values = 0, columns = 3, index = 1)
-    # pivot = pivot.reset_index()
-    #pivot = pivot.drop(labels = 1, axis = 1)
     pivot = pivot.transpose()
+    pivot = (pivot - min_value / (max_value - min_value))
     print(pivot)
-    #numeric_df = df.apply(pd.to_numeric, errors='coerce')
-    ## numeric_df = df.select_dtypes(include=['float64', 'int64', 'float32', 'int32'])
-    #numeric_df = numeric_df.dropna(axis=1, how="all")
-    #normalized = (numeric_df - numeric_df.min()) / (numeric_df.max() - numeric_df.min())
-    #normalized = normalized.fillna(0)
     fig = go.Figure(data=go.Heatmap(
         customdata=pivot,
         z=pivot,
         x=pivot.columns,
         y=pivot.index,
-        colorscale='Viridis',
+        zmin = min_value,
+        zmax = max_value,
+        colorscale=[
+                [0,  'green'],
+                [0.5,  'yellow'],
+                [1.0,  'red'],
+            ],
+        colorbar=dict(
+            tickvals=np.arange(min_value, max_value, max_value / 3),       # center ticks in each band
+            ticktext=[f"Within Spec ({min_value})", f"Near Average ({min_value + max_value / 2})", f"Out of Spec ({max_value})"],
+            ticks='outside',
+        ),
         hovertemplate='Non-Normalized Value: %{customdata:.4f}<extra></extra>',
         xgap=2,  # Makes vertical gridlines
         ygap=2,  # Makes horizontal gridlines
