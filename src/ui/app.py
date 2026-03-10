@@ -768,6 +768,8 @@ def multi_solver_heatmap(metric_name: str, filtered, min_max_dictionary: dict[st
     st.plotly_chart(fig)
     with st.expander(f"View heatmap data"):
         st.dataframe(df, use_container_width=True)
+    with st.expander(f"Specification Ranges"):
+        st.dataframe(pd.DataFrame(min_max_dictionary).rename(index={0: "Lower Spec Range", 1: "Upper Spec Range"}).transpose(), use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # Router
