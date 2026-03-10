@@ -133,8 +133,9 @@ def page_home() -> None:
     st.header("HPC Regression Platform")
     st.write("Metrics for each solver over the entire job history.")
 
+    available: list[dict[str, str]] = []
     try:
-        available: list[dict[str, str]]  = requests.get(API_URL + "/api/available_metrics").json()
+        available = requests.get(API_URL + "/api/available_metrics").json()
     except requests.exceptions.RequestException as e:
         print(f"Error making request: {e}")
 
@@ -156,12 +157,11 @@ def page_home() -> None:
     solver_name, metric_name = available[idx]["solver"], available[idx]["metric"]
     # history = get_metric_history(solver_name, metric_name, limit=500)
 
+    history: list[dict[str, Any]] = []
     try:
-        history: list[dict[str, Any]]  = requests.get(API_URL + "/api/metrics/" + solver_name + "/" + metric_name).json()
+        history = requests.get(API_URL + "/api/metrics/" + solver_name + "/" + metric_name).json()
     except requests.exceptions.RequestException as e:
-
         print(f"Error making request: {e}")
-
 
     if not history:
         st.warning("No history for this metric.")
@@ -189,7 +189,13 @@ def page_run_history() -> None:
     st.header("Run History")
     st.write("Browse past runs. Filter by solver or processor.")
 
-    runs_all = requests.get(API_URL + "/api/runs").json()
+    runs_all: list[dict[str, Any]] = []
+    try:
+        runs_all = requests.get(API_URL + "/api/runs").json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"API unavailable: {e}")
+        return
+
     if not runs_all:
         st.info("No runs in database.")
         return
@@ -207,7 +213,12 @@ def page_run_history() -> None:
     processor_arg = processor_filter if processor_filter != "(all)" else None
 
     params = {"solver": solver_arg, "processor": processor_arg}
-    filtered = requests.get(API_URL + "/api/runs", params=params).json()
+    filtered: list[dict[str, Any]] = []
+    try:
+        filtered = requests.get(API_URL + "/api/runs", params=params).json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"API unavailable: {e}")
+        return
     # filtered = get_runs(DB_PATH, solver=solver_arg, processor=processor_arg, limit=100)
     if solver_filter != "(all)":
         single_solver_heatmap(filtered)
@@ -259,11 +270,14 @@ def page_run_jobs() -> None:
     st.header("Run Jobs")
     st.write("Execute HPC regression jobs. Select jobs and run them.")
 
+    systems: list[dict[str, Any]] = []
+    solvers: list[dict[str, Any]] = []
+    jobs: list[dict[str, Any]] = []
     try:
         #_, systems, solvers, jobs = load_all(CONFIGS_DIR)
-        systems: list[dict[str, Any]]  = requests.get(API_URL + "/api/systems").json()
-        solvers: list[dict[str, Any]]  = requests.get(API_URL + "/api/solvers").json()
-        jobs: list[dict[str, Any]]  = requests.get(API_URL + "/api/jobs").json()
+        systems = requests.get(API_URL + "/api/systems").json()
+        solvers = requests.get(API_URL + "/api/solvers").json()
+        jobs = requests.get(API_URL + "/api/jobs").json()
     except requests.exceptions.RequestException as e:
         print(f"Error making request: {e}")
 
@@ -675,7 +689,10 @@ def single_solver_heatmap(filtered, solver_name: str = ""):
         st.dataframe(numeric_df, use_container_width=True)
 
 def multi_solver_heatmap(metric_name: str, filtered):
-    solvers: list[dict[str, Any]]  = requests.get(API_URL + "/api/solvers").json()
+    try:
+        solvers: list[dict[str, Any]] = requests.get(API_URL + "/api/solvers").json()
+    except requests.exceptions.RequestException:
+        solvers = []
     column_names = [x['name'] for x in solvers]
 #    row_names = [x['timestamp'] for x in filtered]
 #    truncated_names = [name[:8] + '...' if len(name) > 8 else name for name in row_names]
