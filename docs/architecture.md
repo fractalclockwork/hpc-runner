@@ -190,6 +190,7 @@ Table `runs`: id, job_name, solver_name, system_name, returncode, passed, runtim
 ## 9. Deployment
 
 - **Local**: `make api` (REST API), `make ui` (Streamlit dashboard), `make runner` (CLI)
+- **Stop/restart**: `make stop-services` (stop API and UI on ports 8000, 8501), `make restart-services` (stop then start both in background; logs: `.api.log`, `.ui.log`)
 - **Docker**: `make docker-build`, `make docker-run` (mounts `./data`)
 - **docker-compose**: `make docker-up` or `docker compose -f docker/docker-compose.yml up --build` (REST API on port 8000)
 

@@ -20,6 +20,12 @@ build/
 .coverage
 htmlcov/
 
+# Service logs and PIDs (make start-services / restart-services)
+.api.log
+.ui.log
+.api.pid
+.ui.pid
+
 # Python caches
 __pycache__/
 *.pyc
