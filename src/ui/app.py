@@ -21,8 +21,9 @@ from metrics_dashboard import (  # noqa: E402
     get_available_metrics,
     get_metric_history,
     get_runtime_trend_data,
+    get_mlups_trend_data,
 )
-from charts import render_runtime_trend  # noqa: E402
+from charts import render_runtime_trend, render_mlups_trend  # noqa: E402
 
 from harness import get_db_path
 
@@ -436,6 +437,21 @@ def page_long_term_trends() -> None:
     # --- Runtime trend chart -----------------------------------------------
     st.subheader("Runtime (wall-clock) Trend")
     render_runtime_trend(df_filtered)
+
+    # --- MLUPS trend chart -------------------------------------------------
+    st.subheader("Throughput Trend (MLUPS)")
+    df_mlups_all = get_mlups_trend_data(str(DB_PATH))
+    if not df_mlups_all.empty:
+        mlups_mask = (
+            df_mlups_all["solver_name"].isin(selected_solvers)
+            & df_mlups_all["system_name"].isin(selected_systems)
+            & (df_mlups_all["timestamp"].dt.date >= start_date)
+            & (df_mlups_all["timestamp"].dt.date <= end_date)
+        )
+        df_mlups_filtered = df_mlups_all[mlups_mask]
+    else:
+        df_mlups_filtered = df_mlups_all
+    render_mlups_trend(df_mlups_filtered)
 
     # --- Raw data expander -------------------------------------------------
     with st.expander("View raw data"):
