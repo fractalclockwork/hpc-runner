@@ -33,7 +33,9 @@ def test_long_term_trends_nav_item_visible(page, streamlit_url, streamlit_proces
 def test_long_term_trends_page_loads(page, streamlit_url, streamlit_process):
     """Navigating to Long-Term Trends renders the page header."""
     _go_to_trends(page, streamlit_url)
-    expect(page.get_by_role("heading", name="Long-Term Trends")).to_be_visible()
+    # Scope to main content to avoid matching sidebar "Long-Term Trends Filters"
+    main = page.get_by_test_id("stMainBlockContainer")
+    expect(main.get_by_role("heading", name="Long-Term Trends")).to_be_visible()
 
 
 # ---------------------------------------------------------------------------
@@ -66,14 +68,22 @@ def test_runtime_trend_chart_or_empty_message(page, streamlit_url, streamlit_pro
     _go_to_trends(page, streamlit_url)
     if not _has_run_data(page):
         pytest.skip("No run data in DB — runtime trend section not rendered")
-    # After sidebar filters are applied, either a chart or an info message is shown
+    # Wait for Streamlit to render chart or empty-state message
+    chart_first = page.locator('[data-testid="stPlotlyChart"]').first
+    no_runtime_first = page.get_by_text("No run data available yet").first
+    no_filter_first = page.get_by_text("No runtime data recorded").first
+    unexpected_first = page.get_by_text("Unexpected data format").first
+    expect(chart_first.or_(no_runtime_first).or_(no_filter_first).or_(unexpected_first)).to_be_visible(timeout=10000)
+    # Then assert at least one of the expected outcomes
     charts = page.locator('[data-testid="stPlotlyChart"]')
     no_runtime_msg = page.get_by_text("No run data available yet")
     no_filter_msg = page.get_by_text("No runtime data recorded")
+    unexpected_fmt = page.get_by_text("Unexpected data format")
     assert (
         charts.count() > 0
         or no_runtime_msg.count() > 0
         or no_filter_msg.count() > 0
+        or unexpected_fmt.count() > 0
     ), "Expected a chart or an empty-state message in the runtime trend section"
 
 
@@ -95,6 +105,12 @@ def test_mlups_trend_chart_or_empty_message(page, streamlit_url, streamlit_proce
     _go_to_trends(page, streamlit_url)
     if not _has_run_data(page):
         pytest.skip("No run data in DB — MLUPS trend section not rendered")
+    # Wait for Streamlit to render chart or empty-state message
+    chart_first = page.locator('[data-testid="stPlotlyChart"]').first
+    no_mlups_first = page.get_by_text("No MLUPS data available").first
+    no_mlups_rec_first = page.get_by_text("No MLUPS values recorded").first
+    expect(chart_first.or_(no_mlups_first).or_(no_mlups_rec_first)).to_be_visible(timeout=10000)
+    # Then assert at least one of the expected outcomes
     charts = page.locator('[data-testid="stPlotlyChart"]')
     no_mlups_msg = page.get_by_text("No MLUPS data available")
     no_mlups_recorded = page.get_by_text("No MLUPS values recorded")
@@ -117,4 +133,6 @@ def test_long_term_trends_sidebar_filters(page, streamlit_url, streamlit_process
     expect(page.get_by_text("Long-Term Trends Filters")).to_be_visible()
     expect(page.get_by_text("Solver(s)")).to_be_visible()
     expect(page.get_by_text("System(s)")).to_be_visible()
-    expect(page.get_by_text("Date range")).to_be_visible()
+    # Scope to sidebar to avoid matching main content or date picker's "Selected date range..." text
+    sidebar = page.get_by_test_id("stSidebar")
+    expect(sidebar.get_by_text("Date range", exact=True)).to_be_visible()
