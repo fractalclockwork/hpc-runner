@@ -95,6 +95,8 @@ make e2e-docker     # E2E tests in Docker (Streamlit + Playwright)
 make docker-validate # Validate Docker images (build + API health check)
 ```
 
+See [docs/e2e_quickstart.md](docs/e2e_quickstart.md) for installing and running Playwright E2E tests.
+
 ## Configuration Structure
 
 ```
