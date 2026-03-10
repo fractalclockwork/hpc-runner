@@ -599,12 +599,17 @@ def page_long_term_trends() -> None:
                 key="heatmap-metric-select",
             )
             if selected_hm_metric == "mlups":
-                multi_solver_heatmap(selected_hm_metric, heatmap_runs, 2.1e6, 4e6)
+                metric_dictionary = {"python-solver":(2.1e6, 4e6)}
+                multi_solver_heatmap(selected_hm_metric, heatmap_runs, metric_dictionary)
+            elif selected_hm_metric == "runtime_seconds":
+                metric_dictionary = {"python-solver":(0.0, 0.01), "echo-solver":(0.0, 0.01), "cpuinfo-test":(0.0, 0.01)}
+                multi_solver_heatmap(selected_hm_metric, heatmap_runs, metric_dictionary)
             else:
-                multi_solver_heatmap(selected_hm_metric, heatmap_runs)
+                st.info("Define the spec ranges for each metric for each solver to show a specification range heatmap.")
+
 
     # --- Raw data expander -------------------------------------------------
-    with st.expander("View raw data"):
+    with st.expander("View data summary"):
         if df_filtered.empty:
             st.info("No rows match the current filters.")
         else:
@@ -713,10 +718,17 @@ def single_solver_heatmap(filtered, solver_name: str = ""):
     st.header(f"Single Metric Heatmap",help="Heatmap compares numeric metrics for a single solver using per metric normalized values. You can hover over to see the non-normalized value for reference.  The raw data table shows non normalized values for each metric.")
     # Display in Streamlit
     st.plotly_chart(fig)
-    with st.expander("View raw data"):
+    with st.expander("View heatmap data"):
         st.dataframe(numeric_df, use_container_width=True)
 
-def multi_solver_heatmap(metric_name: str, filtered, min_value: float = 0.0, max_value: float = 0.01):
+def multi_solver_heatmap(metric_name: str, filtered, min_max_dictionary: dict[str, tuple[float, float]]):
+    def norm(value, min_value, max_value):
+        return (value - min_value) / (max_value - min_value)
+    def normalize_row(row):
+        print(min_max_dictionary)
+        print(row)
+        min_value, max_value = min_max_dictionary[row.name]   # row.name is the index label
+        return (row - min_value) / (max_value - min_value)
     try:
         solvers: list[dict[str, Any]] = requests.get(API_URL + "/api/solvers").json()
     except requests.exceptions.RequestException:
@@ -743,22 +755,26 @@ def multi_solver_heatmap(metric_name: str, filtered, min_value: float = 0.0, max
     df = pd.DataFrame(data, index=row_names)
     pivot = pd.pivot_table(df, values = 0, columns = 3, index = 1)
     pivot = pivot.transpose()
-    pivot = (pivot - min_value / (max_value - min_value))
+    # normalize value based on the min and max range in the dictionary,
+    # this may want to be refactored to pull from the filtered input
+    # directly
+    normalized = pivot.apply(normalize_row, axis = 1)
+    # pivot = (pivot - min_value / (max_value - min_value))
     fig = go.Figure(data=go.Heatmap(
         customdata=pivot,
-        z=pivot,
-        x=pivot.columns,
-        y=pivot.index,
-        zmin = min_value,
-        zmax = max_value,
+        z=normalized,
+        x=normalized.columns,
+        y=normalized.index,
+        zmin = 0.0,
+        zmax = 1.0,
         colorscale=[
                 [0,  'green'],
                 [0.5,  'yellow'],
                 [1.0,  'red'],
             ],
         colorbar=dict(
-            tickvals=np.arange(min_value, max_value, max_value / 3),       # center ticks in each band
-            ticktext=[f"Within Spec ({min_value})", f"Near Average ({min_value + max_value / 2})", f"Out of Spec ({max_value})"],
+            tickvals=np.arange(0.0, 1.0, 1.0 / 3.0),       # center ticks in each band
+            ticktext=[f"Within Spec", f"Near Average", f"Out of Spec "],
             ticks='outside',
         ),
         hovertemplate='Non-Normalized Value: %{customdata:.4f}<extra></extra>',
@@ -774,7 +790,7 @@ def multi_solver_heatmap(metric_name: str, filtered, min_value: float = 0.0, max
     st.header(f"{metric_name} Heatmap",help=f"Heatmap compares the shared metric {metric_name} for all solvers with available data for that metic. The raw data table shows daily metrics information for the shared metric across solvers")
     # Display in Streamlit
     st.plotly_chart(fig)
-    with st.expander("View raw data"):
+    with st.expander(f"View heatmap data"):
         st.dataframe(df, use_container_width=True)
 
 # ---------------------------------------------------------------------------
