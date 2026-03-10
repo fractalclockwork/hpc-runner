@@ -4,7 +4,37 @@ This document guides the sponsor through a feature demo of the **HPC Regression 
 
 ---
 
+## This Week's Demo Focus
+
+Flash Demo #2 showcases the End-to-End MVP smoke test and these focus areas:
+
+- **Current UI functionality** — Streamlit pages: Home (metric charts), Run Jobs, Run History, Tests, Configs. See [design.md](design.md) for UI goals and [src/ui/app.py](../src/ui/app.py) for implementation.
+- **Runner + parsing stability** — Job execution ([runner.py](../src/core/src/harness/runner.py)), metric extraction and validation ([parser/parser.py](../src/core/src/harness/parser/parser.py)), CLI ([cli.py](../src/core/src/harness/cli.py)).
+- **Architecture direction after Milestone 1** — We're past Milestone Review I; End-to-End MVP Assembly is in progress. See [architecture.md](architecture.md) for components (Config, Runner, Parser, Storage), data flow, and API.
+- **Early schema refinements** — Config schemas ([schemas.py](../src/core/src/harness/config/schemas.py): Resource, System, Solver, Job, MetricSpec) and storage schema ([architecture.md](architecture.md) §8: `runs` table including `validation_errors`).
+
+---
+
+## Part 0: End-to-End MVP Smoke Test
+
+One ordered walkthrough to validate the full workflow. For detailed commands and UI tables, see Part 1 and Part 2.
+
+| Step | Action | How |
+|------|--------|-----|
+| 1 | **Load configs** | `uv run hpc-runner configs --list` — or start API and call `GET /api/jobs`, `GET /api/solvers` |
+| 2 | **Run jobs** | `uv run hpc-runner configs` or `uv run hpc-runner configs --job echo-test` — or use **Run Jobs** in the UI or `POST /api/run_jobs` |
+| 3 | **Parse metrics** | Automatic: runner uses each solver's `parser_config.yaml` → `extract_metrics()` + `validate_metrics()`. See e.g. `configs/solvers/python-solver/parser_config.yaml` and solver stdout/stderr |
+| 4 | **Persist results** | By default results go to `data/harness.db`. Use `--no-store` to run without persisting |
+| 5 | **View in UI** | `make ui` → http://localhost:8501 — **Run History** (table; expand row for stdout, stderr, metrics), **Home** (solver + metric dropdown, line chart) |
+| 6 | **View in API** | `make api` → http://localhost:8000/docs — `GET /api/runs`, `GET /api/runs/<id>`, `GET /api/metrics/<solver>/<metric>` |
+| 7 | **Add a solver** | Follow **Part 2** below (copy `_template`, edit solver.yaml, run.sh, parser_config.yaml, add job) or quick-add: `uv run hpc-runner --add "echo hello" --system dev-system --name hello-check` |
+| 8 | **Re-run jobs** | Run the new job via CLI or **Run Jobs** in the UI; confirm the run appears in **Run History** and (if a metric is defined) on **Home** |
+
+---
+
 ## Part 1: Demo Script — Feature Showcase
+
+For a single ordered flow, see **Part 0**. Below are all platform features in detail.
 
 Follow these steps to see all platform features. **Suggested order:** Run jobs first (1.2 or 1.3) so the Home page has data to display.
 
@@ -244,6 +274,7 @@ sponsor-results-YYYY-MM-DD/
 
 ## Part 4: Summary Checklist
 
+- [ ] Complete Part 0 smoke test: load configs → run jobs → parse metrics → persist → view in UI → view in API → add solver → re-run
 - [ ] Run demo script (Part 1): setup, CLI, Streamlit, API
 - [ ] Add a new solver (Part 2)
 - [ ] Run jobs on sponsor systems
@@ -254,6 +285,8 @@ sponsor-results-YYYY-MM-DD/
 
 ## See Also
 
+- [Architecture](architecture.md) — Components, data flow, storage schema
+- [Design](design.md) — UI goals and page components
 - [User Guide](user_guide.md) — Defining solvers, systems, jobs, metrics
 - [Solver Template](solver_template.md) — Full solver specification
 - [Glossary](glossary.md) — Term definitions
