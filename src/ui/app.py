@@ -678,9 +678,6 @@ def page_long_term_trends() -> None:
 def single_solver_heatmap(filtered, solver_name: str = ""):
     column_names = [key for key in json.loads(filtered[0]['metrics_json'])]
     row_names = [x['timestamp'] for x in filtered]
- #   truncated_names = [name[:8] + '...' if len(name) > 8 else name for name in row_names]
-    # idk way its very wonky trying to use the timestamp as the row name
-    #row_names = [i for i in range(len(filtered))]
     data = []
     # blegh this will have NaN data if some dates are missing metrics
     for i in range(len(filtered)):
@@ -693,14 +690,11 @@ def single_solver_heatmap(filtered, solver_name: str = ""):
     data.reverse()
     # Min-max normalization (0 to 1)
     df = pd.DataFrame(data, columns=column_names, index=row_names)
-    print(df)
     numeric_df = df.apply(pd.to_numeric, errors='coerce')
-    # numeric_df = df.select_dtypes(include=['float64', 'int64', 'float32', 'int32'])
     numeric_df = numeric_df.dropna(axis=1, how="all")
     normalized = (numeric_df - numeric_df.min()) / (numeric_df.max() - numeric_df.min())
     normalized = normalized.fillna(0)
     normalized= normalized.transpose()
-    print(normalized)
     fig = go.Figure(data=go.Heatmap(
         customdata=numeric_df.transpose(),
         z=normalized,
@@ -750,7 +744,6 @@ def multi_solver_heatmap(metric_name: str, filtered, min_value: float = 0.0, max
     pivot = pd.pivot_table(df, values = 0, columns = 3, index = 1)
     pivot = pivot.transpose()
     pivot = (pivot - min_value / (max_value - min_value))
-    print(pivot)
     fig = go.Figure(data=go.Heatmap(
         customdata=pivot,
         z=pivot,
