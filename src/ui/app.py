@@ -267,10 +267,10 @@ def page_run_history() -> None:
                 has_validation_errors = isinstance(errs, list) and len(errs) > 0
             except (json.JSONDecodeError, TypeError):
                 has_validation_errors = False
-            if returncode != 0:
-                icon = "❌"  # system/run failed (e.g. crash, non-zero exit)
-            elif has_validation_errors:
-                icon = "⚠️"  # validation only (returncode was 0 but metrics out of range)
+            if r.get("returncode", 0) != 0:
+                icon = "❌"  # system/process failure
+            elif r.get("validation_errors"):
+                icon = "⚠️"  # validation only (returncode was 0)
             else:
                 icon = "❌"
         with st.expander(f"{icon} {r['job_name']} — {passed} ({r.get('timestamp', '')})"):
