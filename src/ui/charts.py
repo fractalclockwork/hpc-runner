@@ -100,13 +100,13 @@ def render_mlups_trend(df: pd.DataFrame, session_state) -> None:
         yaxis_title="Throughput (MLUPS)",
     )
 
-    st.plotly_chart(fig, use_container_width=True)
 
     event = st.plotly_chart(fig, use_container_width=True, on_select="rerun")
     if event.selection.points:
         point = event.selection.points[0]
         session_state['clicked_point'] = point
         print(f"point is {session_state['clicked_point']}")
+        session_state.page = "Run History"
 
 def single_solver_heatmap(filtered, solver_name: str = ""):
     column_names = [key for key in json.loads(filtered[0]['metrics_json'])]
