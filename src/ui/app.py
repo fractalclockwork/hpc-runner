@@ -60,6 +60,8 @@ if "test_result" not in st.session_state:
     st.session_state.test_result = None
 if "run_job_results" not in st.session_state:
     st.session_state.run_job_results = None
+if "page_change_requested" not in st.session_state:
+    st.session_state.page_change_requested = False
 
 # ---------------------------------------------------------------------------
 # Global theme overrides (dark sidebar, card styles)
@@ -119,13 +121,24 @@ st.sidebar.markdown(
 )
 st.sidebar.title("HPC Regression Testing Platform")
 st.sidebar.markdown("---")
-page_index = PAGES.index(st.session_state.page) if st.session_state.page in PAGES else 0
+
+if 'page' not in st.session_state:
+    st.session_state.page = PAGES[0]
+
+def on_page_change():
+    if not st.session_state.page_change_requested:
+        st.session_state.page = st.session_state.page_radio
+    else:
+        print("page change was requested")
+        st.session_state.page_change_requested = False
+
 selected_page = st.sidebar.radio(
     "Go to",
     PAGES,
-    index=page_index,
+    index=PAGES.index(st.session_state.page),
+    key="page_radio",
+    on_change=on_page_change
 )
-st.session_state.page = selected_page
 
 # ---------------------------------------------------------------------------
 # Page: Home

@@ -10,6 +10,8 @@ import numpy as np
 import requests
 import plotly.graph_objects as go
 
+API_URL = "http://localhost:8000"
+
 def render_runtime_trend(df: pd.DataFrame, session_state) -> None:
     """Render a Plotly line chart of runtime_seconds over time, one line per series.
 
@@ -59,6 +61,7 @@ def render_runtime_trend(df: pd.DataFrame, session_state) -> None:
         session_state['clicked_point'] = point
         print(f"point is {st.session_state['clicked_point']}")
         session_state.page = "Run History"
+        st.session_state.page_change_requested = True
 
 
 def render_mlups_trend(df: pd.DataFrame, session_state) -> None:
@@ -107,6 +110,7 @@ def render_mlups_trend(df: pd.DataFrame, session_state) -> None:
         session_state['clicked_point'] = point
         print(f"point is {session_state['clicked_point']}")
         session_state.page = "Run History"
+        st.session_state.page_change_requested = True
 
 def single_solver_heatmap(filtered, solver_name: str = ""):
     column_names = [key for key in json.loads(filtered[0]['metrics_json'])]
