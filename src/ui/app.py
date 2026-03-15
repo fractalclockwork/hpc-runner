@@ -13,6 +13,8 @@ import plotly.graph_objects as go
 import numpy as np
 import uuid
 import json
+from typing import Any
+import plotly.express as px
 
 # Allow importing runner from the same directory when launched via `streamlit run`
 from config_editor import (  # noqa: E402
@@ -30,7 +32,7 @@ from metrics_dashboard import (  # noqa: E402
     get_runtime_trend_data,
     get_mlups_trend_data,
 )
-from charts import render_runtime_trend, render_mlups_trend  # noqa: E402
+# from charts import render_runtime_trend, render_mlups_trend  # noqa: E402
 
 from harness import get_db_path
 
@@ -210,7 +212,7 @@ def page_individual_trends() -> None:
 
     with st.expander("View raw data"):
         raw_df = pd.DataFrame(history, columns=["timestamp", "value"])
-        st.dataframe(raw_df, use_container_width=True)
+        st.dataframe(raw_df, width="stretch")
 
 
 # ---------------------------------------------------------------------------
@@ -343,7 +345,7 @@ def page_run_jobs() -> None:
     with st.expander("Job schedule", expanded=True):
         _testid("run-jobs-schedule")
         st.caption("When each job is configured to run (cron or manual).")
-        st.dataframe(schedule_df, use_container_width=True, hide_index=True)
+        st.dataframe(schedule_df, width='stretch', hide_index=True)
 
     job_names = [j["name"] for j in job_list] 
     selected = st.multiselect(
@@ -587,7 +589,7 @@ def page_long_term_trends() -> None:
         else:
             st.dataframe(
                 df_filtered[["timestamp", "solver_name", "system_name", "job_name", "runtime_seconds", "passed"]],
-                use_container_width=True,
+                width='stretch',
             )
     # --- Runtime trend chart -----------------------------------------------
     _testid("section-runtime-trend")
@@ -689,9 +691,15 @@ def single_solver_heatmap(filtered, solver_name: str = ""):
     )
     st.header(f"Single Metric Heatmap",help="Heatmap compares numeric metrics for a single solver using per metric normalized values. You can hover over to see the non-normalized value for reference.  The raw data table shows non normalized values for each metric.")
     # Display in Streamlit
-    st.plotly_chart(fig)
+    event = st.plotly_chart(fig, on_select='rerun', key='heatmap', selection_mode="box")
+    print("Should have rerun")
+    print(event)
+    if event.selection.points:
+        point = event.selection.points[0]
+        st.session_state['clicked_point'] = point
+        print(f"point is {st.session_state['clicked_point']}")
     with st.expander("View heatmap data"):
-        st.dataframe(numeric_df, use_container_width=True)
+        st.dataframe(numeric_df, width='stretch')
 
 def multi_solver_heatmap(metric_name: str, filtered, min_max_dictionary: dict[str, tuple[float, float]]):
     def norm(value, min_value, max_value):
@@ -764,12 +772,152 @@ def multi_solver_heatmap(metric_name: str, filtered, min_max_dictionary: dict[st
         )
     )
     st.header(f"{metric_name} Heatmap",help=f"Heatmap shows whether {metric_name} is within a specified per solver normalized range over the time seires if a range was properly supplied, otherwise reverts to showing the normalized min max range. The raw data table shows daily metrics information for the shared metric across solvers. You can hover over heatmap values to see the non normalized value of the metric.")
+    def handle_click(event):
+        print("called go_to_metric_page")
     # Display in Streamlit
-    st.plotly_chart(fig)
+    st.plotly_chart(fig, on_select=handle_click, key="chart")
     with st.expander(f"View heatmap data"):
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, width='stretch')
     with st.expander(f"Specification Ranges"):
-        st.dataframe(pd.DataFrame(min_max_dictionary).rename(index={0: "Lower Spec Range", 1: "Upper Spec Range"}).transpose(), use_container_width=True)
+        st.dataframe(pd.DataFrame(min_max_dictionary).rename(index={0: "Lower Spec Range", 1: "Upper Spec Range"}).transpose(), width='stretch')
+
+def render_runtime_trend(df: pd.DataFrame) -> None:
+    """Render a Plotly line chart of runtime_seconds over time, one line per series.
+
+    Expects df to have columns: timestamp, runtime_seconds, series
+    (where series = solver_name + " / " + system_name).
+    Handles empty/null states inline.
+    """
+    if df is None or df.empty:
+        st.info("No run data available yet. Run jobs via Run Jobs or the CLI to collect data.")
+        return
+
+    if "timestamp" not in df.columns or "runtime_seconds" not in df.columns:
+        st.warning("Unexpected data format — missing required columns.")
+        return
+
+    if df["runtime_seconds"].isna().all():
+        st.info("No runtime data recorded for the selected filters.")
+        return
+
+    fig = px.line(
+        df,
+        x="timestamp",
+        y="runtime_seconds",
+        color="series",
+        markers=True,
+        labels={
+            "timestamp": "Date",
+            "runtime_seconds": "Runtime (seconds)",
+            "series": "Solver / System",
+        },
+        title="Runtime Trend — Wall-Clock Time per Run",
+    )
+
+    fig.update_traces(
+        hovertemplate="<b>%{fullData.name}</b><br>Date: %{x}<br>Runtime: %{y:.3f}s<extra></extra>"
+    )
+    fig.update_layout(
+        legend_title_text="Solver / System",
+        hovermode="closest",
+        xaxis_title="Date",
+        yaxis_title="Runtime (seconds)",
+    )
+
+    event = st.plotly_chart(fig, use_container_width=True, on_select="rerun")
+    if event.selection.points:
+        point = event.selection.points[0]
+        st.session_state['clicked_point'] = point
+        print(f"point is {st.session_state['clicked_point']}")
+        st.session_state.page = "Run History"
+
+def render_mlups_trend(df: pd.DataFrame) -> None:
+    """Render a Plotly line chart of mlups over time, one line per series.
+
+    Expects df to have columns: timestamp, mlups, series
+    (where series = solver_name + " / " + system_name).
+    Handles empty/null states inline.
+    """
+    if df is None or df.empty:
+        st.info("No MLUPS data available for the selected filters. Only runs from solvers that report 'mlups' will appear here.")
+        return
+
+    if df["mlups"].isna().all():
+        st.info("No MLUPS values recorded for the selected filters.")
+        return
+
+    fig = px.line(
+        df,
+        x="timestamp",
+        y="mlups",
+        color="series",
+        markers=True,
+        labels={
+            "timestamp": "Date",
+            "mlups": "Throughput (MLUPS)",
+            "series": "Solver / System",
+        },
+        title="Throughput Trend — MLUPS per Run",
+    )
+
+    fig.update_traces(
+        hovertemplate="<b>%{fullData.name}</b><br>Date: %{x}<br>MLUPS: %{y:.3f}<extra></extra>"
+    )
+    fig.update_layout(
+        legend_title_text="Solver / System",
+        hovermode="closest",
+        xaxis_title="Date",
+        yaxis_title="Throughput (MLUPS)",
+    )
+
+    event = st.plotly_chart(fig, use_container_width=True, on_select="rerun")
+    if event.selection.points:
+        point = event.selection.points[0]
+        st.session_state['clicked_point'] = point
+        print(f"point is {st.session_state['clicked_point']}")
+        st.session_state.page = "Run History"
+
+
+def goto_selected_run(point):
+    '''
+    Uses the streamlit on_select event info to goto the run information for a run that was clicked on.
+    Uses a custom HTML injection script to scroll to the corresponding component and check the target
+    against the text in the <p> element inside of it.
+    Notably this feature could conceivably be slow or bork if we implement a date range cutoff that
+    is not synced with what is shown in the line plots, should consider adding a separate view
+    or refactoring the run history page to suport filtering by a specific date range.
+    This should probably go to some job view in the future
+    '''
+    target = point['x'].replace(' ', 'T', 1).split(".")[0]
+    components.html(f"""
+    <script>
+        const target = "{target}".toLowerCase();
+
+        console.log(target)
+        function openAndScroll() {{
+            const summaries = window.parent.document.querySelectorAll('summary');
+
+            for (const summary of summaries) {{
+                // Check the <p> inside the summary instead of the summary itself
+                const p = summary.querySelector('p');
+                const text = (p ? p.innerText : summary.innerText).trim().toLowerCase();
+                console.log(summary)
+                console.log(text)
+                console.log(target)
+                if (text.includes(target)) {{
+                    const expander = summary.closest('details');
+                    if (!expander.hasAttribute('open')) {{
+                        summary.click();
+                    }}
+                    summary.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+                    break;
+                }}
+            }}
+        }}
+
+        setTimeout(openAndScroll, 300);
+    </script>
+    """, height=0)
 
 # ---------------------------------------------------------------------------
 # Router
@@ -783,6 +931,10 @@ elif st.session_state.page == "Individual Trends":
     page_individual_trends()
 elif st.session_state.page == "Run History":
     page_run_history()
+    if "clicked_point" in st.session_state:
+        goto_selected_run(st.session_state["clicked_point"])
+        del st.session_state["clicked_point"]
+
 elif st.session_state.page == "Long-Term Trends":
     page_long_term_trends()
 #elif st.session_state.page == "Tests":

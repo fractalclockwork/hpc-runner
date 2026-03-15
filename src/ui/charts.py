@@ -50,7 +50,11 @@ def render_runtime_trend(df: pd.DataFrame) -> None:
         yaxis_title="Runtime (seconds)",
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    event = st.plotly_chart(fig, use_container_width=True, on_select="rerun")
+    if event.selection.points:
+        point = event.selection.points[0]
+        st.session_state['clicked_point'] = point
+        print(f"point is {st.session_state['clicked_point']}")
 
 
 def render_mlups_trend(df: pd.DataFrame) -> None:
@@ -93,3 +97,11 @@ def render_mlups_trend(df: pd.DataFrame) -> None:
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
+
+def goto_selected_point(event):
+    '''
+    Uses the streamlit on_select event info to goto the run information for a run that was clicked on.
+    This should probably go to some job view in the future
+    '''
+    point = event.selection.points[0]
