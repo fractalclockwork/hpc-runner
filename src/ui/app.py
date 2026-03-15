@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 import streamlit as st
-import streamlit.componentomponents
+import streamlit.components.v1 as components
 import requests
 import typing
 import pandas as pd
@@ -63,7 +63,7 @@ if "run_job_results" not in st.session_state:
 
 # ---------------------------------------------------------------------------
 # Global theme overrides (dark sidebar, card styles)
-# -----------------------------        session_state.page = "Run History"----
+# ---------------------------------------------------------------------------
 st.markdown(
     """
     <style>
@@ -111,7 +111,7 @@ st.markdown(
 # ---------------------------------------------------------------------------
 # Sidebar navigation
 # ---------------------------------------------------------------------------
-PAGES = ["Home", "Run Jobsg-Term Trends", "Configs"]
+PAGES = ["Home", "Run Jobs", "Individual Trends", "Run History", "Long-Term Trends", "Configs"]
 
 st.sidebar.markdown(
     '<span data-testid="nav-sidebar" style="display:none" aria-hidden="true"></span>',
@@ -119,21 +119,14 @@ st.sidebar.markdown(
 )
 st.sidebar.title("HPC Regression Testing Platform")
 st.sidebar.markdown("---")
-
-# Initialize once
-if 'page' not in st.session_state:
-    st.session_state.page = PAGES[0]
-
-def on_page_change():
-    st.session_state.page = st.session_state.page_radio
-
+page_index = PAGES.index(st.session_state.page) if st.session_state.page in PAGES else 0
 selected_page = st.sidebar.radio(
     "Go to",
     PAGES,
-    key="page_radio",       # radio owns its own state
-    on_change=on_page_change,
-    index=PAGES.index(st.session_state.page),
+    index=page_index,
 )
+st.session_state.page = selected_page
+
 # ---------------------------------------------------------------------------
 # Page: Home
 # ---------------------------------------------------------------------------
@@ -354,7 +347,7 @@ def page_run_jobs() -> None:
         st.caption("When each job is configured to run (cron or manual).")
         st.dataframe(schedule_df, width='stretch', hide_index=True)
 
-    job_names = [j["name"] for j in job_list] 
+    job_names = [j["name"] for j in job_list]
     selected = st.multiselect(
         "Select jobs to run",
         options=job_names,
