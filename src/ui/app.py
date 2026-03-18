@@ -13,6 +13,8 @@ import plotly.graph_objects as go
 import numpy as np
 import uuid
 import json
+from typing import Any
+import plotly.express as px
 
 # Allow importing runner from the same directory when launched via `streamlit run`
 from config_editor import (  # noqa: E402
@@ -30,7 +32,7 @@ from metrics_dashboard import (  # noqa: E402
     get_runtime_trend_data,
     get_mlups_trend_data,
 )
-from charts import render_runtime_trend, render_mlups_trend  # noqa: E402
+from charts import render_runtime_trend, render_mlups_trend, single_solver_heatmap, multi_solver_heatmap  # noqa: E402
 
 from harness import get_db_path
 
@@ -58,6 +60,8 @@ if "test_result" not in st.session_state:
     st.session_state.test_result = None
 if "run_job_results" not in st.session_state:
     st.session_state.run_job_results = None
+if "page_change_requested" not in st.session_state:
+    st.session_state.page_change_requested = False
 
 # ---------------------------------------------------------------------------
 # Global theme overrides (dark sidebar, card styles)
@@ -117,13 +121,24 @@ st.sidebar.markdown(
 )
 st.sidebar.title("HPC Regression Testing Platform")
 st.sidebar.markdown("---")
-page_index = PAGES.index(st.session_state.page) if st.session_state.page in PAGES else 0
+
+if 'page' not in st.session_state:
+    st.session_state.page = PAGES[0]
+
+def on_page_change():
+    if not st.session_state.page_change_requested:
+        st.session_state.page = st.session_state.page_radio
+    else:
+        print("page change was requested")
+        st.session_state.page_change_requested = False
+
 selected_page = st.sidebar.radio(
     "Go to",
     PAGES,
-    index=page_index,
+    index=PAGES.index(st.session_state.page),
+    key="page_radio",
+    on_change=on_page_change
 )
-st.session_state.page = selected_page
 
 # ---------------------------------------------------------------------------
 # Page: Home
@@ -210,7 +225,7 @@ def page_individual_trends() -> None:
 
     with st.expander("View raw data"):
         raw_df = pd.DataFrame(history, columns=["timestamp", "value"])
-        st.dataframe(raw_df, use_container_width=True)
+        st.dataframe(raw_df, width="stretch")
 
 
 # ---------------------------------------------------------------------------
@@ -343,9 +358,9 @@ def page_run_jobs() -> None:
     with st.expander("Job schedule", expanded=True):
         _testid("run-jobs-schedule")
         st.caption("When each job is configured to run (cron or manual).")
-        st.dataframe(schedule_df, use_container_width=True, hide_index=True)
+        st.dataframe(schedule_df, width='stretch', hide_index=True)
 
-    job_names = [j["name"] for j in job_list] 
+    job_names = [j["name"] for j in job_list]
     selected = st.multiselect(
         "Select jobs to run",
         options=job_names,
@@ -587,12 +602,12 @@ def page_long_term_trends() -> None:
         else:
             st.dataframe(
                 df_filtered[["timestamp", "solver_name", "system_name", "job_name", "runtime_seconds", "passed"]],
-                use_container_width=True,
+                width='stretch',
             )
     # --- Runtime trend chart -----------------------------------------------
     _testid("section-runtime-trend")
     st.subheader("Runtime (wall-clock) Trend")
-    render_runtime_trend(df_filtered)
+    render_runtime_trend(df_filtered, st.session_state)
 
     # --- MLUPS trend chart -------------------------------------------------
     _testid("section-mlups-trend")
@@ -608,7 +623,7 @@ def page_long_term_trends() -> None:
         df_mlups_filtered = df_mlups_all[mlups_mask]
     else:
         df_mlups_filtered = df_mlups_all
-    render_mlups_trend(df_mlups_filtered)
+    render_mlups_trend(df_mlups_filtered, st.session_state)
 
 
 
@@ -652,124 +667,47 @@ def page_long_term_trends() -> None:
 #        st.subheader("stderr")
 #        st.code(result.stderr, language="text")
 
-def single_solver_heatmap(filtered, solver_name: str = ""):
-    column_names = [key for key in json.loads(filtered[0]['metrics_json'])]
-    row_names = [x['timestamp'] for x in filtered]
-    data = []
-    # blegh this will have NaN data if some dates are missing metrics
-    for i in range(len(filtered)):
-        row = []
-        metrics_json = json.loads(filtered[i]['metrics_json'])
-        for key, value in metrics_json.items():
-            row.append(value)
-        data.append(row)
-    # descending time order is more intuitive
-    data.reverse()
-    # Min-max normalization (0 to 1)
-    df = pd.DataFrame(data, columns=column_names, index=row_names)
-    numeric_df = df.apply(pd.to_numeric, errors='coerce')
-    numeric_df = numeric_df.dropna(axis=1, how="all")
-    normalized = (numeric_df - numeric_df.min()) / (numeric_df.max() - numeric_df.min())
-    normalized = normalized.fillna(0)
-    normalized= normalized.transpose()
-    fig = go.Figure(data=go.Heatmap(
-        customdata=numeric_df.transpose(),
-        z=normalized,
-        x=normalized.columns,
-        y=normalized.index,
-        colorscale='Viridis',
-        xgap=2,  # Makes vertical gridlines
-        ygap=2,  # Makes horizontal gridlines
-        hovertemplate='Non-Normalized Value: %{customdata:.4f}<extra></extra>',
-    ))
-    fig.update_layout(
-        xaxis=dict(
-            type="category"
-        )
-    )
-    st.header(f"Single Metric Heatmap",help="Heatmap compares numeric metrics for a single solver using per metric normalized values. You can hover over to see the non-normalized value for reference.  The raw data table shows non normalized values for each metric.")
-    # Display in Streamlit
-    st.plotly_chart(fig)
-    with st.expander("View heatmap data"):
-        st.dataframe(numeric_df, use_container_width=True)
 
-def multi_solver_heatmap(metric_name: str, filtered, min_max_dictionary: dict[str, tuple[float, float]]):
-    def norm(value, min_value, max_value):
-        return (value - min_value) / (max_value - min_value)
-    def normalize_row(row):
-        print(min_max_dictionary)
-        print(row)
-        if row.name in min_max_dictionary:
-            min_value, max_value = min_max_dictionary[row.name]   # row.name is the index label
-        else:
-            st.warning(f"Supplied min_max dictionary does not have entry for {row.name}, will use observed max/min to set ranges")
-            min_value, max_value = 0, 1
-        return (row - min_value) / (max_value - min_value)
-    try:
-        solvers: list[dict[str, Any]] = requests.get(API_URL + "/api/solvers").json()
-    except requests.exceptions.RequestException:
-        solvers = []
-    column_names = [x['name'] for x in solvers]
-    row_names = [i for i in range(len(filtered))]
-    data = []
-    # blegh this will have NaN data if some dates are missing metrics
-    for i in range(len(filtered)):
-        solver_name = filtered[i]['solver_name']
-        row = []
-        metrics_json = json.loads(filtered[i]['metrics_json'])
-        for key, value in metrics_json.items():
-            if key == metric_name:
-                row.append(value)
-                row.append(filtered[i]['timestamp'][:19])
-                row.append(metric_name)
-                row.append(solver_name)
+def goto_selected_run(point):
+    '''
+    Uses the streamlit on_select event info to goto the run information for a run that was clicked on.
+    Uses a custom HTML injection script to scroll to the corresponding component and check the target
+    against the text in the <p> element inside of it.
+    Notably this feature could conceivably be slow or bork if we implement a date range cutoff that
+    is not synced with what is shown in the line plots, should consider adding a separate view
+    or refactoring the run history page to suport filtering by a specific date range.
+    This should probably go to some job view in the future
+    '''
+    target = point['x'].replace(' ', 'T', 1).split(".")[0]
+    components.html(f"""
+    <script>
+        const target = "{target}".toLowerCase();
 
-        data.append(row)
-    # descending time order is more intuitive
-    data.reverse()
-    # Min-max normalization (0 to 1)
-    df = pd.DataFrame(data, index=row_names)
-    pivot = pd.pivot_table(df, values = 0, columns = 3, index = 1)
-    pivot = pivot.transpose()
-    # normalize value based on the min and max range in the dictionary,
-    # this may want to be refactored to pull from the filtered input
-    # directly
-    normalized = pivot.apply(normalize_row, axis = 1)
-    # pivot = (pivot - min_value / (max_value - min_value))
-    fig = go.Figure(data=go.Heatmap(
-        customdata=pivot,
-        z=normalized,
-        x=normalized.columns,
-        y=normalized.index,
-        zmin = 0.0,
-        zmax = 1.0,
-        colorscale=[
-                [0,  'green'],
-                [0.5,  'yellow'],
-                [1.0,  'red'],
-            ],
-        colorbar=dict(
-            tickvals=np.arange(0.0, 1.0, 1.0 / 3.0),       # center ticks in each band
-            ticktext=[f"Within Spec", f"Near Average", f"Out of Spec "],
-            ticks='outside',
-        ),
-        hovertemplate='Non-Normalized Value: %{customdata:.4f}<extra></extra>',
-        xgap=2,  # Makes vertical gridlines
-        ygap=2,  # Makes horizontal gridlines
-    ))
+        console.log(target)
+        function openAndScroll() {{
+            const summaries = window.parent.document.querySelectorAll('summary');
 
-    fig.update_layout(
-        xaxis=dict(
-            type="category"
-        )
-    )
-    st.header(f"{metric_name} Heatmap",help=f"Heatmap shows whether {metric_name} is within a specified per solver normalized range over the time seires if a range was properly supplied, otherwise reverts to showing the normalized min max range. The raw data table shows daily metrics information for the shared metric across solvers. You can hover over heatmap values to see the non normalized value of the metric.")
-    # Display in Streamlit
-    st.plotly_chart(fig)
-    with st.expander(f"View heatmap data"):
-        st.dataframe(df, use_container_width=True)
-    with st.expander(f"Specification Ranges"):
-        st.dataframe(pd.DataFrame(min_max_dictionary).rename(index={0: "Lower Spec Range", 1: "Upper Spec Range"}).transpose(), use_container_width=True)
+            for (const summary of summaries) {{
+                // Check the <p> inside the summary instead of the summary itself
+                const p = summary.querySelector('p');
+                const text = (p ? p.innerText : summary.innerText).trim().toLowerCase();
+                console.log(summary)
+                console.log(text)
+                console.log(target)
+                if (text.includes(target)) {{
+                    const expander = summary.closest('details');
+                    if (!expander.hasAttribute('open')) {{
+                        summary.click();
+                    }}
+                    summary.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+                    break;
+                }}
+            }}
+        }}
+
+        setTimeout(openAndScroll, 300);
+    </script>
+    """, height=0)
 
 # ---------------------------------------------------------------------------
 # Router
@@ -783,6 +721,10 @@ elif st.session_state.page == "Individual Trends":
     page_individual_trends()
 elif st.session_state.page == "Run History":
     page_run_history()
+    if "clicked_point" in st.session_state:
+        goto_selected_run(st.session_state["clicked_point"])
+        del st.session_state["clicked_point"]
+
 elif st.session_state.page == "Long-Term Trends":
     page_long_term_trends()
 #elif st.session_state.page == "Tests":
