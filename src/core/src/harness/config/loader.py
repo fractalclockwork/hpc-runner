@@ -161,7 +161,8 @@ def load_jobs(config_dir: Path) -> dict[str, Job]:
                     success_criteria=item.get("success_criteria", {}),
                     schedule=item.get("schedule"),
                     timeout_seconds=item.get("timeout_seconds"),
-                    extra={k: v for k, v in item.items() if k not in ("name", "solver", "system", "parameters", "success_criteria", "schedule", "timeout_seconds")},
+                    baseline=bool(item.get("baseline", False)),
+                    extra={k: v for k, v in item.items() if k not in ("name", "solver", "system", "parameters", "success_criteria", "schedule", "timeout_seconds", "baseline")},
                 )
                 jobs[j.name] = j
     return jobs

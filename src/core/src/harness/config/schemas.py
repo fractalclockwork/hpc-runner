@@ -59,4 +59,5 @@ class Job:
     success_criteria: dict[str, Any] = field(default_factory=dict)
     schedule: str | None = None  # Cron-like or "manual"
     timeout_seconds: int | None = None  # Job timeout; default 3600 when None
+    baseline: bool = False  # Optional config default; user can also set baseline via UI (specific run)
     extra: dict[str, Any] = field(default_factory=dict)

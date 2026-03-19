@@ -86,6 +86,21 @@ def test_load_jobs(tmp_path):
     assert jobs["t1"].success_criteria == {"returncode": 0}
 
 
+def test_load_jobs_baseline(tmp_path):
+    """Job with baseline: true is loaded with baseline=True; omitted defaults to False."""
+    (tmp_path / "jobs").mkdir()
+    (tmp_path / "jobs" / "sample.yaml").write_text(yaml.safe_dump({
+        "jobs": [
+            {"name": "base-job", "solver": "s1", "system": "sys1", "baseline": True},
+            {"name": "normal-job", "solver": "s1", "system": "sys1"},
+        ]
+    }))
+    jobs = load_jobs(tmp_path)
+    assert len(jobs) == 2
+    assert jobs["base-job"].baseline is True
+    assert jobs["normal-job"].baseline is False
+
+
 def test_load_all(tmp_path):
     """Load all config entities."""
     (tmp_path / "resources").mkdir()
