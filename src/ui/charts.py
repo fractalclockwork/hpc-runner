@@ -9,8 +9,182 @@ import json
 import numpy as np
 import requests
 import plotly.graph_objects as go
+from typing import Any
 
 API_URL = "http://localhost:8000"
+
+
+def render_manual_baseline_overrides(
+    *,
+    item_labels: list[str],
+    defaults: dict[str, float],
+    key_prefix: str,
+    caption_text: str,
+    input_help: str,
+) -> dict[str, float]:
+    """
+    Render manual baseline inputs and return positive numeric overrides.
+    Keys are persisted in Streamlit session state via key_prefix.
+    """
+    with st.expander("Manual baseline overrides (optional)", expanded=False):
+        st.caption(caption_text)
+        for label in item_labels:
+            default = defaults.get(label, 0.0)
+            st.number_input(
+                label,
+                value=default,
+                min_value=0.0,
+                format="%g",
+                key=f"{key_prefix}_{label}",
+                help=input_help.format(label=label),
+            )
+    overrides = {
+        label: st.session_state.get(
+            f"{key_prefix}_{label}",
+            defaults.get(label, 0.0),
+        )
+        for label in item_labels
+    }
+    return {
+        k: float(v)
+        for k, v in overrides.items()
+        if isinstance(v, (int, float)) and float(v) > 0
+    }
+
+
+def render_single_solver_runs_vs_baseline(
+    *,
+    solver_name: str,
+    baseline_metrics: dict[str, float],
+    baseline_comparison_data: list[dict[str, Any]],
+) -> None:
+    """Render comparison table for one solver heatmap baseline mode."""
+    with st.expander("Runs vs baseline", expanded=False):
+        entry = next(
+            (e for e in baseline_comparison_data if e.get("solver_name") == solver_name),
+            None,
+        )
+        if not entry:
+            st.caption("No comparison data for this solver.")
+            return
+
+        comparisons_list = entry.get("comparisons") or []
+        if not comparisons_list:
+            st.caption("No other runs to compare for this solver.")
+            return
+
+        metric_options = sorted({
+            k for c in comparisons_list for k in (c.get("vs_baseline") or {}).keys()
+        })
+        metric_options = [m for m in metric_options if m in baseline_metrics]
+        if not metric_options:
+            st.caption("No comparable metrics found for this solver.")
+            return
+
+        selected_metric = st.selectbox(
+            "Metric",
+            options=metric_options,
+            key=f"comparison_metric_single_{solver_name}",
+        )
+
+        rows = []
+        for comp in comparisons_list:
+            row = {
+                "Run ID": comp.get("run_id"),
+                "Job": comp.get("job_name"),
+                "Timestamp": comp.get("timestamp", ""),
+            }
+            v = (comp.get("vs_baseline") or {}).get(selected_metric)
+            if v is not None:
+                base_val = v.get("baseline")
+                cur_val = v.get("value")
+                row["baseline"] = base_val
+                row["value"] = cur_val
+                if (
+                    isinstance(base_val, (int, float))
+                    and base_val != 0
+                    and isinstance(cur_val, (int, float))
+                ):
+                    row["× baseline"] = f"{(float(cur_val) / float(base_val)):.2f}×"
+                else:
+                    row["× baseline"] = ""
+                row["Δ"] = v.get("delta")
+                pct = v.get("delta_pct")
+                row["Δ%"] = f"{pct:.1f}%" if pct is not None else ""
+            else:
+                row["baseline"] = ""
+                row["value"] = ""
+                row["× baseline"] = ""
+                row["Δ"] = ""
+                row["Δ%"] = ""
+            rows.append(row)
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+def render_multi_solver_runs_vs_baseline(
+    *,
+    metric_name: str,
+    baseline_values: dict[str, float],
+    baseline_comparison_data: list[dict[str, Any]],
+) -> None:
+    """Render comparison table for multi-solver heatmap baseline mode."""
+    with st.expander("Runs vs baseline", expanded=False):
+        valid_entries = [
+            e for e in baseline_comparison_data
+            if e.get("solver_name") in baseline_values
+            and e.get("baseline_run")
+            and (e.get("comparisons") or [])
+        ]
+        solver_options = sorted([e["solver_name"] for e in valid_entries])
+        if not solver_options:
+            st.caption("No comparison data for current baselines.")
+            return
+
+        selected_solver = st.selectbox(
+            "Solver",
+            options=solver_options,
+            key=f"comparison_solver_{metric_name}",
+        )
+        entry = next((e for e in valid_entries if e["solver_name"] == selected_solver), None)
+        if not entry:
+            st.caption("No comparison data for selected solver.")
+            return
+
+        comparisons_list = entry.get("comparisons") or []
+        rows = []
+        for comp in comparisons_list:
+            row = {
+                "Run ID": comp.get("run_id"),
+                "Job": comp.get("job_name"),
+                "Timestamp": comp.get("timestamp", ""),
+            }
+            v = (comp.get("vs_baseline") or {}).get(metric_name)
+            if v is not None:
+                base_val = v.get("baseline")
+                cur_val = v.get("value")
+                row[f"{metric_name} (baseline)"] = base_val
+                row[f"{metric_name} (value)"] = cur_val
+                if (
+                    isinstance(base_val, (int, float))
+                    and base_val != 0
+                    and isinstance(cur_val, (int, float))
+                ):
+                    ratio = float(cur_val) / float(base_val)
+                    row[f"{metric_name} (× baseline)"] = f"{ratio:.2f}×"
+                else:
+                    row[f"{metric_name} (× baseline)"] = ""
+                row[f"{metric_name} (Δ)"] = v.get("delta")
+                pct = v.get("delta_pct")
+                row[f"{metric_name} (Δ%)"] = f"{pct:.1f}%" if pct is not None else ""
+            else:
+                row[f"{metric_name} (baseline)"] = ""
+                row[f"{metric_name} (value)"] = ""
+                row[f"{metric_name} (× baseline)"] = ""
+                row[f"{metric_name} (Δ)"] = ""
+                row[f"{metric_name} (Δ%)"] = ""
+            rows.append(row)
+        if rows:
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 def render_runtime_trend(df: pd.DataFrame, session_state) -> None:
     """Render a Plotly line chart of runtime_seconds over time, one line per series.

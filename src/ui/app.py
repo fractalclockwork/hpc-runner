@@ -32,8 +32,19 @@ from metrics_dashboard import (  # noqa: E402
     get_metric_history,
     get_runtime_trend_data,
     get_mlups_trend_data,
+    get_baseline_values_for_metric,
+    get_solver_baseline_metrics,
+    get_baseline_comparison,
 )
-from charts import render_runtime_trend, render_mlups_trend, single_solver_heatmap, multi_solver_heatmap  # noqa: E402
+from charts import (
+    render_runtime_trend,
+    render_mlups_trend,
+    single_solver_heatmap,
+    multi_solver_heatmap,
+    render_manual_baseline_overrides,
+    render_single_solver_runs_vs_baseline,
+    render_multi_solver_runs_vs_baseline,
+)  # noqa: E402
 
 from harness import get_db_path
 
@@ -538,27 +549,6 @@ def page_configs() -> None:
 # Page: Long-Term Trends (Page 4)
 # ---------------------------------------------------------------------------
 
-def _fetch_baseline_values_for_metric(metric_name: str, solver_names: list[str]) -> dict[str, float]:
-    """Fetch per-solver baseline metric values from the API."""
-    baseline_values: dict[str, float] = {}
-    for solver in solver_names:
-        try:
-            resp = requests.get(API_URL + f"/api/solvers/{solver}/baseline")
-        except requests.exceptions.RequestException:
-            continue
-        if resp.status_code != 200:
-            continue
-        try:
-            data = resp.json()
-        except Exception:
-            continue
-        metrics = data.get("metrics") or {}
-        val = metrics.get(metric_name)
-        if isinstance(val, (int, float)):
-            baseline_values[solver] = float(val)
-    return baseline_values
-
-
 def page_long_term_trends() -> None:
     _testid("page-long-term-trends")
     st.header("Long-Term Trends")
@@ -686,55 +676,28 @@ def page_long_term_trends() -> None:
             )
 
             if heatmap_color_mode_single.startswith("Baseline") and solver_pick:
-                baseline_metrics_api: dict[str, float] = {}
-                try:
-                    resp = requests.get(API_URL + f"/api/solvers/{solver_pick}/baseline")
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        metrics = data.get("metrics") or {}
-                        baseline_metrics_api = {
-                            k: float(v) for k, v in metrics.items() if isinstance(v, (int, float)) and float(v) > 0
-                        }
-                except requests.exceptions.RequestException:
-                    baseline_metrics_api = {}
+                baseline_metrics_api = get_solver_baseline_metrics(str(solver_pick))
 
                 # Manual overrides (per-metric) for this solver
                 metric_keys = sorted(json.loads(solver_runs[0]["metrics_json"]).keys())
-                with st.expander("Manual baseline overrides (optional)", expanded=False):
-                    st.caption(
+                baseline_metrics = render_manual_baseline_overrides(
+                    item_labels=metric_keys,
+                    defaults=baseline_metrics_api,
+                    key_prefix=f"manual_baseline_all_{solver_pick}",
+                    caption_text=(
                         "Type a baseline value per metric to use instead of (or when there is no) "
                         "run-based baseline. Pre-filled from the current baseline run when available."
-                    )
-                    for mk in metric_keys:
-                        default = baseline_metrics_api.get(mk, 0.0)
-                        st.number_input(
-                            mk,
-                            value=default,
-                            min_value=0.0,
-                            format="%g",
-                            key=f"manual_baseline_all_{solver_pick}_{mk}",
-                            help=f"Baseline value for {mk}",
-                        )
-                baseline_metrics = {
-                    mk: st.session_state.get(
-                        f"manual_baseline_all_{solver_pick}_{mk}",
-                        baseline_metrics_api.get(mk, 0.0),
-                    )
-                    for mk in metric_keys
-                }
-                baseline_metrics = {k: float(v) for k, v in baseline_metrics.items() if isinstance(v, (int, float)) and float(v) > 0}
+                    ),
+                    input_help="Baseline value for {label}",
+                )
 
                 if not baseline_metrics:
                     st.info("No baseline metrics available. Set a baseline in Run History or enter manual values above.")
                     single_solver_heatmap(solver_runs, solver_name=str(solver_pick))
                 else:
-                    baseline_comparison_data: list[dict[str, Any]] = []
-                    try:
-                        baseline_comparison_data = requests.get(
-                            API_URL + "/api/baseline_comparison", params={"solver": solver_pick, "limit": 200}
-                        ).json()
-                    except requests.exceptions.RequestException:
-                        baseline_comparison_data = []
+                    baseline_comparison_data = get_baseline_comparison(
+                        solver_name=str(solver_pick), limit=200
+                    )
                     single_solver_heatmap(
                         solver_runs,
                         solver_name=str(solver_pick),
@@ -776,45 +739,26 @@ def page_long_term_trends() -> None:
 
             if heatmap_color_mode.startswith("Baseline"):
                 solver_names_for_baseline = sorted({r["solver_name"] for r in heatmap_runs})
-                baseline_values_api = _fetch_baseline_values_for_metric(
+                baseline_values_api = get_baseline_values_for_metric(
                     selected_hm_metric, solver_names_for_baseline
                 )
-                with st.expander("Manual baseline overrides (optional)", expanded=False):
-                    st.caption(
+                baseline_values = render_manual_baseline_overrides(
+                    item_labels=solver_names_for_baseline,
+                    defaults=baseline_values_api,
+                    key_prefix=f"manual_baseline_{selected_hm_metric}",
+                    caption_text=(
                         "Type a baseline value per solver to use instead of (or when there is no) "
                         "run-based baseline. Pre-filled from current run baselines when available."
-                    )
-                    for solver in solver_names_for_baseline:
-                        default = baseline_values_api.get(solver, 0.0)
-                        st.number_input(
-                            f"{solver}",
-                            value=default,
-                            min_value=0.0,
-                            format="%g",
-                            key=f"manual_baseline_{selected_hm_metric}_{solver}",
-                            help=f"Baseline value for {selected_hm_metric}",
-                        )
-                baseline_values = {
-                    s: st.session_state.get(
-                        f"manual_baseline_{selected_hm_metric}_{s}",
-                        baseline_values_api.get(s, 0.0),
-                    )
-                    for s in solver_names_for_baseline
-                }
-                baseline_values = {s: v for s, v in baseline_values.items() if v > 0}
+                    ),
+                    input_help=f"Baseline value for {selected_hm_metric}",
+                )
                 if not baseline_values:
                     st.info(
                         "No baseline values available. Set baselines in Run History or enter manual values above."
                     )
                     multi_solver_heatmap(selected_hm_metric, heatmap_runs, metric_dictionary or None)
                 else:
-                    baseline_comparison_data: list[dict[str, Any]] = []
-                    try:
-                        baseline_comparison_data = requests.get(
-                            API_URL + "/api/baseline_comparison", params={"limit": 100}
-                        ).json()
-                    except requests.exceptions.RequestException:
-                        pass
+                    baseline_comparison_data = get_baseline_comparison(limit=100)
                     multi_solver_heatmap(
                         selected_hm_metric,
                         heatmap_runs,
@@ -948,7 +892,7 @@ def single_solver_heatmap(
     solver_name: str = "",
     *,
     baseline_metrics: dict[str, float] | None = None,
-    baseline_comparison_data: list[dict[str, any]] | None = None,
+    baseline_comparison_data: list[dict[str, Any]] | None = None,
 ) -> None:
     column_names = [key for key in json.loads(filtered[0]['metrics_json'])]
     row_names = [x['timestamp'] for x in filtered]
@@ -966,19 +910,23 @@ def single_solver_heatmap(
     df = pd.DataFrame(data, columns=column_names, index=row_names)
     numeric_df = df.apply(pd.to_numeric, errors='coerce')
     numeric_df = numeric_df.dropna(axis=1, how="all")
+
+    # heatmap in baseline mode
     if baseline_metrics:
         # Baseline ratio per metric (value / baseline_metric)
         cols = [c for c in numeric_df.columns if c in baseline_metrics and baseline_metrics.get(c, 0) > 0]
+        # check if any of the columns are in the baseline_comparison_data
         if not cols:
             st.info("No baseline values found for the metrics in this heatmap; showing default view.")
             baseline_metrics = None
         else:
             ratio_df = numeric_df[cols].copy()
+            # baseline ratio per metric
             for c in cols:
                 ratio_df[c] = ratio_df[c] / float(baseline_metrics[c])
             ratio_df = ratio_df.replace([np.inf, -np.inf], np.nan).fillna(0)
-            z = ratio_df.transpose()
-            custom = numeric_df[cols].transpose()
+            z = ratio_df.transpose() # transpose the dataframe to get the metrics as the columns and the dates as the rows
+            custom = numeric_df[cols].transpose() 
             zmin = 0.0
             zmax = 2.0
             colorscale = [
@@ -1038,63 +986,20 @@ def single_solver_heatmap(
     st.header("All Metrics Heatmap", help=help_text)
     st.plotly_chart(fig)
 
-    # In baseline mode, hide raw table; show comparison expander instead.
+    # In baseline mode, hide raw table and show comparison expander instead
+    # this is just my stylistic choice, we can change this if we want
     if not baseline_metrics:
         with st.expander("View heatmap data"):
             st.dataframe(numeric_df, use_container_width=True)
     else:
+        # make it nice and pretty with baseline metrics
+        # perhaps, I can move this segment to clean code later
         if baseline_comparison_data:
-            with st.expander("Runs vs baseline", expanded=False):
-                entry = None
-                for e in baseline_comparison_data:
-                    if e.get("solver_name") == solver_name:
-                        entry = e
-                        break
-                if not entry:
-                    st.caption("No comparison data for this solver.")
-                else:
-                    comparisons_list = entry.get("comparisons") or []
-                    if not comparisons_list:
-                        st.caption("No other runs to compare for this solver.")
-                    else:
-                        metric_options = sorted({k for c in comparisons_list for k in (c.get("vs_baseline") or {}).keys()})
-                        metric_options = [m for m in metric_options if m in baseline_metrics]
-                        if not metric_options:
-                            st.caption("No comparable metrics found for this solver.")
-                        else:
-                            selected_metric = st.selectbox(
-                                "Metric",
-                                options=metric_options,
-                                key=f"comparison_metric_single_{solver_name}",
-                            )
-                            rows = []
-                            for comp in comparisons_list:
-                                row = {
-                                    "Run ID": comp.get("run_id"),
-                                    "Job": comp.get("job_name"),
-                                    "Timestamp": comp.get("timestamp", ""),
-                                }
-                                v = (comp.get("vs_baseline") or {}).get(selected_metric)
-                                if v is not None:
-                                    base_val = v.get("baseline")
-                                    cur_val = v.get("value")
-                                    row["baseline"] = base_val
-                                    row["value"] = cur_val
-                                    if isinstance(base_val, (int, float)) and base_val != 0 and isinstance(cur_val, (int, float)):
-                                        row["× baseline"] = f"{(float(cur_val) / float(base_val)):.2f}×"
-                                    else:
-                                        row["× baseline"] = ""
-                                    row["Δ"] = v.get("delta")
-                                    pct = v.get("delta_pct")
-                                    row["Δ%"] = f"{pct:.1f}%" if pct is not None else ""
-                                else:
-                                    row["baseline"] = ""
-                                    row["value"] = ""
-                                    row["× baseline"] = ""
-                                    row["Δ"] = ""
-                                    row["Δ%"] = ""
-                                rows.append(row)
-                            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            render_single_solver_runs_vs_baseline(
+                solver_name=solver_name,
+                baseline_metrics=baseline_metrics,
+                baseline_comparison_data=baseline_comparison_data,
+            )
 
 def multi_solver_heatmap(
     metric_name: str,
@@ -1102,7 +1007,7 @@ def multi_solver_heatmap(
     min_max_dictionary: dict[str, tuple[float, float]] | None = None,
     *,
     baseline_values: dict[str, float] | None = None,
-    baseline_comparison_data: list[dict[str, any]] | None = None,
+    baseline_comparison_data: list[dict[str, Any]] | None = None,
 ) -> None:
     def normalize_row(row):
         solver = row.name
@@ -1129,7 +1034,7 @@ def multi_solver_heatmap(
             return row * 0.0
         return (row - observed_min) / (observed_max - observed_min)
     try:
-        solvers: list[dict[str, any]] = requests.get(API_URL + "/api/solvers").json()
+        solvers: list[dict[str, Any]] = requests.get(API_URL + "/api/solvers").json()
     except requests.exceptions.RequestException:
         solvers = []
     column_names = [x['name'] for x in solvers]
@@ -1161,7 +1066,6 @@ def multi_solver_heatmap(
         zmin = 0.0
         zmax = 2.0
         # Divergent scale: green at 1× baseline, red when further from baseline (above or below)
-        # Plotly colorscale levels must be in [0, 1]; we map 0×→0, 1×→0.5, 2×→1
         colorscale = [
             [0.0, "red"],
             [0.25, "orange"],
@@ -1229,60 +1133,11 @@ def multi_solver_heatmap(
         with st.expander(f"View heatmap data"):
             st.dataframe(df, use_container_width=True)
     if baseline_values and baseline_comparison_data:
-        with st.expander("Runs vs baseline", expanded=False):
-            valid_entries = [
-                e for e in baseline_comparison_data
-                if e.get("solver_name") in baseline_values
-                and e.get("baseline_run")
-                and (e.get("comparisons") or [])
-            ]
-            solver_options = sorted([e["solver_name"] for e in valid_entries])
-            if not solver_options:
-                st.caption("No comparison data for current baselines.")
-            else:
-                selected_solver = st.selectbox(
-                    "Solver",
-                    options=solver_options,
-                    key=f"comparison_solver_{metric_name}",
-                )
-                entry = next((e for e in valid_entries if e["solver_name"] == selected_solver), None)
-                if entry:
-                    comparisons_list = entry.get("comparisons") or []
-                    # Only show the metric currently selected for the heatmap
-                    metric_names = [metric_name]
-                    rows = []
-                    for comp in comparisons_list:
-                        row = {
-                            "Run ID": comp.get("run_id"),
-                            "Job": comp.get("job_name"),
-                            "Timestamp": comp.get("timestamp", ""),
-                        }
-                        vs = comp.get("vs_baseline") or {}
-                        for m in metric_names:
-                            v = vs.get(m)
-                            if v is not None:
-                                base_val = v.get("baseline")
-                                cur_val = v.get("value")
-                                row[f"{m} (baseline)"] = base_val
-                                row[f"{m} (value)"] = cur_val
-                                # Ratio to baseline (× baseline); avoid divide-by-zero
-                                if isinstance(base_val, (int, float)) and base_val != 0 and isinstance(cur_val, (int, float)):
-                                    ratio = float(cur_val) / float(base_val)
-                                    row[f"{m} (× baseline)"] = f"{ratio:.2f}×"
-                                else:
-                                    row[f"{m} (× baseline)"] = ""
-                                row[f"{m} (Δ)"] = v.get("delta")
-                                pct = v.get("delta_pct")
-                                row[f"{m} (Δ%)"] = f"{pct:.1f}%" if pct is not None else ""
-                            else:
-                                row[f"{m} (baseline)"] = ""
-                                row[f"{m} (value)"] = ""
-                                row[f"{m} (× baseline)"] = ""
-                                row[f"{m} (Δ)"] = ""
-                                row[f"{m} (Δ%)"] = ""
-                        rows.append(row)
-                    if rows:
-                        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        render_multi_solver_runs_vs_baseline(
+            metric_name=metric_name,
+            baseline_values=baseline_values,
+            baseline_comparison_data=baseline_comparison_data,
+        )
     if min_max_dictionary:
         with st.expander(f"Specification Ranges"):
             st.dataframe(pd.DataFrame(min_max_dictionary).rename(index={0: "Lower Spec Range", 1: "Upper Spec Range"}).transpose(), use_container_width=True)
