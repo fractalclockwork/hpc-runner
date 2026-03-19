@@ -198,7 +198,7 @@ jobs:
 | `success_criteria`| Pass/fail conditions; `returncode` (default 0)   |
 | `timeout_seconds` | Optional; job timeout in seconds (default 3600)   |
 | `schedule`        | Optional; reserved for future cron/scheduling    |
-| `baseline`        | Optional; if true, runs from this job are stored as a baseline candidate |
+| `baseline`        | Optional; if true, runs from this job are stored as a baseline |
 
 The solver’s `allowed_systems` must include the job’s `system`. Otherwise the job will be skipped.
 
@@ -302,37 +302,7 @@ The Streamlit UI provides:
 - **Home:** Metrics for each solver over the entire job history — select solver and metric, view line chart
 - **Run History:** Table of runs with status, processor, timestamp; filter by solver or processor; expand a run for full stdout, stderr, and metrics
 - **Run Jobs:** Execute jobs from the browser; view results immediately after running
-- **Long-Term Trends:** Heatmaps and trend charts over time, with optional baseline-relative views (see below)
-
----
-
-## 6.1 Baselines (Comparing to a Reference Run)
-
-Baselines let you pick a **reference run per solver** and compare other runs to it. This supports both:
-
-- **Run-selected baselines** (recommended): choose a specific stored run as the baseline.
-- **Config defaults** (optional): jobs can declare `baseline: true` so new runs from that job are marked as baseline candidates.
-
-### Setting a baseline in the UI
-
-1. Go to **Run History**
-2. Find the run you want as the reference
-3. Click **Baseline** on the right of that run
-
-Only **one baseline is active per solver** at a time. Selecting a new baseline replaces the previous baseline for that solver.
-
-### Baseline-relative heatmaps (Long-Term Trends)
-
-In **Long-Term Trends → Metrics Heatmap**, you can choose **Baseline** color scaling:
-
-- **One metric across all solvers/systems**: colors each solver as \( \text{value} / \text{baseline} \) for the selected metric.
-- **All metrics for one solver/system**: colors each metric as \( \text{value} / \text{baseline(metric)} \) for the selected solver.
-
-In baseline mode, you can optionally provide **manual baseline overrides** (numeric inputs) when no baseline run exists or when you want to compare against a fixed target.
-
-### Baseline line in Individual Trends
-
-In **Individual Trends**, when a baseline run exists for the selected solver and metric, a horizontal baseline reference line is shown on the chart.
+- **Long-Term Trends:** Heatmaps and trend charts over time, with optional baseline-relative views
 
 ---
 
