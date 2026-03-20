@@ -22,6 +22,7 @@ from harness import (
     get_baseline_comparison,
     get_config_dir,
     get_db_path,
+    get_job_batch_uuids,
 )
 
 app = FastAPI(title="HPC Regression API", version="0.1.0")
@@ -65,6 +66,7 @@ def api_solvers():
     """List configured solvers."""
     _, _, solvers, _ = _load_definitions()
     return [
+
         {
             "name": s.name,
             "version": s.version,
@@ -253,6 +255,14 @@ def api_available_metrics(
     init_db(DB_PATH)
     available_metrics: list[tuple[str, str]] = get_all_metrics_series(DB_PATH)
     return [{"solver": s, "metric": m} for s, m in available_metrics]
+
+@app.get("/api/get_job_batch_uuids")
+def api_job_batch_uuids(limit: int = 100):
+    """
+    Gets a list of
+    """
+    init_db(DB_PATH)
+    return get_job_batch_uuids(DB_PATH, limit=limit)
 
 def main():
     import uvicorn

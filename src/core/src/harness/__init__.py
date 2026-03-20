@@ -14,6 +14,7 @@ from .storage import (
     get_baseline_run,
     set_baseline_run,
     get_baseline_comparison,
+    get_job_batch_uuids,
 )
 
 __all__ = [
@@ -39,5 +40,6 @@ __all__ = [
     "get_baseline_run",
     "set_baseline_run",
     "get_baseline_comparison",
+    "get_job_batch_uuids",
 ]
 
