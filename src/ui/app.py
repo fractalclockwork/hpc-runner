@@ -580,16 +580,18 @@ def page_long_term_trends() -> None:
     st.markdown("""
         <style>
             .block-container {
+                max-height: 95%;        /* or try 1400px, 100%, etc. */
                 max-width: 95%;        /* or try 1400px, 100%, etc. */
                 padding-left: 2rem;
                 padding-right: 2rem;
+                padding-top: 1rem;
+                padding-bottom: 1rem;
             }
         </style>
     """, unsafe_allow_html=True)
 
     _testid("page-long-term-trends")
-    st.header("Long-Term Trends")
-    st.write("Performance of solvers over time. Use the sidebar to filter by solver, system, and date range.")
+    st.header("Long-Term Trends", help = "Performance of solvers over time. Use the sidebar to filter by solver, system, and date range.")
 
     df_all = get_runtime_trend_data(str(DB_PATH))
 
@@ -655,7 +657,7 @@ def page_long_term_trends() -> None:
 
     with col1:
         # --- Heatmap -----------------------------------------------------------
-        st.subheader("Metrics Heatmap")
+        # st.subheader("Metrics Heatmap")
 
         heatmap_mode = st.radio(
             "Heatmap mode",
@@ -825,13 +827,13 @@ def page_long_term_trends() -> None:
     with col2:
         # --- Runtime trend chart -----------------------------------------------
         _testid("section-runtime-trend")
-        st.subheader("Runtime (wall-clock) Trend")
+        # st.subheader("Runtime (wall-clock) Trend")
         render_runtime_trend(df_filtered, st.session_state)
 
     with col3:
         # --- MLUPS trend chart -------------------------------------------------
         _testid("section-mlups-trend")
-        st.subheader("Throughput Trend (MLUPS)")
+        # st.subheader("Throughput Trend (MLUPS)")
         df_mlups_all = get_mlups_trend_data(str(DB_PATH))
         if not df_mlups_all.empty:
             mlups_mask = (
