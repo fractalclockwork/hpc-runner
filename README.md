@@ -135,6 +135,9 @@ configs/
 | `/api/runs` | GET | List recent runs (?solver=, ?processor=, ?limit=, ?offset=) |
 | `/api/runs/<id>` | GET | Get run details |
 | `/api/metrics/<solver>/<metric>` | GET | Metric history for trends |
+| `/api/solvers/<solver>/baseline` | GET | Current baseline run for a solver |
+| `/api/runs/<id>/set_baseline` | POST | Set a run as the baseline for its solver |
+| `/api/baseline_comparison` | GET | Compare runs to baseline (?solver=, ?limit=) |
 
 ## Design Principles
 

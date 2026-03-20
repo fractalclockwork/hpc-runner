@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
+import requests
 import streamlit as st
 
 from harness import get_db_path
@@ -13,6 +15,7 @@ from harness import get_db_path
 DB_PATH = get_db_path()
 
 _TREND_QUERY_TTL = 60  # seconds
+API_URL = "http://localhost:8000"
 
 
 @st.cache_data(ttl=_TREND_QUERY_TTL)
@@ -123,3 +126,64 @@ def get_metric_history(solver_name: str, metric_name: str, limit: int = 100) -> 
 
     init_db(DB_PATH)
     return get_metrics_history(DB_PATH, solver_name, metric_name, limit=limit)
+
+
+@st.cache_data(ttl=_TREND_QUERY_TTL)
+def get_baseline_values_for_metric(metric_name: str, solver_names: list[str]) -> dict[str, float]:
+    """Fetch per-solver baseline metric values from the API."""
+    baseline_values: dict[str, float] = {}
+    for solver in solver_names:
+        try:
+            resp = requests.get(API_URL + f"/api/solvers/{solver}/baseline")
+        except requests.exceptions.RequestException:
+            continue
+        if resp.status_code != 200:
+            continue
+        try:
+            data = resp.json()
+        except Exception:
+            continue
+        metrics = data.get("metrics") or {}
+        val = metrics.get(metric_name)
+        if isinstance(val, (int, float)):
+            baseline_values[solver] = float(val)
+    return baseline_values
+
+
+@st.cache_data(ttl=_TREND_QUERY_TTL)
+def get_solver_baseline_metrics(solver_name: str) -> dict[str, float]:
+    """Fetch numeric baseline metrics for a solver from the API."""
+    try:
+        resp = requests.get(API_URL + f"/api/solvers/{solver_name}/baseline")
+    except requests.exceptions.RequestException:
+        return {}
+    if resp.status_code != 200:
+        return {}
+    try:
+        data = resp.json()
+    except Exception:
+        return {}
+    metrics = data.get("metrics") or {}
+    return {
+        k: float(v)
+        for k, v in metrics.items()
+        if isinstance(v, (int, float)) and float(v) > 0
+    }
+
+
+@st.cache_data(ttl=_TREND_QUERY_TTL)
+def get_baseline_comparison(
+    solver_name: str | None = None, limit: int = 100
+) -> list[dict[str, Any]]:
+    """Fetch baseline comparison payload from the API."""
+    params: dict[str, Any] = {"limit": limit}
+    if solver_name:
+        params["solver"] = solver_name
+    try:
+        response = requests.get(API_URL + "/api/baseline_comparison", params=params)
+        data = response.json()
+    except requests.exceptions.RequestException:
+        return []
+    except Exception:
+        return []
+    return data if isinstance(data, list) else []

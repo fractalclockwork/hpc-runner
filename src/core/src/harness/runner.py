@@ -38,6 +38,7 @@ class RunResult:
     passed: bool = False
     raw_logs: str = ""
     processor: str | None = None
+    baseline: bool = False
 
 
 def _build_env(system: System, base_env: dict[str, str] | None = None) -> dict[str, str]:
@@ -110,6 +111,7 @@ def run_job(
             passed=False,
             metrics={"runtime_seconds": runtime},
             processor=processor,
+            baseline=job.baseline,
         )
         logger.warning("runner.timeout", job=job.name, runtime=runtime)
         return run_result
@@ -130,6 +132,7 @@ def run_job(
             passed=False,
             metrics={"runtime_seconds": runtime},
             processor=processor,
+            baseline=job.baseline,
         )
         logger.exception("runner.error", job=job.name, error=str(e))
         return run_result
@@ -186,6 +189,7 @@ def run_job(
         raw_logs=raw_logs,
         metrics=metrics,
         processor=processor,
+        baseline=job.baseline,
     )
 
     logger.info(
@@ -226,6 +230,7 @@ def run_jobs(
                     passed=False,
                     metrics={"runtime_seconds": 0.0},
                     processor=probe_processor(),
+                    baseline=job.baseline,
                 )
             )
             continue
@@ -246,6 +251,7 @@ def run_jobs(
                     passed=False,
                     metrics={"runtime_seconds": 0.0},
                     processor=probe_processor(),
+                    baseline=job.baseline,
                 )
             )
             continue

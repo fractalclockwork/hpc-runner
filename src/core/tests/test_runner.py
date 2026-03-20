@@ -52,6 +52,43 @@ def test_run_minimal(tmp_path):
     assert len(results[0].processor) > 0
 
 
+def test_run_baseline_job_propagates_baseline_flag(tmp_path):
+    """When a job has baseline: true, RunResult.baseline is True."""
+    (tmp_path / "resources").mkdir()
+    (tmp_path / "systems").mkdir()
+    (tmp_path / "jobs").mkdir()
+    solvers_dir = tmp_path / "solvers"
+    solvers_dir.mkdir()
+
+    (tmp_path / "resources" / "default.yaml").write_text(yaml.safe_dump({
+        "resources": [{"name": "dev", "cpus": 4}]
+    }))
+    (tmp_path / "systems" / "default.yaml").write_text(yaml.safe_dump({
+        "systems": [{"name": "dev-system", "resources": ["dev"]}]
+    }))
+    (tmp_path / "jobs" / "sample.yaml").write_text(yaml.safe_dump({
+        "jobs": [
+            {"name": "baseline-job", "solver": "echo-solver", "system": "dev-system", "baseline": True}
+        ]
+    }))
+    solver_dir = solvers_dir / "echo-solver"
+    solver_dir.mkdir()
+    (solver_dir / "solver.yaml").write_text(yaml.safe_dump({
+        "name": "echo-solver",
+        "entrypoint": "run.sh",
+        "allowed_systems": ["dev-system"],
+    }))
+    (solver_dir / "run.sh").write_text("#!/bin/bash\necho hi\n")
+
+    resources, systems, solvers, jobs = load_all(tmp_path, None)
+    job = jobs["baseline-job"]
+    assert job.baseline is True
+
+    results = run_jobs([job], solvers, systems)
+    assert len(results) == 1
+    assert results[0].baseline is True
+
+
 def test_run_with_metric_extraction(tmp_path):
     """Run solver with parser_config; verify metrics are extracted."""
     (tmp_path / "resources").mkdir()

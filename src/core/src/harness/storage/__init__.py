@@ -6,6 +6,9 @@ from .db import (
     get_run_by_id,
     get_all_metrics_series,
     get_metrics_history,
+    get_baseline_run,
+    set_baseline_run,
+    get_baseline_comparison,
 )
 
 __all__ = [
@@ -15,4 +18,7 @@ __all__ = [
     "get_run_by_id",
     "get_all_metrics_series",
     "get_metrics_history",
+    "get_baseline_run",
+    "set_baseline_run",
+    "get_baseline_comparison",
 ]

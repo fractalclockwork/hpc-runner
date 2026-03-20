@@ -198,6 +198,7 @@ jobs:
 | `success_criteria`| Pass/fail conditions; `returncode` (default 0)   |
 | `timeout_seconds` | Optional; job timeout in seconds (default 3600)   |
 | `schedule`        | Optional; reserved for future cron/scheduling    |
+| `baseline`        | Optional; if true, runs from this job are stored as a baseline |
 
 The solver’s `allowed_systems` must include the job’s `system`. Otherwise the job will be skipped.
 
@@ -274,6 +275,9 @@ For automation:
 | `/api/runs`                | GET    | List runs (?solver=, ?processor=, ?limit=) |
 | `/api/runs/<id>`           | GET    | Run detail                           |
 | `/api/metrics/<solver>/<metric>` | GET | Metric history for trends            |
+| `/api/solvers/<solver>/baseline` | GET | Current baseline run for a solver    |
+| `/api/runs/<id>/set_baseline` | POST | Set a run as the baseline for its solver |
+| `/api/baseline_comparison` | GET | Compare runs to baseline (?solver=, ?limit=) |
 
 ---
 
@@ -298,6 +302,7 @@ The Streamlit UI provides:
 - **Home:** Metrics for each solver over the entire job history — select solver and metric, view line chart
 - **Run History:** Table of runs with status, processor, timestamp; filter by solver or processor; expand a run for full stdout, stderr, and metrics
 - **Run Jobs:** Execute jobs from the browser; view results immediately after running
+- **Long-Term Trends:** Heatmaps and trend charts over time, with optional baseline-relative views
 
 ---
 
