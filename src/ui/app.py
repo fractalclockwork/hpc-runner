@@ -1,35 +1,22 @@
 """Streamlit UI — minimal scaffolding for the HPC Regression Platform."""
 
-import sys
-from pathlib import Path
 import pandas as pd
 
 import streamlit as st
 import streamlit.components.v1 as components
 import requests
-import typing
 from typing import Any
-import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
-import uuid
 import json
-from typing import Any
-import plotly.express as px
 
 # Allow importing runner from the same directory when launched via `streamlit run`
 from config_editor import (  # noqa: E402
     discover_config_files,
     read_config,
-    write_config,
-    parse_yaml,
-    validate_all_configs,
     ConfigFile,
-    CONFIGS_DIR,
 )
 from metrics_dashboard import (  # noqa: E402
-    get_available_metrics,
-    get_metric_history,
     get_runtime_trend_data,
     get_mlups_trend_data,
     get_baseline_values_for_metric,
@@ -322,8 +309,8 @@ def page_run_history() -> None:
 
     try:
         job_batch_uuids = requests.get(API_URL + "/api/get_job_batch_uuids").json()
-    except requests.exceptions.RequestException as e:
-        print(f"Failed to get batch job uuids")
+    except requests.exceptions.RequestException:
+        print("Failed to get batch job uuids")
         return
 
     # Use a graph mapping uuids to index of result in filtered to make a batch job
@@ -1169,7 +1156,7 @@ def multi_solver_heatmap(
     # Display in Streamlit
     st.plotly_chart(fig)
     if not baseline_values:
-        with st.expander(f"View heatmap data"):
+        with st.expander("View heatmap data"):
             st.dataframe(df, use_container_width=True)
     if baseline_values and baseline_comparison_data:
         render_multi_solver_runs_vs_baseline(
@@ -1178,7 +1165,7 @@ def multi_solver_heatmap(
             baseline_comparison_data=baseline_comparison_data,
         )
     if min_max_dictionary:
-        with st.expander(f"Specification Ranges"):
+        with st.expander("Specification Ranges"):
             st.dataframe(pd.DataFrame(min_max_dictionary).rename(index={0: "Lower Spec Range", 1: "Upper Spec Range"}).transpose(), use_container_width=True)
 
 # ---------------------------------------------------------------------------

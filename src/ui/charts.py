@@ -321,7 +321,7 @@ def single_solver_heatmap(filtered, solver_name: str = ""):
             type="category"
         )
     )
-    st.header(f"Single Metric Heatmap",help="Heatmap compares numeric metrics for a single solver using per metric normalized values. You can hover over to see the non-normalized value for reference.  The raw data table shows non normalized values for each metric.")
+    st.header("Single Metric Heatmap",help="Heatmap compares numeric metrics for a single solver using per metric normalized values. You can hover over to see the non-normalized value for reference.  The raw data table shows non normalized values for each metric.")
     # Display in Streamlit
     event = st.plotly_chart(fig, on_select='rerun', key='heatmap', selection_mode="box")
     print("Should have rerun")
@@ -390,7 +390,7 @@ def multi_solver_heatmap(metric_name: str, filtered, min_max_dictionary: dict[st
             ],
         colorbar=dict(
             tickvals=np.arange(0.0, 1.0, 1.0 / 3.0),       # center ticks in each band
-            ticktext=[f"Within Spec", f"Near Average", f"Out of Spec "],
+            ticktext=["Within Spec", "Near Average", "Out of Spec "],
             ticks='outside',
         ),
         hovertemplate='Non-Normalized Value: %{customdata:.4f}<extra></extra>',
@@ -408,7 +408,7 @@ def multi_solver_heatmap(metric_name: str, filtered, min_max_dictionary: dict[st
         print("called go_to_metric_page")
     # Display in Streamlit
     st.plotly_chart(fig, on_select=handle_click, key="chart")
-    with st.expander(f"View heatmap data"):
+    with st.expander("View heatmap data"):
         st.dataframe(df, width='stretch')
-    with st.expander(f"Specification Ranges"):
+    with st.expander("Specification Ranges"):
         st.dataframe(pd.DataFrame(min_max_dictionary).rename(index={0: "Lower Spec Range", 1: "Upper Spec Range"}).transpose(), width='stretch')
