@@ -1,0 +1,4 @@
+# Runtime outputs from SLURM/LAMMPS smoke (inputs stay tracked)
+work/
+*.log
+log.lammps

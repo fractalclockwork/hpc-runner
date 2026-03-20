@@ -84,6 +84,8 @@ A solver is a self-contained package with a run script and metadata. See [solver
 
 4. Add a job that uses your solver (see [Defining Jobs](#4-defining-jobs)).
 
+**SLURM + LAMMPS:** The bundled `lammps-slurm` solver uses `docker/lammps/` (`in.lammps`, `sbatch_lammps.sh`). With Docker it defaults to **`sbatch`**, waits for the job, and collects **`slurm-*.out` / `.err`**. See [slurm_lammps_e2e.md](slurm_lammps_e2e.md).
+
 ### Adding a solver from a command
 
 To quickly add a solver that runs a shell command:

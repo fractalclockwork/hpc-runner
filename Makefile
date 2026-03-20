@@ -35,6 +35,10 @@ testv:
 test-cov:
 	uv run pytest src/core/tests -v --cov=src/core/src/harness --cov-report=term-missing
 
+# SLURM + LAMMPS API integration test (sets RUN_SLURM_E2E=1; export DOCKER_SLURM_CONTAINER when using Docker; see docs/slurm_lammps_e2e.md)
+test-slurm:
+	RUN_SLURM_E2E=1 uv run pytest src/api/tests/test_slurm_lammps.py -v -m slurm
+
 # ---------------------------------------------------------------------------
 # Project entrypoints
 # ---------------------------------------------------------------------------
@@ -65,9 +69,16 @@ start-services:
 	@nohup uv run streamlit run src/ui/app.py --server.port 8501 --server.headless true >> .ui.log 2>&1 & echo $$! > .ui.pid
 	@echo "API (8000) and UI (8501) started in background. Logs: .api.log, .ui.log"
 
+# Same as start-services but loads slurm-lammps.env (if present) and exports SLURM/LAMMPS vars for the API
+start-services-slurm:
+	@bash scripts/start-services-slurm.sh
+
 # Stop then start API and UI in background
 restart-services: stop-services
 	@$(MAKE) start-services
+
+restart-services-slurm: stop-services
+	@$(MAKE) start-services-slurm
 
 # ---------------------------------------------------------------------------
 # Docker
@@ -191,7 +202,7 @@ clear-db:
 # Meta
 # ---------------------------------------------------------------------------
 
-.PHONY: stop-services start-services restart-services
+.PHONY: stop-services start-services start-services-slurm restart-services restart-services-slurm test-slurm
 
 # Default target
 default: sync

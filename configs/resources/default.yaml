@@ -6,3 +6,7 @@ resources:
     cpus: 64
     gpus: 4
     memory_gb: 256
+  # Documented capacity for SLURM+LAMMPS jobs (harness does not allocate CPUs from this)
+  - name: slurm-lammps
+    cpus: 8
+    memory_gb: 16

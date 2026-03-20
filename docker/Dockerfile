@@ -10,6 +10,8 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY src ./src
 COPY configs ./configs
+# LAMMPS smoke input for lammps-slurm solver (see docs/slurm_lammps_e2e.md)
+COPY docker/lammps ./docker/lammps
 
 RUN uv sync --frozen --all-extras --dev
 

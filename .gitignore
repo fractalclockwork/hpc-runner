@@ -26,6 +26,9 @@ htmlcov/
 .api.pid
 .ui.pid
 
+# Local SLURM/LAMMPS env for start-services-slurm (copy from slurm-lammps.env.example)
+slurm-lammps.env
+
 # Python caches
 __pycache__/
 *.pyc

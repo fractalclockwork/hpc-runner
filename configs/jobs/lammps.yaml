@@ -1,0 +1,8 @@
+jobs:
+  - name: lammps-slurm-smoke
+    solver: lammps-slurm
+    system: sci-slurm-lammps
+    parameters: {}
+    success_criteria:
+      returncode: 0
+    timeout_seconds: 3600
