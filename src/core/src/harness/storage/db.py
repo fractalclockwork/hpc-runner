@@ -324,3 +324,15 @@ def get_baseline_comparison(
             "comparisons": comparisons,
         })
     return result
+
+def get_job_batch_uuids(db_path: str | Path) -> list[Any] | None:
+    """Return list of job_batch_uuids"""
+    init_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """SELECT DISTINCT job_batch_uuid FROM runs""",
+        ).fetchall()
+    if rows is None:
+        return None
+    return [row['job_batch_uuid'] for row in rows if row['job_batch_uuid'] != ""]
