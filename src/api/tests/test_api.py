@@ -104,3 +104,10 @@ def test_api_baseline_comparison_returns_list(client):
         assert "baseline_run" in entry
         assert "other_runs" in entry
         assert "comparisons" in entry
+
+def test_api_job_batch_uuids_returns_list(client):
+    """GET /api/baseline_comparison returns 200 and a list of solver comparison entries."""
+    response = client.get("/api/get_job_batch_uuids")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)

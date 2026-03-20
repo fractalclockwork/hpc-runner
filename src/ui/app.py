@@ -1,35 +1,22 @@
 """Streamlit UI — minimal scaffolding for the HPC Regression Platform."""
 
-import sys
-from pathlib import Path
 import pandas as pd
 
 import streamlit as st
 import streamlit.components.v1 as components
 import requests
-import typing
 from typing import Any
-import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
-import uuid
 import json
-from typing import Any
-import plotly.express as px
 
 # Allow importing runner from the same directory when launched via `streamlit run`
 from config_editor import (  # noqa: E402
     discover_config_files,
     read_config,
-    write_config,
-    parse_yaml,
-    validate_all_configs,
     ConfigFile,
-    CONFIGS_DIR,
 )
 from metrics_dashboard import (  # noqa: E402
-    get_available_metrics,
-    get_metric_history,
     get_runtime_trend_data,
     get_mlups_trend_data,
     get_baseline_values_for_metric,
@@ -320,87 +307,122 @@ def page_run_history() -> None:
         st.error(f"API unavailable: {e}")
         return
 
-    st.write(f"Showing {len(filtered)} run(s)")
+    try:
+        job_batch_uuids = requests.get(API_URL + "/api/get_job_batch_uuids").json()
+    except requests.exceptions.RequestException:
+        print("Failed to get batch job uuids")
+        return
 
-    for r in filtered:
-        passed = "Passed" if r.get("passed") else "Failed"
-        if r.get("passed"):
-            icon = "✅"
-        else:
-            # ❌ if system failed (returncode != 0); ⚠️ only when failed solely due to validation
-            returncode = r.get("returncode", 0)
-            try:
-                errs = json.loads(r.get("validation_errors") or "[]")
-                has_validation_errors = isinstance(errs, list) and len(errs) > 0
-            except (json.JSONDecodeError, TypeError):
-                has_validation_errors = False
-            if r.get("returncode", 0) != 0:
-                icon = "❌"  # system/process failure
-            elif r.get("validation_errors"):
-                icon = "⚠️"  # validation only (returncode was 0)
-            else:
-                icon = "❌"
-        is_baseline = r.get("is_baseline", False)
-        run_id = r.get("id")
-        # Row: expander (tab) on left, baseline control on the right; hover shows right side clearer
-        col_expander, col_baseline = st.columns([5, 1])
-        with col_expander:
-            with st.expander(f"{icon} {r['job_name']} — {passed}({r.get('timestamp', '')})"):
-                st.write(f"**Solver:** {r['solver_name']} | **System:** {r['system_name']} | **Returncode:** {r.get('returncode')} | **Runtime:** {r.get('runtime_seconds')}s")
-                if r.get("stdout"):
-                    st.subheader("stdout")
-                    st.code(r["stdout"], language="text")
-                if r.get("stderr"):
-                    st.subheader("stderr")
-                    st.code(r["stderr"], language="text")
-                if r.get("metrics_json"):
-                    try:
-                        metrics = json.loads(r["metrics_json"])
-                        st.subheader("Metrics")
-                        st.json(metrics)
-                    except json.JSONDecodeError:
-                        st.text(r["metrics_json"])
-                raw_errors = r.get("validation_errors")
-                if raw_errors and raw_errors != "[]":
-                    if isinstance(raw_errors, str):
-                        try:
-                            validation_errors = json.loads(raw_errors)
-                            st.subheader("Validation Errors")
-                            st.json(validation_errors)
-                        except json.JSONDecodeError:
-                            st.subheader("Validation Errors")
-                            st.text(raw_errors)
-                    else:
-                        st.subheader("Validation Errors")
-                        st.json(raw_errors)
-        with col_baseline:
-            if run_id is not None:
-                if is_baseline:
-                    st.button(
-                        "Baseline",
-                        key=f"set-baseline-{run_id}",
-                        type="primary",
-                        help="This run is the current baseline",
-                    )
+    # Use a graph mapping uuids to index of result in filtered to make a batch job
+    # view
+    batch_index_graph: dict[str, list[int]] = {}
+
+    job_batch_uuids.append("")
+    batch_count = 0
+    for job in job_batch_uuids:
+        for i, r in enumerate(filtered):
+            if job == r['job_batch_uuid']:
+                batch_count  += 1
+                if job not in batch_index_graph:
+                    batch_index_graph[job] = [i]
                 else:
-                    if st.button(
-                        "Baseline",
-                        key=f"set-baseline-{run_id}",
-                        help="Set this run as the baseline for comparison",
-                    ):
-                        try:
-                            resp = requests.post(API_URL + f"/api/runs/{run_id}/set_baseline")
-                            if resp.status_code == 200:
-                                st.success("Baseline set.")
-                                st.rerun()
-                            else:
-                                st.error(resp.text or f"Error {resp.status_code}")
-                        except requests.exceptions.RequestException as e:
-                            st.error(f"Request failed: {e}")
+                    batch_index_graph[job].append(i)
+
+    st.write(f"Showing {len(batch_index_graph)} batch(s) with {len(filtered)} run(s)")
+
+    for batch_uuid in batch_index_graph.keys():
+        batch_name = filtered[batch_index_graph[batch_uuid][0]]["job_batch_name"]
+        batch_date = filtered[batch_index_graph[batch_uuid][0]]["job_batch_date"]
+        i = batch_index_graph[batch_uuid]
+        if batch_name != "":
+            label = f"Batch ID: {batch_uuid} Batch Name: {batch_name} Batch Run Initiated On: {batch_date}"
+        else:
+            label = f"Batch ID: {batch_uuid} Batch Run Initiated On: {batch_date}"
+        with st.expander(label, expanded=True):
+            for i in batch_index_graph[batch_uuid]:
+                render_job_expander(filtered[i])
+
+def render_job_expander(r: dict[str: Any]) -> None:
+
+    passed = "Passed" if r.get("passed") else "Failed"
+    if r.get("passed"):
+        icon = "✅"
+    else:
+        # ❌ if system failed (returncode != 0); ⚠️ only when failed solely due to validation
+        returncode = r.get("returncode", 0)
+        try:
+            errs = json.loads(r.get("validation_errors") or "[]")
+            has_validation_errors = isinstance(errs, list) and len(errs) > 0
+        except (json.JSONDecodeError, TypeError):
+            has_validation_errors = False
+        if r.get("returncode", 0) != 0:
+            icon = "❌"  # system/process failure
+        elif r.get("validation_errors"):
+            icon = "⚠️"  # validation only (returncode was 0)
+        else:
+            icon = "❌"
+    is_baseline = r.get("is_baseline", False)
+    run_id = r.get("id")
+    # Row: expander (tab) on left, baseline control on the right; hover shows right side clearer
+    col_expander, col_baseline = st.columns([5, 1])
+    with col_expander:
+        with st.expander(f"{icon} {r['job_name']} — {passed}({r.get('timestamp', '')})"):
+            st.write(f"**Solver:** {r['solver_name']} | **System:** {r['system_name']} | **Returncode:** {r.get('returncode')} | **Runtime:** {r.get('runtime_seconds')}s")
+            if r.get("stdout"):
+                st.subheader("stdout")
+                st.code(r["stdout"], language="text")
+            if r.get("stderr"):
+                st.subheader("stderr")
+                st.code(r["stderr"], language="text")
+            if r.get("metrics_json"):
+                try:
+                    metrics = json.loads(r["metrics_json"])
+                    st.subheader("Metrics")
+                    st.json(metrics)
+                except json.JSONDecodeError:
+                    st.text(r["metrics_json"])
+            raw_errors = r.get("validation_errors")
+            if raw_errors and raw_errors != "[]":
+                if isinstance(raw_errors, str):
+                    try:
+                        validation_errors = json.loads(raw_errors)
+                        st.subheader("Validation Errors")
+                        st.json(validation_errors)
+                    except json.JSONDecodeError:
+                        st.subheader("Validation Errors")
+                        st.text(raw_errors)
+                else:
+                    st.subheader("Validation Errors")
+                    st.json(raw_errors)
+    with col_baseline:
+        if run_id is not None:
+            if is_baseline:
+                st.button(
+                    "Baseline",
+                    key=f"set-baseline-{run_id}",
+                    type="primary",
+                    help="This run is the current baseline",
+                )
+            else:
+                if st.button(
+                    "Baseline",
+                    key=f"set-baseline-{run_id}",
+                    help="Set this run as the baseline for comparison",
+                ):
+                    try:
+                        resp = requests.post(API_URL + f"/api/runs/{run_id}/set_baseline")
+                        if resp.status_code == 200:
+                            st.success("Baseline set.")
+                            st.rerun()
+                        else:
+                            st.error(resp.text or f"Error {resp.status_code}")
+                    except requests.exceptions.RequestException as e:
+                        st.error(f"Request failed: {e}")
 
 # ---------------------------------------------------------------------------
 # Page: Run Jobs
 # ---------------------------------------------------------------------------
+
 
 def page_run_jobs() -> None:
     _testid("page-run-jobs")
@@ -438,6 +460,7 @@ def page_run_jobs() -> None:
         _testid("run-jobs-schedule")
         st.caption("When each job is configured to run (cron or manual).")
         st.dataframe(schedule_df, width='stretch', hide_index=True)
+
 
     job_names = [j["name"] for j in job_list]
     selected = st.multiselect(
@@ -858,6 +881,7 @@ def goto_selected_run(point):
     '''
     target = point['x'].replace(' ', 'T', 1).split(".")[0]
     components.html(f"""
+
     <script>
         const target = "{target}".toLowerCase();
 
@@ -873,12 +897,14 @@ def goto_selected_run(point):
                 console.log(text)
                 console.log(target)
                 if (text.includes(target)) {{
-                    const expander = summary.closest('details');
-                    if (!expander.hasAttribute('open')) {{
-                        summary.click();
+                    if (text.includes("—")) {{
+                        const expander = summary.closest('details');
+                        if (!expander.hasAttribute('open')) {{
+                            summary.click();
+                        }}
+                        summary.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+                        break;
                     }}
-                    summary.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-                    break;
                 }}
             }}
         }}
@@ -1130,7 +1156,7 @@ def multi_solver_heatmap(
     # Display in Streamlit
     st.plotly_chart(fig)
     if not baseline_values:
-        with st.expander(f"View heatmap data"):
+        with st.expander("View heatmap data"):
             st.dataframe(df, use_container_width=True)
     if baseline_values and baseline_comparison_data:
         render_multi_solver_runs_vs_baseline(
@@ -1139,7 +1165,7 @@ def multi_solver_heatmap(
             baseline_comparison_data=baseline_comparison_data,
         )
     if min_max_dictionary:
-        with st.expander(f"Specification Ranges"):
+        with st.expander("Specification Ranges"):
             st.dataframe(pd.DataFrame(min_max_dictionary).rename(index={0: "Lower Spec Range", 1: "Upper Spec Range"}).transpose(), use_container_width=True)
 
 # ---------------------------------------------------------------------------
