@@ -321,6 +321,7 @@ def page_run_history() -> None:
         return
 
 
+    print(filtered)
     for r in filtered:
 
         passed = "Passed" if r.get("passed") else "Failed"

@@ -122,7 +122,7 @@ def api_run_jobs(body: RunJobsRequest | None = None):
             },
         )
 
-    results = run_jobs(job_list, solvers, systems)
+    results = run_jobs(job_list, solvers, systems, batch_name = "")
     init_db(DB_PATH)
     for r in results:
         store_run(DB_PATH, r)

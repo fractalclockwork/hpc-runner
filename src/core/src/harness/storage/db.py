@@ -31,7 +31,9 @@ def init_db(path: str | Path) -> None:
                 processor TEXT,
                 validation_errors TEXT,
                 is_baseline INTEGER NOT NULL DEFAULT 0,
-                job_batch_uuid TEXT NOT NULL
+                job_batch_uuid TEXT NOT NULL,
+                job_batch_date TEXT,
+                job_batch_name TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_runs_solver ON runs(solver_name);
             CREATE INDEX IF NOT EXISTS idx_job_batch_uuid_solver ON runs(job_batch_uuid);
@@ -47,6 +49,12 @@ def init_db(path: str | Path) -> None:
             conn.execute("ALTER TABLE runs ADD COLUMN validation_errors TEXT")
         if "is_baseline" not in columns:
             conn.execute("ALTER TABLE runs ADD COLUMN is_baseline INTEGER NOT NULL DEFAULT 0")
+        if "job_batch_uuid" not in columns:
+            conn.execute("ALTER TABLE runs ADD COLUMN job_batch_uuid TEXT NOT NULL")
+        if "job_batch_date" not in columns:
+            conn.execute("ALTER TABLE runs ADD COLUMN job_batch_date TEXT")
+        if "job_batch_name" not in columns:
+            conn.execute("ALTER TABLE runs ADD COLUMN job_batch_name TEXT")
         conn.commit()
 
 
@@ -79,10 +87,12 @@ def store_run(db_path: str | Path, result: RunResult) -> int:
                 metrics_json,
                 processor,
                 validation_errors,
+                is_baseline,
                 job_batch_uuid,
-                is_baseline
+                job_batch_date,
+                job_batch_name
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 result.job_name,
@@ -97,8 +107,10 @@ def store_run(db_path: str | Path, result: RunResult) -> int:
                 metrics_json,
                 result.processor,
                 validation_errors_json,
-                result.job_batch_uuid,
                 is_baseline,
+                result.job_batch_uuid,
+                result.job_batch_date,
+                result.job_batch_name,
             ),
         )
         row_id = cur.lastrowid or 0
