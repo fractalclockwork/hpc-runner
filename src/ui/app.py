@@ -320,9 +320,9 @@ def page_run_history() -> None:
         st.error(f"API unavailable: {e}")
         return
 
-    st.write(f"Showing {len(filtered)} run(s)")
 
     for r in filtered:
+
         passed = "Passed" if r.get("passed") else "Failed"
         if r.get("passed"):
             icon = "✅"

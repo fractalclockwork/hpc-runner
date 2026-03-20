@@ -30,9 +30,11 @@ def init_db(path: str | Path) -> None:
                 metrics_json TEXT,
                 processor TEXT,
                 validation_errors TEXT,
-                is_baseline INTEGER NOT NULL DEFAULT 0
+                is_baseline INTEGER NOT NULL DEFAULT 0,
+                job_batch_uuid TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_runs_solver ON runs(solver_name);
+            CREATE INDEX IF NOT EXISTS idx_job_batch_uuid_solver ON runs(job_batch_uuid);
             CREATE INDEX IF NOT EXISTS idx_runs_timestamp ON runs(timestamp);
         """
         )
@@ -77,9 +79,10 @@ def store_run(db_path: str | Path, result: RunResult) -> int:
                 metrics_json,
                 processor,
                 validation_errors,
+                job_batch_uuid,
                 is_baseline
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 result.job_name,
@@ -94,6 +97,7 @@ def store_run(db_path: str | Path, result: RunResult) -> int:
                 metrics_json,
                 result.processor,
                 validation_errors_json,
+                result.job_batch_uuid,
                 is_baseline,
             ),
         )

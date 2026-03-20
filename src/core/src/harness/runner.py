@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import uuid
 
 import structlog
 
@@ -39,6 +40,7 @@ class RunResult:
     raw_logs: str = ""
     processor: str | None = None
     baseline: bool = False
+    job_batch_uuid: str = "" # "" means no batch id is found for the run
 
 
 def _build_env(system: System, base_env: dict[str, str] | None = None) -> dict[str, str]:
@@ -56,6 +58,7 @@ def run_job(
     system: System,
     *,
     capture_output: bool = True,
+    job_batch_uuid: str = "",
 ) -> RunResult:
     """
     Execute a job by running the solver script with system environment.
@@ -112,6 +115,7 @@ def run_job(
             metrics={"runtime_seconds": runtime},
             processor=processor,
             baseline=job.baseline,
+            job_batch_uuid=job_batch_uuid,
         )
         logger.warning("runner.timeout", job=job.name, runtime=runtime)
         return run_result
@@ -133,6 +137,7 @@ def run_job(
             metrics={"runtime_seconds": runtime},
             processor=processor,
             baseline=job.baseline,
+            job_batch_uuid=job_batch_uuid,
         )
         logger.exception("runner.error", job=job.name, error=str(e))
         return run_result
@@ -190,6 +195,7 @@ def run_job(
         metrics=metrics,
         processor=processor,
         baseline=job.baseline,
+        job_batch_uuid=job_batch_uuid,
     )
 
     logger.info(
@@ -210,6 +216,7 @@ def run_jobs(
     """Run multiple jobs and return results."""
     results: list[RunResult] = []
     now = datetime.now(timezone.utc).isoformat()
+    batch_uuid = uuid.uuid4().hex
     for job in jobs:
         solver = solvers.get(job.solver)
         system = systems.get(job.system)
@@ -231,6 +238,7 @@ def run_jobs(
                     metrics={"runtime_seconds": 0.0},
                     processor=probe_processor(),
                     baseline=job.baseline,
+                    job_batch_uuid=batch_uuid,
                 )
             )
             continue
@@ -252,8 +260,11 @@ def run_jobs(
                     metrics={"runtime_seconds": 0.0},
                     processor=probe_processor(),
                     baseline=job.baseline,
+                    job_batch_uuid=batch_uuid,
                 )
             )
             continue
-        results.append(run_job(job, solver, system))
+        # why do we append the results separately only in this case?
+        results.append(run_job(job, solver, system, job_batch_uuid=batch_uuid))
+        print(results)
     return results
