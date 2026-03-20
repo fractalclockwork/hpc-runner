@@ -46,6 +46,7 @@ def config_error_handler(request, exc: ConfigError):
 
 class RunJobsRequest(BaseModel):
     jobs: list[str] | None = None
+    batch_name: str = ""
 
 
 @app.get("/")
@@ -103,7 +104,7 @@ def api_jobs():
 
 @app.post("/api/run_jobs")
 def api_run_jobs(body: RunJobsRequest | None = None):
-    """Run jobs. Optional body: { "jobs": ["job1", "job2"] }."""
+    """Run jobs. Optional body: { "jobs": ["job1", "job2"], "batch_name": "batch1" }."""
     _, systems, solvers, jobs = _load_definitions()
     job_names = body.jobs if body and body.jobs else None
 
@@ -122,7 +123,8 @@ def api_run_jobs(body: RunJobsRequest | None = None):
             },
         )
 
-    results = run_jobs(job_list, solvers, systems, batch_name = "")
+    batch_name = body.batch_name if body and body.batch_name else ""
+    results = run_jobs(job_list, solvers, systems, batch_name = batch_name)
     init_db(DB_PATH)
     for r in results:
         store_run(DB_PATH, r)
