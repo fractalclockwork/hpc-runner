@@ -348,9 +348,9 @@ def page_run_history() -> None:
         batch_date = filtered[batch_index_graph[batch_uuid][0]]["job_batch_date"]
         i = batch_index_graph[batch_uuid]
         if batch_name != "":
-            label = f"Batch ID: {batch_uuid} Batch Name: {batch_name} Batch Date: {batch_date}"
+            label = f"Batch ID: {batch_uuid} Batch Name: {batch_name} Batch Run Initiated On: {batch_date}"
         else:
-            label = f"Batch ID: {batch_uuid} Batch Date: {batch_date}"
+            label = f"Batch ID: {batch_uuid} Batch Run Initiated On: {batch_date}"
         with st.expander(label, expanded=True):
             for i in batch_index_graph[batch_uuid]:
                 render_job_expander(filtered[i])
@@ -474,7 +474,6 @@ def page_run_jobs() -> None:
         st.caption("When each job is configured to run (cron or manual).")
         st.dataframe(schedule_df, width='stretch', hide_index=True)
 
-    batch_name = st.text_input("Job Batch Name", "", help = "Optionally enter a name to help describe this batch run.")
 
     job_names = [j["name"] for j in job_list]
     selected = st.multiselect(
@@ -499,7 +498,7 @@ def page_run_jobs() -> None:
             with st.spinner(f"Running {len(job_names)} job(s)…"):
                 # results = run_jobs(job_objs, solvers, systems)
                 # use the post request to run jobs
-                payload = {"jobs": to_run, "batch_name":batch_name}
+                payload = {"jobs": to_run}
                 endpoint = API_URL + "/api/run_jobs"
                 try:
                     # Make the POST request with JSON body
