@@ -61,6 +61,8 @@ if "run_job_results" not in st.session_state:
     st.session_state.run_job_results = None
 if "page_change_requested" not in st.session_state:
     st.session_state.page_change_requested = False
+if "page_radio" not in st.session_state:
+    st.session_state.page_radio = st.session_state.page
 
 # ---------------------------------------------------------------------------
 # Global theme overrides (dark sidebar, card styles)
@@ -142,16 +144,19 @@ if 'page' not in st.session_state:
     st.session_state.page = PAGES[0]
 
 def on_page_change():
-    if not st.session_state.page_change_requested:
-        st.session_state.page = st.session_state.page_radio
-    else:
-        print("page change was requested")
-        st.session_state.page_change_requested = False
+    st.session_state.page = st.session_state.page_radio
+    st.session_state.page_change_requested = False
+
+# Sync the radio widget to match any programmatic page change.
+# Must happen before the radio is instantiated — Streamlit forbids
+# writing to a widget-bound key after the widget renders.
+if st.session_state.get("page_change_requested"):
+    st.session_state.page_radio = st.session_state.page
+    st.session_state.page_change_requested = False
 
 selected_page = st.sidebar.radio(
     "Go to",
     PAGES,
-    index=PAGES.index(st.session_state.page),
     key="page_radio",
     on_change=on_page_change
 )
@@ -185,6 +190,7 @@ def page_home() -> None:
 
     if st.button("Get Started →", type="primary", key="home-get-started"):
         st.session_state.page = "Run Jobs"
+        st.session_state.page_change_requested = True
         st.rerun()
 
 
