@@ -227,6 +227,7 @@ def render_runtime_trend(df: pd.DataFrame, session_state) -> None:
         hovermode="closest",
         xaxis_title="Date",
         yaxis_title="Runtime (seconds)",
+        clickmode="event+select",
     )
 
     event = st.plotly_chart(fig, use_container_width=True, on_select="rerun")
@@ -236,6 +237,7 @@ def render_runtime_trend(df: pd.DataFrame, session_state) -> None:
         print(f"point is {st.session_state['clicked_point']}")
         session_state.page = "Run History"
         st.session_state.page_change_requested = True
+        st.rerun()
 
 
 def render_mlups_trend(df: pd.DataFrame, session_state) -> None:
@@ -275,6 +277,7 @@ def render_mlups_trend(df: pd.DataFrame, session_state) -> None:
         hovermode="closest",
         xaxis_title="Date",
         yaxis_title="Throughput (MLUPS)",
+        clickmode="event+select",
     )
 
 
@@ -285,6 +288,7 @@ def render_mlups_trend(df: pd.DataFrame, session_state) -> None:
         print(f"point is {session_state['clicked_point']}")
         session_state.page = "Run History"
         st.session_state.page_change_requested = True
+        st.rerun()
 
 def single_solver_heatmap(filtered, solver_name: str = ""):
     column_names = [key for key in json.loads(filtered[0]['metrics_json'])]

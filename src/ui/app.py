@@ -597,6 +597,30 @@ def page_long_term_trends() -> None:
     """, unsafe_allow_html=True)
 
     _testid("page-long-term-trends")
+
+    # Focus whichever Plotly iframe the user hovers over, so their first click
+    # hits the data point directly (avoids the browser iframe focus-first click).
+    components.html("""
+    <script>
+        (function() {
+            function attachHoverFocus() {
+                const iframes = window.parent.document.querySelectorAll('iframe');
+                iframes.forEach(function(iframe) {
+                    if (!iframe.dataset.hoverFocusAttached) {
+                        iframe.dataset.hoverFocusAttached = 'true';
+                        iframe.addEventListener('mouseenter', function() {
+                            iframe.focus();
+                        });
+                    }
+                });
+            }
+            // Run now and after a short delay to catch iframes rendered late.
+            attachHoverFocus();
+            setTimeout(attachHoverFocus, 800);
+        })();
+    </script>
+    """, height=0)
+
     st.header("Long-Term Trends", help = "Performance of solvers over time. Use the sidebar to filter by solver, system, and date range.")
 
     df_all = get_runtime_trend_data(str(DB_PATH))
