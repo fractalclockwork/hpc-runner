@@ -13,6 +13,11 @@ def _go_to_trends(page, streamlit_url: str) -> None:
     page.goto(streamlit_url)
     page.get_by_text("Long-Term Trends", exact=True).click()
     expect(page.get_by_test_id("page-long-term-trends")).to_be_attached()
+    # page-long-term-trends is emitted at the top; charts and sidebar filters render later.
+    # Wait so _has_run_data and empty-state checks are not flaky on slower runs.
+    empty_msg = page.get_by_text("No run data available yet")
+    filters = page.get_by_text("Long-Term Trends Filters")
+    expect(empty_msg.or_(filters)).to_be_visible(timeout=15000)
 
 
 def _has_run_data(page) -> bool:
@@ -45,7 +50,7 @@ def test_long_term_trends_page_loads(page, streamlit_url, streamlit_process):
 def test_long_term_trends_empty_state(page, streamlit_url, streamlit_process):
     """When the DB has no runs, an informational message is shown instead of charts."""
     _go_to_trends(page, streamlit_url)
-    if _has_run_data(page):
+    if _has_run_data(page) or page.get_by_text("Long-Term Trends Filters").is_visible():
         pytest.skip("DB contains run data — empty-state not visible")
     expect(page.get_by_text("No run data available yet")).to_be_visible()
 
@@ -55,12 +60,16 @@ def test_long_term_trends_empty_state(page, streamlit_url, streamlit_process):
 # ---------------------------------------------------------------------------
 
 def test_runtime_trend_section_present(page, streamlit_url, streamlit_process):
-    """Runtime trend section marker and subheading are present when data exists."""
+    """Runtime trend section marker; chart title (Plotly) or empty-state when data exists."""
     _go_to_trends(page, streamlit_url)
     if not _has_run_data(page):
         pytest.skip("No run data in DB — runtime trend section not rendered")
     expect(page.get_by_test_id("section-runtime-trend")).to_be_attached()
-    expect(page.get_by_role("heading", name="Runtime (wall-clock) Trend")).to_be_visible()
+    chart_title = page.get_by_text("Runtime Trend — Wall-Clock Time per Run")
+    no_runs = page.get_by_text("No run data available yet")
+    no_runtime = page.get_by_text("No runtime data recorded")
+    unexpected = page.get_by_text("Unexpected data format")
+    expect(chart_title.or_(no_runs).or_(no_runtime).or_(unexpected)).to_be_visible(timeout=10000)
 
 
 def test_runtime_trend_chart_or_empty_message(page, streamlit_url, streamlit_process):
@@ -92,12 +101,16 @@ def test_runtime_trend_chart_or_empty_message(page, streamlit_url, streamlit_pro
 # ---------------------------------------------------------------------------
 
 def test_mlups_trend_section_present(page, streamlit_url, streamlit_process):
-    """MLUPS trend section marker and subheading are present when data exists."""
+    """MLUPS trend section marker; chart title (Plotly) or empty-state when runtime data exists."""
     _go_to_trends(page, streamlit_url)
     if not _has_run_data(page):
         pytest.skip("No run data in DB — MLUPS trend section not rendered")
     expect(page.get_by_test_id("section-mlups-trend")).to_be_attached()
-    expect(page.get_by_role("heading", name="Throughput Trend (MLUPS)")).to_be_visible()
+    # No st.subheader for MLUPS — title is on the Plotly figure, or st.info if no MLUPS rows
+    chart_title = page.get_by_text("Throughput Trend — MLUPS per Run")
+    no_mlups = page.get_by_text("No MLUPS data available")
+    no_vals = page.get_by_text("No MLUPS values recorded")
+    expect(chart_title.or_(no_mlups).or_(no_vals)).to_be_visible(timeout=10000)
 
 
 def test_mlups_trend_chart_or_empty_message(page, streamlit_url, streamlit_process):

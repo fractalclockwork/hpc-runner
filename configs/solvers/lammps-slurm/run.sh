@@ -81,6 +81,10 @@ if [[ -n "${DOCKER_SLURM_CONTAINER:-}" ]]; then
       echo "ERROR: could not parse Slurm job id from: ${out}" >&2
       exit 1
     fi
+    # Machine-readable lines for harness (cancellation / stored run metadata); documented in slurm_lammps_e2e.md
+    echo "HARNESS_SCHEDULER_BACKEND=slurm"
+    echo "HARNESS_SLURM_JOB_ID=${jid}"
+    echo "HARNESS_SUBMIT_CONTAINER=${SUBMIT}"
     _wait_job "${jid}" "${SUBMIT}" || exit 1
 
     echo "--- slurm-${jid}.out ---"
@@ -120,6 +124,9 @@ if [[ "${LAMMPS_USE_SBATCH:-0}" == "1" ]]; then
   echo "${out}"
   jid="$(echo "${out}" | sed -n 's/.*Submitted batch job \([0-9][0-9]*\).*/\1/p')"
   [[ -n "${jid}" ]] || { echo "ERROR: sbatch failed: ${out}" >&2; exit 1; }
+  echo "HARNESS_SCHEDULER_BACKEND=slurm"
+  echo "HARNESS_SLURM_JOB_ID=${jid}"
+  echo "HARNESS_SUBMIT_CONTAINER=host"
   while squeue -j "${jid}" -h 2>/dev/null | grep -q .; do sleep 2; done
   sleep 1
   echo "--- slurm-${jid}.out ---"

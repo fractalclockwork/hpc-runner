@@ -55,6 +55,12 @@ def init_db(path: str | Path) -> None:
             conn.execute("ALTER TABLE runs ADD COLUMN job_batch_date TEXT")
         if "job_batch_name" not in columns:
             conn.execute("ALTER TABLE runs ADD COLUMN job_batch_name TEXT")
+        if "scheduler_backend" not in columns:
+            conn.execute("ALTER TABLE runs ADD COLUMN scheduler_backend TEXT")
+        if "scheduler_job_ids" not in columns:
+            conn.execute("ALTER TABLE runs ADD COLUMN scheduler_job_ids TEXT")
+        if "submit_container" not in columns:
+            conn.execute("ALTER TABLE runs ADD COLUMN submit_container TEXT")
         conn.commit()
 
 
@@ -90,9 +96,12 @@ def store_run(db_path: str | Path, result: RunResult) -> int:
                 is_baseline,
                 job_batch_uuid,
                 job_batch_date,
-                job_batch_name
+                job_batch_name,
+                scheduler_backend,
+                scheduler_job_ids,
+                submit_container
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 result.job_name,
@@ -111,6 +120,9 @@ def store_run(db_path: str | Path, result: RunResult) -> int:
                 result.job_batch_uuid,
                 result.job_batch_date,
                 result.job_batch_name,
+                getattr(result, "scheduler_backend", None) or "",
+                json.dumps(getattr(result, "scheduler_job_ids", None) or []),
+                getattr(result, "submit_container", None) or "",
             ),
         )
         row_id = cur.lastrowid or 0
@@ -153,6 +165,54 @@ def get_run_by_id(db_path: str | Path, run_id: int) -> dict[str, Any] | None:
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
         return dict(row) if row else None
+
+
+def delete_runs(db_path: str | Path, run_ids: list[int]) -> int:
+    """
+    Delete runs by primary key. Baseline rows are allowed; the solver may have no baseline afterward.
+    Returns the number of rows deleted.
+    """
+    if not run_ids:
+        return 0
+    init_db(db_path)
+    unique_ids = list(dict.fromkeys(int(i) for i in run_ids))
+    placeholders = ",".join("?" * len(unique_ids))
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.execute(f"DELETE FROM runs WHERE id IN ({placeholders})", unique_ids)
+        conn.commit()
+        return cur.rowcount
+
+
+def get_solver_run_summaries(db_path: str | Path) -> list[dict[str, Any]]:
+    """Per-solver aggregates for monitoring: run count, passes, last run time, last job name."""
+    init_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT
+                solver_name,
+                COUNT(*) AS total_runs,
+                SUM(CASE WHEN passed = 1 THEN 1 ELSE 0 END) AS pass_count,
+                MAX(timestamp) AS last_timestamp
+            FROM runs
+            GROUP BY solver_name
+            ORDER BY solver_name
+            """
+        ).fetchall()
+        summaries: list[dict[str, Any]] = []
+        for row in rows:
+            rdict = dict(row)
+            sname = rdict["solver_name"]
+            last = conn.execute(
+                """SELECT job_name, passed FROM runs WHERE solver_name = ?
+                   ORDER BY timestamp DESC LIMIT 1""",
+                (sname,),
+            ).fetchone()
+            rdict["last_job_name"] = last[0] if last else None
+            rdict["last_passed"] = bool(last[1]) if last else None
+            summaries.append(rdict)
+        return summaries
 
 
 def get_all_metrics_series(db_path: str | Path, limit: int = 500) -> list[tuple[str, str]]:
@@ -338,14 +398,22 @@ def get_baseline_comparison(
     return result
 
 def get_job_batch_uuids(db_path: str | Path, limit: int = 100) -> list[Any] | None:
-    """Return list of job_batch_uuids"""
+    """Return job_batch_uuid values ordered by most recent run in each batch (MAX(timestamp))."""
     init_db(db_path)
+    lim = int(limit)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            """SELECT DISTINCT job_batch_uuid FROM runs ORDER BY timestamp DESC LIMIT ?""",
-            (str(limit),),
+            """
+            SELECT job_batch_uuid
+            FROM runs
+            WHERE job_batch_uuid != ''
+            GROUP BY job_batch_uuid
+            ORDER BY MAX(timestamp) DESC
+            LIMIT ?
+            """,
+            (lim,),
         ).fetchall()
     if rows is None:
         return None
-    return [row['job_batch_uuid'] for row in rows if row['job_batch_uuid'] != ""]
+    return [row["job_batch_uuid"] for row in rows]

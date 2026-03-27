@@ -81,6 +81,40 @@ restart-services-slurm: stop-services
 	@$(MAKE) start-services-slurm
 
 # ---------------------------------------------------------------------------
+# Docker Slurm cluster (external checkout, e.g. sci_slurm)
+# ---------------------------------------------------------------------------
+# Directory that contains docker-compose.yml for your Slurm stack. Default is a
+# sci_slurm symlink next to this Makefile; override if your clone lives elsewhere:
+#   make slurm-up SLURM_COMPOSE_DIR=/path/to/sci_slurm
+# Optional extra args: make slurm-up SLURM_COMPOSE_EXTRA=--build
+# See docs/slurm_lammps_e2e.md
+
+SLURM_COMPOSE_DIR ?= sci_slurm
+SLURM_COMPOSE_EXTRA ?=
+
+slurm-up:
+	@if [ ! -d "$(SLURM_COMPOSE_DIR)" ]; then \
+	  echo "ERROR: SLURM_COMPOSE_DIR=$(SLURM_COMPOSE_DIR) not found."; \
+	  echo "Clone or symlink your Slurm stack (e.g. sci_slurm) here, or set SLURM_COMPOSE_DIR. See docs/slurm_lammps_e2e.md"; \
+	  exit 1; \
+	fi
+	cd "$(SLURM_COMPOSE_DIR)" && docker compose up -d $(SLURM_COMPOSE_EXTRA)
+
+slurm-down:
+	@if [ ! -d "$(SLURM_COMPOSE_DIR)" ]; then \
+	  echo "ERROR: SLURM_COMPOSE_DIR=$(SLURM_COMPOSE_DIR) not found."; \
+	  exit 1; \
+	fi
+	cd "$(SLURM_COMPOSE_DIR)" && docker compose down
+
+slurm-ps:
+	@if [ ! -d "$(SLURM_COMPOSE_DIR)" ]; then \
+	  echo "ERROR: SLURM_COMPOSE_DIR=$(SLURM_COMPOSE_DIR) not found."; \
+	  exit 1; \
+	fi
+	cd "$(SLURM_COMPOSE_DIR)" && docker compose ps
+
+# ---------------------------------------------------------------------------
 # Docker
 # ---------------------------------------------------------------------------
 
@@ -202,7 +236,7 @@ clear-db:
 # Meta
 # ---------------------------------------------------------------------------
 
-.PHONY: stop-services start-services start-services-slurm restart-services restart-services-slurm test-slurm
+.PHONY: stop-services start-services start-services-slurm restart-services restart-services-slurm test-slurm slurm-up slurm-down slurm-ps
 
 # Default target
 default: sync

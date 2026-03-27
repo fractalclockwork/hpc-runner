@@ -9,10 +9,13 @@ from harness.storage import (
     store_run,
     get_runs,
     get_run_by_id,
+    delete_runs,
+    get_solver_run_summaries,
     get_all_metrics_series,
     get_metrics_history,
     get_baseline_run,
     set_baseline_run,
+    get_job_batch_uuids,
     get_baseline_comparison,
 )
 
@@ -24,21 +27,26 @@ def _make_result(
     processor="x86_64",
     validation_errors=None,
     baseline=False,
+    passed=True,
+    returncode=0,
+    timestamp=None,
+    job_batch_uuid="",
 ):
     return RunResult(
         job_name=job_name,
         solver_name=solver_name,
         system_name="dev",
-        returncode=0,
+        returncode=returncode,
         stdout="out",
         stderr="err",
         runtime_seconds=1.5,
-        timestamp="2026-02-14T12:00:00+00:00",
+        timestamp=timestamp if timestamp is not None else "2026-02-14T12:00:00+00:00",
         validation_errors=validation_errors if validation_errors is not None else [],
-        passed=True,
+        passed=passed,
         metrics=metrics or {},
         processor=processor,
         baseline=baseline,
+        job_batch_uuid=job_batch_uuid,
     )
 
 
@@ -82,6 +90,63 @@ def test_get_runs_filter_by_processor(tmp_path):
     runs_arm = get_runs(db_path, processor="aarch64")
     assert len(runs_arm) == 1
     assert runs_arm[0]["processor"] == "aarch64"
+
+
+def test_delete_runs(tmp_path):
+    """delete_runs removes rows; deleting baseline is allowed."""
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    id1 = store_run(db_path, _make_result(job_name="a", solver_name="s1", baseline=True))
+    id2 = store_run(db_path, _make_result(job_name="b", solver_name="s1"))
+    assert delete_runs(db_path, [id1]) == 1
+    assert get_run_by_id(db_path, id1) is None
+    assert delete_runs(db_path, [id2, 99999]) == 1
+    assert get_runs(db_path) == []
+
+
+def test_get_solver_run_summaries(tmp_path):
+    """Per-solver aggregates from runs."""
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    store_run(db_path, _make_result(job_name="j1", solver_name="s1", passed=True))
+    store_run(db_path, _make_result(job_name="j2", solver_name="s1", passed=False, returncode=1))
+    summ = get_solver_run_summaries(db_path)
+    assert len(summ) == 1
+    assert summ[0]["solver_name"] == "s1"
+    assert summ[0]["total_runs"] == 2
+    assert summ[0]["pass_count"] == 1
+
+
+def test_get_job_batch_uuids_orders_by_max_timestamp(tmp_path):
+    """Batch UUID list is ordered by most recent run in each batch."""
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    store_run(
+        db_path,
+        _make_result(
+            job_name="a1",
+            job_batch_uuid="batch-a",
+            timestamp="2026-01-01T00:00:00+00:00",
+        ),
+    )
+    store_run(
+        db_path,
+        _make_result(
+            job_name="b1",
+            job_batch_uuid="batch-b",
+            timestamp="2026-02-01T00:00:00+00:00",
+        ),
+    )
+    store_run(
+        db_path,
+        _make_result(
+            job_name="a2",
+            job_batch_uuid="batch-a",
+            timestamp="2026-03-01T00:00:00+00:00",
+        ),
+    )
+    uuids = get_job_batch_uuids(db_path)
+    assert uuids == ["batch-a", "batch-b"]
 
 
 def test_get_run_by_id(tmp_path):

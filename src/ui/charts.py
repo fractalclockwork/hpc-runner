@@ -11,7 +11,7 @@ import requests
 import plotly.graph_objects as go
 from typing import Any
 
-API_URL = "http://localhost:8000"
+from api_config import API_URL
 
 
 def render_manual_baseline_overrides(

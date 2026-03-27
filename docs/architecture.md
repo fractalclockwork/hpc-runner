@@ -4,9 +4,11 @@
 
 - **Purpose**: Execution-agnostic harness for running solver jobs (HPC regression testing)
 - **Entry points**: CLI (`hpc-runner`), REST API (FastAPI), Streamlit UI
-- **Key principle**: Solver scripts are black-box; platform never calls schedulers (SLURM, MPI, etc.)
+- **Key principle**: Solver scripts are black-box **subprocesses**. The harness does **not** embed SLURM/MPI APIs; solver entrypoints may call schedulers, `docker exec`, etc. (e.g. [`configs/solvers/lammps-slurm/run.sh`](../configs/solvers/lammps-slurm/run.sh)).
 
 ## 2. Component Architecture
+
+Primary browser path: **Streamlit talks HTTP to FastAPI** for runs, history, and metrics. Some UI helpers also read the DB or call helpers that use shared harness code.
 
 ```mermaid
 flowchart TB
@@ -14,9 +16,12 @@ flowchart TB
         CLI[CLI hpc-runner]
         Browser[Web Browser]
     end
-    subgraph api [API Layer]
-        FastAPI[FastAPI REST API]
-        Streamlit[Streamlit UI]
+    subgraph ui [Streamlit UI]
+        Streamlit[app.py]
+    end
+    subgraph api [REST]
+        FastAPI[fastapi_app.py]
+        Invocations[invocations.py]
     end
     subgraph core [Harness Core]
         Config[Config Loader]
@@ -34,14 +39,12 @@ flowchart TB
     CLI --> Config
     CLI --> Runner
     CLI --> Storage
-    Browser --> FastAPI
     Browser --> Streamlit
+    Streamlit -->|"HTTP: jobs runs metrics"| FastAPI
+    FastAPI --> Invocations
     FastAPI --> Config
     FastAPI --> Runner
     FastAPI --> Storage
-    Streamlit --> Config
-    Streamlit --> Runner
-    Streamlit --> Storage
     Config --> YAML
     Runner --> Parser
     Runner --> SolverScript
@@ -57,7 +60,8 @@ flowchart TB
 | System | `src/core/src/harness/config/schemas.py` | Resource bundle, env vars, constraints |
 | Solver | `src/core/src/harness/config/schemas.py` | Entrypoint, parser_config, allowed_systems |
 | Job | `src/core/src/harness/config/schemas.py` | Solver+system pairing, success_criteria |
-| RunResult | `src/core/src/harness/runner.py` | job_name, returncode, metrics, passed, processor, validation_errors |
+| RunResult | `src/core/src/harness/runner.py` | job_name, returncode, metrics, passed, processor, validation_errors, batch fields, optional `scheduler_backend`, `scheduler_job_ids`, `submit_container` (from SLURM smoke scripts) |
+| InvocationControl | `src/core/src/harness/runner.py` | Background runs: cancel event, subprocess handle, streamed SLURM job ids |
 
 ## 4. Config Structure
 
@@ -75,6 +79,8 @@ configs/
 
 ## 5. Job Execution Flow
 
+### 5.0 Synchronous `POST /api/run_jobs` (default)
+
 ```mermaid
 sequenceDiagram
     participant Client
@@ -89,29 +95,42 @@ sequenceDiagram
     Config-->>API: jobs, solvers, systems
     API->>Runner: run_jobs(job_list, solvers, systems)
     loop For each job
-        Runner->>Solver: subprocess.run(entrypoint)
+        Runner->>Solver: subprocess.run or Popen path
         Solver-->>Runner: stdout, stderr, returncode
         Runner->>Parser: extract_metrics(stdout+stderr)
         Parser-->>Runner: metrics dict
-        Runner->>Runner: validate_metrics (solver MetricSpec min/max/required)
-        Runner-->>API: RunResult (passed, validation_errors)
+        Runner->>Runner: validate_metrics
+        Runner-->>API: RunResult
     end
     API->>Storage: store_run() for each result
-    API-->>Client: JSON results
+    API-->>Client: 200 JSON results
 ```
 
-### 5.1 Call Graph (Message Flow)
+### 5.0b Background `POST /api/run_jobs` with `"background": true`
 
-How messages move through the system when a job run is requested:
+Optional body field **`group_by`**: `"batch"` (default) or `"solver"`. With **`group_by: "solver"`**, the API partitions the selected jobs by `job.solver` and starts **one worker thread per solver**, each with its own `invocation_id`. The **202** body includes `group_by`, `invocations` (list of `{ solver_name, invocation_id, job_names }`), and `invocation_id` when there is exactly one invocation (convenience for legacy clients). With **`group_by: "batch"`**, a single invocation runs all selected jobs sequentially (same as before).
+
+Each worker runs `run_jobs(..., invoke_ctl=...)` for its slice, stores rows, then updates the in-memory registry.
+
+- **Poll**: `GET /api/invocations/{id}` returns `status`, `batch_name`, `solver_name`, `job_names`, live `scheduler_job_ids`, `submit_container`, `jobs_total`, `jobs_completed`, and `results` when the slice finishes.
+- **List**: `GET /api/invocations` — optional query `active_only=true` for `queued` / `running` rows only.
+- **Live SLURM** (same `RUN_SLURM_E2E=1` tooling gate as persisted runs): `GET /api/invocations/{id}/slurm_status`.
+- **Cancel**: `POST /api/invocations/{id}/cancel` — sets a cooperative cancel flag, best-effort `scancel` for known job ids, and `terminate()` on the local subprocess. `scancel` runs when **`HARNESS_ALLOW_SCANCEL=1`**, **`RUN_SLURM_E2E=1`**, or **`DOCKER_SLURM_CONTAINER`** / **`DOCKER_SLURM_SUBMIT_CONTAINER`** is set (so production Docker SLURM setups do not require the E2E flag).
+
+`run_jobs` skips any **remaining** jobs after cancel with `validation_errors: ["Cancelled by user"]` so a multi-job batch does not keep running.
+
+Registry is **per-process**; not durable across API restarts or multiple workers.
+
+### 5.1 Call Graph (synchronous path)
 
 ```mermaid
 flowchart TB
     subgraph UI["Web UI"]
         A[User: Run jobs]
-        B["fetch POST /api/run_jobs"]
-        C["fetch GET /api/runs"]
+        B["requests POST /api/run_jobs"]
+        C["requests GET /api/runs"]
     end
-    subgraph API["REST API (app.py)"]
+    subgraph API["REST API"]
         D[api_run_jobs]
         E[load_all]
         F[run_jobs]
@@ -119,12 +138,12 @@ flowchart TB
         H[api_runs]
         I[get_runs]
     end
-    subgraph Runner["Runner (runner.py)"]
+    subgraph Runner["Runner"]
         J[run_job]
-        K[subprocess.run]
+        K[subprocess]
         L[extract_metrics]
     end
-    subgraph Storage["Storage (db.py)"]
+    subgraph Storage["Storage"]
         M[(runs table)]
     end
     A --> B
@@ -137,74 +156,85 @@ flowchart TB
     D --> G
     G --> M
     D --> R["JSON results"]
-    R --> C
     C --> H
     H --> I
     I --> M
-    M --> H
 ```
 
 **Code path summary:**
 
 | Step | Message / data | Code path |
 |------|----------------|-----------|
-| 1–2 | User runs jobs → API | `fetch('POST', '/api/run_jobs')` → `app.api_run_jobs()` |
-| 3 | Load definitions | `_load_definitions()` → `load_all(CONFIG_DIR, SOLVERS_DIR)` |
-| 4 | Execute jobs | `run_jobs(job_list, solvers, systems)` → for each job: `run_job()` |
-| 5–6 | Solver stdout/stderr | `subprocess.run(cmd)` in `run_job()`; stdout/stderr captured |
-| 7–8 | Logs → metrics | `raw_logs = stdout + stderr` → `extract_metrics(raw_logs, solver.parser_config)` |
-| 8a | Metric validation | `validate_metrics(metrics, required, ranges)` from solver `metrics` spec; if invalid, `passed = False` and `validation_errors` list is set |
-| 9 | Persist | `store_run(DB_PATH, r)` writes RunResult (stdout, stderr, metrics_json, validation_errors) to DB |
-| 10–12 | Dashboard reads | `fetch('/api/runs')` → `api_runs()` → `get_runs()` → JSON to UI |
+| 1–2 | User runs jobs → API | `requests.post('/api/run_jobs')` → `fastapi_app.api_run_jobs()` |
+| 3 | Load definitions | `_load_definitions()` → `load_all(CONFIG_DIR, None)` |
+| 4 | Execute jobs | `run_jobs(...)` → `run_job()` |
+| 5–6 | Solver stdout/stderr | `subprocess.run` or Popen+reader when `invoke_ctl` set |
+| 7–8 | Logs → metrics | `extract_metrics`, `validate_metrics` |
+| 9 | Persist | `store_run(DB_PATH, r)` |
+| 10–12 | Dashboard reads | `GET /api/runs` → `get_runs()` |
 
-**Key files:** `src/api/src/basic_restapi/app.py` (API), `src/core/src/harness/runner.py` (run_job, run_jobs), `src/core/src/harness/parser/parser.py` (extract_metrics), `src/core/src/harness/storage/db.py` (store_run, get_runs).
+**Key files:** [`src/api/src/basic_restapi/fastapi_app.py`](../src/api/src/basic_restapi/fastapi_app.py), [`invocations.py`](../src/api/src/basic_restapi/invocations.py), [`src/core/src/harness/runner.py`](../src/core/src/harness/runner.py), [`parser`](../src/core/src/harness/parser/parser.py), [`db.py`](../src/core/src/harness/storage/db.py).
 
 ## 6. API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/` | GET | Redirects to `/docs` (Swagger UI) |
+| `/api/health` | GET | Health check |
 | `/api/solvers` | GET | List solvers |
+| `/api/systems` | GET | List systems |
 | `/api/jobs` | GET | List jobs |
-| `/api/run_jobs` | POST | Run jobs (body: `{"jobs": ["name1"]}`) |
+| `/api/run_jobs` | POST | Run jobs (`jobs`, `batch_name`, `background`, optional `group_by`: `batch` \| `solver`) — 202 if background |
 | `/api/runs` | GET | List runs (?solver=, ?processor=, ?limit=, ?offset=) |
+| `/api/runs` | DELETE | Body `{ "ids": [1,2,3] }` — delete stored runs |
 | `/api/runs/<id>` | GET | Run detail |
-| `/api/metrics/<solver>/<metric>` | GET | Metric history for trends |
+| `/api/runs/<id>/slurm_status` | GET | Live `squeue`/`sacct` when `RUN_SLURM_E2E=1` |
+| `/api/runs/<id>/set_baseline` | POST | Set baseline for solver |
+| `/api/invocations` | GET | List invocations (`?active_only=true`) |
+| `/api/invocations/<id>` | GET | Background run status, live SLURM fields, progress, results |
+| `/api/invocations/<id>/slurm_status` | GET | Live `squeue`/`sacct` for ids seen on this invocation (`RUN_SLURM_E2E=1`) |
+| `/api/invocations/<id>/cancel` | POST | Cancel background run |
+| `/api/solver_summaries` | GET | Per-solver aggregates from `runs` |
+| `/api/baseline_comparison` | GET | Baseline vs other runs |
+| `/api/metrics/<solver>/<metric>` | GET | Metric history |
+| `/api/available_metrics` | GET | Solver/metric pairs |
+| `/api/get_job_batch_uuids` | GET | Batch UUIDs (ordered by latest activity per batch) |
 
 ## 7. Dashboard Views
 
-The **Streamlit UI** (`make ui`, port 8501) provides:
+The **Streamlit UI** (`make ui`, port 8501):
 
-- **Home**: Metrics for each solver over the entire job history — select solver and metric, line chart
-- **Run Jobs**: Execute HPC jobs — select jobs, "Run All" / "Run Selected" buttons
-- **Run History**: Table of runs; filter by solver or processor; expand for stdout, stderr, metrics; failed runs show validation icon (⚠️) and validation_errors when metric validation failed
-- **Tests**: Run unit tests (pytest) for the harness
-- **Configs**: Edit YAML config files (resources, systems, jobs, solvers)
+- **Home**: Welcome text; **solver monitoring** table (`GET /api/solver_summaries`)
+- **Individual Trends**: Solver/metric line charts
+- **Run Jobs**: **Active runs** (per-solver rows when using background); select jobs; background defaults on; **orchestration** per solver vs single batch; optional raw invocation-id inspect
+- **Run History**: Batches; expand stdout/stderr/metrics; **delete selected runs**; optional **Refresh SLURM status** when run has scheduler metadata
+- **Long-Term Trends**: Filtered charts
+- **Configs**: Read-only YAML view (category/file)
 
-The **REST API** (`make api`, port 8000) serves JSON; `/docs` provides interactive Swagger UI.
+The UI uses **`HPC_API_URL`** (via [`api_config.py`](../src/ui/api_config.py)) to reach the API.
 
 ## 8. Storage Schema
 
-Table `runs`: id, job_name, solver_name, system_name, returncode, passed, runtime_seconds, timestamp, stdout, stderr, metrics_json, processor, validation_errors (JSON array of validation error messages; populated when solver defines `metrics` with min/max/required and validation fails).
+Table **`runs`**: id, job_name, solver_name, system_name, returncode, passed, runtime_seconds, timestamp, stdout, stderr, metrics_json, processor, validation_errors, is_baseline, job_batch_uuid, job_batch_date, job_batch_name, scheduler_backend, scheduler_job_ids (JSON), submit_container.
 
 ## 9. Deployment
 
-- **Local**: `make api` (REST API), `make ui` (Streamlit dashboard), `make runner` (CLI)
-- **Stop/restart**: `make stop-services` (stop API and UI on ports 8000, 8501), `make restart-services` (stop then start both in background; logs: `.api.log`, `.ui.log`)
-- **Docker**: `make docker-build`, `make docker-run` (mounts `./data`)
-- **docker-compose**: `make docker-up` or `docker compose -f docker/docker-compose.yml up --build` (REST API on port 8000)
+- **Local**: `make api`, `make ui`, `make runner`
+- **Stop/restart**: `make stop-services`, `make restart-services`; SLURM env: `make start-services-slurm`
+- **External Slurm stack**: `make slurm-up` / `make slurm-down` (see Makefile `SLURM_COMPOSE_DIR`)
+- **Docker**: `make docker-build`, `make docker-run`; `make docker-up`
 
 ## 10. Workspace Layout
 
 ```
-DOW-1-26/
-├── configs/           # YAML configs (resources, systems, jobs, solvers)
+e2e_testing/
+├── configs/
 ├── data/              # harness.db (gitignored)
-├── docker/            # Dockerfiles and compose configs
+├── docker/
 ├── src/
-│   ├── core/          # harness package
-│   ├── api/           # basic_restapi package (FastAPI)
-│   └── ui/            # Streamlit dashboard
-├── pyproject.toml     # uv workspace
+│   ├── core/          # harness
+│   ├── api/           # basic_restapi
+│   └── ui/            # Streamlit
+├── pyproject.toml
 └── Makefile
 ```

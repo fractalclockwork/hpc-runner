@@ -90,7 +90,7 @@ Unit tests cover the major features:
 |-------------|----------|
 | `test_config.py` | Resource, System, Solver, Job loading; _template skip |
 | `test_parser.py` | Metric extraction, validation |
-| `test_storage.py` | DB init, store_run, get_runs, get_run_by_id, get_metrics_history |
+| `test_storage.py` | DB init, store_run, get_runs, get_run_by_id, delete_runs, get_solver_run_summaries, get_metrics_history |
 | `test_runner.py` | End-to-end run, metric extraction from solver output |
 | `test_add_solver.py` | --add solver creation, derive_name, add_job |
 
@@ -104,7 +104,7 @@ make docker-validate # Validate Docker images (build + API health check)
 
 See [docs/e2e_quickstart.md](docs/e2e_quickstart.md) for installing and running Playwright E2E tests.
 
-**SLURM + LAMMPS:** Inputs live under `docker/lammps/` (do not modify external `sci_slurm`). See [docs/slurm_lammps_e2e.md](docs/slurm_lammps_e2e.md). **`make test-slurm`** sets `RUN_SLURM_E2E=1` and runs the API test (export `DOCKER_SLURM_CONTAINER` when using Docker). Optional Compose overlay: `docker/docker-compose.slurm.yml` and [docker/README.md](docker/README.md).
+**SLURM + LAMMPS:** Inputs live under `docker/lammps/` (do not modify external `sci_slurm`). See [docs/slurm_lammps_e2e.md](docs/slurm_lammps_e2e.md). Start an external Slurm Docker stack from the repo: **`make slurm-up`** (set `SLURM_COMPOSE_DIR` if not using a `./sci_slurm` checkout). **`make test-slurm`** sets `RUN_SLURM_E2E=1` and runs the API test (export `DOCKER_SLURM_CONTAINER` when using Docker). Optional Compose overlay: `docker/docker-compose.slurm.yml` and [docker/README.md](docker/README.md).
 
 ## Configuration Structure
 
@@ -145,9 +145,16 @@ docker/
 | `/api/health` | GET | Health check (returns `{"status": "ok"}`) |
 | `/api/solvers` | GET | List configured solvers |
 | `/api/jobs` | GET | List configured jobs |
-| `/api/run_jobs` | POST | Run jobs (body: `{"jobs": ["name1"]}`) |
+| `/api/run_jobs` | POST | Run jobs (`jobs`, `batch_name`, `background`, `group_by`: `batch` or `solver`; 202 + `invocations`) |
 | `/api/runs` | GET | List recent runs (?solver=, ?processor=, ?limit=, ?offset=) |
+| `/api/runs` | DELETE | Delete runs (body: `{"ids": [1,2,3]}`) |
 | `/api/runs/<id>` | GET | Get run details |
+| `/api/runs/<id>/slurm_status` | GET | Live SLURM queue state when `RUN_SLURM_E2E=1` |
+| `/api/invocations` | GET | List background invocations (`?active_only=true`) |
+| `/api/invocations/<id>` | GET | Background run status, SLURM ids, batch progress / results |
+| `/api/invocations/<id>/slurm_status` | GET | Live SLURM state for ids on this invocation |
+| `/api/invocations/<id>/cancel` | POST | Cancel background run |
+| `/api/solver_summaries` | GET | Per-solver run aggregates |
 | `/api/metrics/<solver>/<metric>` | GET | Metric history for trends |
 | `/api/solvers/<solver>/baseline` | GET | Current baseline run for a solver |
 | `/api/runs/<id>/set_baseline` | POST | Set a run as the baseline for its solver |
@@ -155,6 +162,6 @@ docker/
 
 ## Design Principles
 
-- **Execution-Agnostic** — Solver scripts control execution (SLURM, MPI, etc.); platform never calls schedulers directly
+- **Execution-Agnostic** — Solver scripts control execution (SLURM, MPI, `docker exec`, etc.); harness code does not embed scheduler APIs
 - **Modular** — Resources, systems, solvers, jobs defined independently
 - **Pluggable** — Add solvers by dropping a folder with `solver.yaml` + run script

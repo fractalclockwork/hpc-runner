@@ -1,6 +1,9 @@
 """FastAPI REST API for HPC Regression Platform."""
 
 import json
+import os
+from collections import defaultdict
+from typing import Literal
 
 import structlog
 from fastapi import FastAPI, HTTPException
@@ -15,6 +18,8 @@ from harness import (
     store_run,
     get_runs,
     get_run_by_id,
+    delete_runs,
+    get_solver_run_summaries,
     get_metrics_history,
     get_all_metrics_series,
     get_baseline_run,
@@ -25,11 +30,44 @@ from harness import (
     get_job_batch_uuids,
 )
 
+from . import invocations
+from .slurm_tools import query_slurm_job_state
+
 app = FastAPI(title="HPC Regression API", version="0.1.0")
 logger = structlog.get_logger()
 
 CONFIG_DIR = get_config_dir()
 DB_PATH = get_db_path()
+
+
+def _normalize_run_row(r: dict) -> None:
+    """Decode JSON-ish columns for API responses (mutates dict in place)."""
+    if r.get("metrics_json"):
+        try:
+            r["metrics"] = json.loads(r["metrics_json"])
+        except Exception:
+            r["metrics"] = {}
+    else:
+        r["metrics"] = {}
+    if r.get("validation_errors") is not None:
+        try:
+            r["validation_errors"] = json.loads(r["validation_errors"])
+        except Exception:
+            r["validation_errors"] = []
+    else:
+        r["validation_errors"] = []
+    r["passed"] = bool(r.get("passed"))
+    r["is_baseline"] = bool(r.get("is_baseline", False))
+    sj = r.get("scheduler_job_ids")
+    if isinstance(sj, str):
+        try:
+            r["scheduler_job_ids"] = json.loads(sj or "[]")
+        except Exception:
+            r["scheduler_job_ids"] = []
+    elif sj is None:
+        r["scheduler_job_ids"] = []
+    r["scheduler_backend"] = r.get("scheduler_backend") or ""
+    r["submit_container"] = r.get("submit_container") or ""
 
 
 def _load_definitions():
@@ -47,6 +85,12 @@ def config_error_handler(request, exc: ConfigError):
 class RunJobsRequest(BaseModel):
     jobs: list[str] | None = None
     batch_name: str = ""
+    background: bool = False
+    group_by: Literal["batch", "solver"] = "batch"
+
+
+class DeleteRunsRequest(BaseModel):
+    ids: list[int]
 
 
 @app.get("/")
@@ -79,7 +123,7 @@ def api_solvers():
 
 @app.get("/api/systems")
 def api_systems():
-    """List configured solvers."""
+    """List configured systems."""
     _, systems, _, _ = _load_definitions()
     return [
         {
@@ -104,7 +148,7 @@ def api_jobs():
 
 @app.post("/api/run_jobs")
 def api_run_jobs(body: RunJobsRequest | None = None):
-    """Run jobs. Optional body: { "jobs": ["job1", "job2"], "batch_name": "batch1" }."""
+    """Run jobs. Body: jobs, batch_name, background, group_by (batch|solver when background)."""
     _, systems, solvers, jobs = _load_definitions()
     job_names = body.jobs if body and body.jobs else None
 
@@ -124,7 +168,66 @@ def api_run_jobs(body: RunJobsRequest | None = None):
         )
 
     batch_name = body.batch_name if body and body.batch_name else ""
-    results = run_jobs(job_list, solvers, systems, batch_name = batch_name)
+    if body and body.background:
+        gb = body.group_by if body else "batch"
+        if gb == "solver":
+            buckets: dict[str, list] = defaultdict(list)
+            for j in job_list:
+                buckets[j.solver].append(j)
+            inv_rows: list[dict] = []
+            for solver in sorted(buckets.keys()):
+                jl = buckets[solver]
+                sub_batch = f"{batch_name}:{solver}" if batch_name.strip() else solver
+                inv_id = invocations.start_background_run(
+                    jl,
+                    solvers,
+                    systems,
+                    sub_batch,
+                    str(DB_PATH),
+                    solver_name=solver,
+                    job_names=[x.name for x in jl],
+                )
+                inv_rows.append(
+                    {
+                        "solver_name": solver,
+                        "invocation_id": inv_id,
+                        "job_names": [x.name for x in jl],
+                    }
+                )
+            content: dict = {
+                "group_by": "solver",
+                "status": "queued",
+                "invocations": inv_rows,
+            }
+            if len(inv_rows) == 1:
+                content["invocation_id"] = inv_rows[0]["invocation_id"]
+            return JSONResponse(status_code=202, content=content)
+        inv_id = invocations.start_background_run(
+            job_list,
+            solvers,
+            systems,
+            batch_name,
+            str(DB_PATH),
+            solver_name="",
+            job_names=[j.name for j in job_list],
+        )
+        return JSONResponse(
+            status_code=202,
+            content={
+                "group_by": "batch",
+                "status": "queued",
+                "invocation_id": inv_id,
+                "invocations": [
+                    {
+                        "solver_name": "",
+                        "invocation_id": inv_id,
+                        "job_names": [j.name for j in job_list],
+                    }
+                ],
+            },
+        )
+
+    results = run_jobs(job_list, solvers, systems, batch_name=batch_name)
     init_db(DB_PATH)
     for r in results:
         store_run(DB_PATH, r)
@@ -141,10 +244,12 @@ def api_run_jobs(body: RunJobsRequest | None = None):
             "timestamp": r.timestamp,
             "metrics": r.metrics,
             "processor": r.processor,
+            "scheduler_backend": getattr(r, "scheduler_backend", "") or "",
+            "scheduler_job_ids": getattr(r, "scheduler_job_ids", None) or [],
+            "submit_container": getattr(r, "submit_container", "") or "",
         }
         if hasattr(r, "validation_errors"):
             item["validation_errors"] = r.validation_errors
-        # For dashboard: full solver log (e.g. LAMMPS + Slurm batch output)
         item["stdout"] = r.stdout or ""
         item["stderr"] = r.stderr or ""
         response.append(item)
@@ -163,21 +268,20 @@ def api_runs(
     init_db(DB_PATH)
     runs = get_runs(DB_PATH, solver=solver, processor=processor, limit=limit, offset=offset)
     for r in runs:
-        if r.get("metrics_json"):
-            try:
-                r["metrics"] = json.loads(r["metrics_json"])
-            except Exception:
-                r["metrics"] = {}
-        if r.get("validation_errors") is not None:
-            try:
-                r["validation_errors"] = json.loads(r["validation_errors"])
-            except Exception:
-                r["validation_errors"] = []
-        else:
-            r["validation_errors"] = []
-        r["passed"] = bool(r.get("passed"))
-        r["is_baseline"] = bool(r.get("is_baseline", False))
+        _normalize_run_row(r)
     return runs
+
+
+@app.delete("/api/runs")
+def api_delete_runs(body: DeleteRunsRequest):
+    """Delete stored runs by id. May remove a baseline row (solver then has no baseline)."""
+    if not body.ids:
+        raise HTTPException(status_code=422, detail="ids must be non-empty")
+    init_db(DB_PATH)
+    n = delete_runs(DB_PATH, body.ids)
+    if n == 0:
+        raise HTTPException(status_code=404, detail="No matching run ids")
+    return {"deleted": n}
 
 
 @app.get("/api/runs/{run_id}")
@@ -188,21 +292,67 @@ def api_run_detail(run_id: int):
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     run = dict(run)
-    if run.get("metrics_json"):
-        try:
-            run["metrics"] = json.loads(run["metrics_json"])
-        except Exception:
-            run["metrics"] = {}
-    if run.get("validation_errors") is not None:
-        try:
-            run["validation_errors"] = json.loads(run["validation_errors"])
-        except Exception:
-            run["validation_errors"] = []
-    else:
-        run["validation_errors"] = []
-    run["passed"] = bool(run.get("passed"))
-    run["is_baseline"] = bool(run.get("is_baseline", False))
+    _normalize_run_row(run)
     return run
+
+
+@app.get("/api/runs/{run_id}/slurm_status")
+def api_run_slurm_status(run_id: int):
+    """Live squeue/sacct for SLURM job ids on this run (requires RUN_SLURM_E2E + docker/host tools)."""
+    init_db(DB_PATH)
+    run = get_run_by_id(DB_PATH, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    try:
+        jids = json.loads(run.get("scheduler_job_ids") or "[]")
+    except json.JSONDecodeError:
+        jids = []
+    if not jids:
+        return {"enabled": True, "job_ids": [], "output": "", "message": "No SLURM job ids recorded for this run"}
+    cont = (run.get("submit_container") or "").strip() or None
+    return query_slurm_job_state([str(j) for j in jids], cont)
+
+
+@app.get("/api/invocations")
+def api_list_invocations(active_only: bool = False):
+    """List background run_jobs invocations (optionally only queued/running)."""
+    return invocations.list_invocations(active_only=active_only)
+
+
+@app.get("/api/invocations/{invocation_id}/slurm_status")
+def api_invocation_slurm_status(invocation_id: str):
+    """Live squeue/sacct for SLURM job ids observed on this invocation (while running or after)."""
+    body = invocations.get_invocation_slurm_status(invocation_id)
+    if body is None:
+        raise HTTPException(status_code=404, detail="Invocation not found")
+    return body
+
+
+@app.get("/api/invocations/{invocation_id}")
+def api_get_invocation(invocation_id: str):
+    """Status / results for a background run_jobs invocation."""
+    rec = invocations.get_invocation(invocation_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Invocation not found")
+    return invocations.invocation_to_dict(rec)
+
+
+@app.post("/api/invocations/{invocation_id}/cancel")
+def api_cancel_invocation(invocation_id: str):
+    """Cancel background run: scancel (if known SLURM ids) + terminate local subprocess."""
+    ok, code, notes = invocations.cancel_invocation(invocation_id)
+    if not ok and code == "not_found":
+        raise HTTPException(status_code=404, detail="Invocation not found")
+    if not ok:
+        return JSONResponse(status_code=400, content={"ok": False, "detail": code, "scancel_notes": notes})
+    return {"ok": True, "scancel_notes": notes}
+
+
+@app.get("/api/solver_summaries")
+def api_solver_summaries():
+    """Per-solver aggregate stats from stored runs (monitoring)."""
+    init_db(DB_PATH)
+    return get_solver_run_summaries(DB_PATH)
 
 
 @app.get("/api/baseline_comparison")
