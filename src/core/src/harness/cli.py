@@ -8,8 +8,37 @@ from pathlib import Path
 
 from .add_solver import add_solver, add_job
 from .config import ConfigError, load_all, load_resources, load_systems
-from .runner import run_jobs
+from .runner import RunResult, run_jobs
 from .storage import init_db, store_run, get_runs
+
+
+def _print_and_build_output(results: list[RunResult], verbose: bool) -> list[dict]:
+    """Build JSON-serializable result rows; if verbose, print solver stdout/stderr to stderr."""
+    output: list[dict] = []
+    for r in results:
+        if verbose:
+            print(f"\n{'=' * 60}\nJob: {r.job_name}\n{'=' * 60}", file=sys.stderr)
+            print("--- stdout ---", file=sys.stderr)
+            print(r.stdout if r.stdout else "(empty)", file=sys.stderr)
+            print("--- stderr ---", file=sys.stderr)
+            print(r.stderr if r.stderr else "(empty)", file=sys.stderr)
+        item = {
+            "job_name": r.job_name,
+            "solver_name": r.solver_name,
+            "system_name": r.system_name,
+            "returncode": r.returncode,
+            "passed": r.passed,
+            "runtime_seconds": r.runtime_seconds,
+            "timestamp": r.timestamp,
+            "metrics": r.metrics,
+            "processor": r.processor,
+            "validation_errors": r.validation_errors,
+        }
+        if verbose:
+            item["stdout"] = r.stdout
+            item["stderr"] = r.stderr
+        output.append(item)
+    return output
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -68,6 +97,12 @@ def main(argv: list[str] | None = None) -> int:
         metavar="NAME",
         help="Custom solver/job name (optional with --add)",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Print each job's stdout/stderr (solver output) on stderr; add stdout/stderr to JSON",
+    )
 
     args = parser.parse_args(argv)
     config_dir = Path(args.config_dir).resolve()
@@ -113,21 +148,7 @@ def main(argv: list[str] | None = None) -> int:
             init_db(args.db)
             for r in results:
                 store_run(args.db, r)
-        output = []
-        for r in results:
-            item = {
-                "job_name": r.job_name,
-                "solver_name": r.solver_name,
-                "system_name": r.system_name,
-                "returncode": r.returncode,
-                "passed": r.passed,
-                "runtime_seconds": r.runtime_seconds,
-                "timestamp": r.timestamp,
-                "metrics": r.metrics,
-                "processor": r.processor,
-                "validation_errors": r.validation_errors,
-            }
-            output.append(item)
+        output = _print_and_build_output(results, args.verbose)
         print(json.dumps(output, indent=2))
         return 0 if all(r.passed for r in results) else 1
 
@@ -192,22 +213,7 @@ def main(argv: list[str] | None = None) -> int:
         for r in results:
             store_run(args.db, r)
 
-    # Output as JSON for CLI/API consumption
-    output = []
-    for r in results:
-        item = {
-            "job_name": r.job_name,
-            "solver_name": r.solver_name,
-            "system_name": r.system_name,
-            "returncode": r.returncode,
-            "passed": r.passed,
-            "runtime_seconds": r.runtime_seconds,
-            "timestamp": r.timestamp,
-            "metrics": r.metrics,
-            "processor": r.processor,
-            "validation_errors": r.validation_errors,
-        }
-        output.append(item)
+    output = _print_and_build_output(results, args.verbose)
     print(json.dumps(output, indent=2))
     return 0 if all(r.passed for r in results) else 1
 

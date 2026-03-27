@@ -1,0 +1,20 @@
+# Optional overlay for SLURM + LAMMPS API runs (merge with docker-compose.yml):
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.slurm.yml up --build
+#
+# The harness uses `docker exec` when DOCKER_SLURM_CONTAINER is set; the API process must be
+# able to run the Docker CLI against the host. Easiest: run the API on the host (`make api`) with
+# RUN_SLURM_E2E=1 and DOCKER_SLURM_CONTAINER set — no compose overlay needed.
+#
+# If you run the API inside this compose stack and need `docker exec`, mount the socket and use
+# an image that includes the Docker CLI (not the default Dockerfile). See docs/slurm_lammps_e2e.md.
+
+services:
+  api:
+    environment:
+      RUN_SLURM_E2E: ${RUN_SLURM_E2E:-0}
+      DOCKER_SLURM_CONTAINER: ${DOCKER_SLURM_CONTAINER:-}
+      DOCKER_SLURM_SUBMIT_CONTAINER: ${DOCKER_SLURM_SUBMIT_CONTAINER:-}
+      LAMMPS_BIN: ${LAMMPS_BIN:-lmp}
+      LAMMPS_USE_SRUN: ${LAMMPS_USE_SRUN:-0}
+      LAMMPS_USE_SBATCH: ${LAMMPS_USE_SBATCH:-1}
+      SBATCH_WAIT_TIMEOUT: ${SBATCH_WAIT_TIMEOUT:-600}

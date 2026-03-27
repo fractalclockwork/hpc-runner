@@ -46,6 +46,13 @@ make start-services   # Start API and UI in background (logs: .api.log, .ui.log)
 make restart-services # Stop then start API and UI in background
 ```
 
+SLURM + LAMMPS (loads `slurm-lammps.env` if present — copy from `slurm-lammps.env.example`):
+
+```bash
+make start-services-slurm
+make restart-services-slurm
+```
+
 ## Docker
 
 Build and run the REST API:
@@ -97,6 +104,8 @@ make docker-validate # Validate Docker images (build + API health check)
 
 See [docs/e2e_quickstart.md](docs/e2e_quickstart.md) for installing and running Playwright E2E tests.
 
+**SLURM + LAMMPS:** Inputs live under `docker/lammps/` (do not modify external `sci_slurm`). See [docs/slurm_lammps_e2e.md](docs/slurm_lammps_e2e.md). **`make test-slurm`** sets `RUN_SLURM_E2E=1` and runs the API test (export `DOCKER_SLURM_CONTAINER` when using Docker). Optional Compose overlay: `docker/docker-compose.slurm.yml` and [docker/README.md](docker/README.md).
+
 ## Configuration Structure
 
 ```
@@ -109,6 +118,10 @@ configs/
         ├── solver.yaml      # Metadata, entrypoint, parser_config
         ├── run.sh           # Or run.py — executed as black-box
         └── parser_config.yaml   # Optional: regex patterns for metrics
+
+docker/
+└── lammps/          # LAMMPS inputs for SLURM smoke (repo-owned; do not use sci_slurm for writes)
+    └── in.lammps
 ```
 
 ## CLI
@@ -119,6 +132,7 @@ configs/
 | `hpc-runner [config_dir] --list` | List available jobs |
 | `hpc-runner [config_dir] --list-runs` | List recent runs from DB (last 20) |
 | `hpc-runner [config_dir] --job NAME` | Run specific job(s); repeat `--job` for multiple |
+| `hpc-runner [config_dir] -v` | Verbose: print each job’s stdout/stderr (solver output) on stderr; JSON includes `stdout`/`stderr` |
 | `hpc-runner [config_dir] --no-store` | Run without persisting to DB |
 | `hpc-runner [config_dir] --db PATH` | Override database path |
 | `hpc-runner [config_dir] --solvers-dir PATH` | Override solvers directory (default: `configs/solvers`) |

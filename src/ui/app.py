@@ -1,5 +1,8 @@
 """Streamlit UI — minimal scaffolding for the HPC Regression Platform."""
 
+import os
+import sys
+from pathlib import Path
 import pandas as pd
 
 import streamlit as st
@@ -36,7 +39,8 @@ from charts import (
 from harness import get_db_path
 
 DB_PATH = get_db_path()
-API_URL = "http://localhost:8000"
+# Match API URL to your deployment (e.g. Docker: http://host.docker.internal:8000)
+API_URL = os.environ.get("HPC_API_URL", "http://localhost:8000")
 
 
 def _testid(id: str) -> None:
@@ -137,7 +141,12 @@ st.sidebar.markdown(
     '<span data-testid="nav-sidebar" style="display:none" aria-hidden="true"></span>',
     unsafe_allow_html=True,
 )
-st.sidebar.title("HPC Regression Testing Platform")
+
+st.sidebar.title("Navigation")
+if os.environ.get("RUN_SLURM_E2E") == "1":
+    st.sidebar.caption("SLURM/LAMMPS mode — API must have Docker + job env (see `make start-services-slurm`).")
+page_index = PAGES.index(st.session_state.page) if st.session_state.page in PAGES else 0
+
 st.sidebar.markdown("---")
 
 if 'page' not in st.session_state:
@@ -488,7 +497,7 @@ def page_run_jobs() -> None:
         if not to_run:
             st.warning("Select at least one job.")
         else:
-            with st.spinner(f"Running {len(job_names)} job(s)…"):
+            with st.spinner(f"Running {len(to_run)} job(s)…"):
                 # results = run_jobs(job_objs, solvers, systems)
                 # use the post request to run jobs
                 payload = {"jobs": to_run}
@@ -525,6 +534,16 @@ def page_run_jobs() -> None:
             if r.get("validation_errors"):
                 for err in (r.get("validation_errors") or []):
                     st.caption(f"  • {err}")
+            out = (r.get("stdout") or "").strip()
+            err = (r.get("stderr") or "").strip()
+            if out or err:
+                with st.expander(f"Solver output — {r['job_name']}", expanded=False):
+                    if out:
+                        st.caption("stdout (e.g. sbatch line + LAMMPS log)")
+                        st.code(out, language="text")
+                    if err:
+                        st.caption("stderr")
+                        st.code(err, language="text")
 
 
 # ---------------------------------------------------------------------------

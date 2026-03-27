@@ -144,6 +144,9 @@ def api_run_jobs(body: RunJobsRequest | None = None):
         }
         if hasattr(r, "validation_errors"):
             item["validation_errors"] = r.validation_errors
+        # For dashboard: full solver log (e.g. LAMMPS + Slurm batch output)
+        item["stdout"] = r.stdout or ""
+        item["stderr"] = r.stderr or ""
         response.append(item)
     return response
 

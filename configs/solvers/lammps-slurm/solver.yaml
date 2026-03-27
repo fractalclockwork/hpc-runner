@@ -1,0 +1,6 @@
+name: lammps-slurm
+version: "0.1.0"
+entrypoint: run.sh
+allowed_systems: [sci-slurm-lammps]
+metrics: []
+log_names: []
