@@ -2,6 +2,7 @@
 
 import json
 
+import pytest
 from harness import RunResult
 from harness.storage import (
     init_db,
@@ -10,6 +11,9 @@ from harness.storage import (
     get_run_by_id,
     get_all_metrics_series,
     get_metrics_history,
+    get_baseline_run,
+    set_baseline_run,
+    get_baseline_comparison,
 )
 
 
@@ -19,6 +23,7 @@ def _make_result(
     metrics=None,
     processor="x86_64",
     validation_errors=None,
+    baseline=False,
 ):
     return RunResult(
         job_name=job_name,
@@ -33,6 +38,7 @@ def _make_result(
         passed=True,
         metrics=metrics or {},
         processor=processor,
+        baseline=baseline,
     )
 
 
@@ -137,3 +143,133 @@ def test_get_metrics_history(tmp_path):
     values = [v for _, v in history]
     assert 1.0 in values
     assert 2.0 in values
+
+
+def test_store_run_with_baseline_sets_is_baseline(tmp_path):
+    """Storing a run with baseline=True persists is_baseline=1."""
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    result = _make_result(job_name="base", solver_name="s1", metrics={"m": 10.0}, baseline=True)
+    row_id = store_run(db_path, result)
+    assert row_id > 0
+    run = get_run_by_id(db_path, row_id)
+    assert run is not None
+    assert run.get("is_baseline") == 1
+
+
+def test_store_run_baseline_replaces_previous_baseline(tmp_path):
+    """Storing a run with baseline=True clears is_baseline on other runs of same solver."""
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    store_run(db_path, _make_result(job_name="old-base", solver_name="s1", metrics={"m": 1.0}, baseline=True))
+    store_run(db_path, _make_result(job_name="other", solver_name="s1", metrics={"m": 2.0}, baseline=False))
+    # New baseline run for same solver
+    store_run(db_path, _make_result(job_name="new-base", solver_name="s1", metrics={"m": 3.0}, baseline=True))
+
+    runs = get_runs(db_path, solver="s1")
+    assert len(runs) == 3
+    baseline_runs = [r for r in runs if r.get("is_baseline")]
+    assert len(baseline_runs) == 1
+    assert baseline_runs[0]["job_name"] == "new-base"
+
+
+def test_get_baseline_run(tmp_path):
+    """get_baseline_run returns the run with is_baseline=1 for that solver, or None."""
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    store_run(db_path, _make_result(job_name="base", solver_name="s1", metrics={"m": 10.0}, baseline=True))
+    store_run(db_path, _make_result(job_name="other", solver_name="s1", metrics={"m": 12.0}, baseline=False))
+
+    baseline = get_baseline_run(db_path, "s1")
+    assert baseline is not None
+    assert baseline["job_name"] == "base"
+    assert baseline.get("metrics", {}).get("m") == 10.0
+    assert baseline.get("is_baseline") is True
+
+    assert get_baseline_run(db_path, "nonexistent") is None
+
+
+def test_set_baseline_run(tmp_path):
+    """set_baseline_run sets the given run as baseline and clears others for that solver."""
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    id1 = store_run(db_path, _make_result(job_name="first", solver_name="s1", baseline=True))
+    id2 = store_run(db_path, _make_result(job_name="second", solver_name="s1", baseline=False))
+
+    out = set_baseline_run(db_path, id2)
+    assert out is not None
+    assert out["id"] == id2
+    assert out.get("is_baseline") is True
+
+    assert get_baseline_run(db_path, "s1")["id"] == id2
+    run1 = get_run_by_id(db_path, id1)
+    assert run1.get("is_baseline") == 0
+
+    assert set_baseline_run(db_path, 99999) is None
+
+
+def test_get_baseline_comparison(tmp_path):
+    """get_baseline_comparison returns baseline run and comparisons with delta/delta_pct."""
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    store_run(db_path, _make_result(
+        job_name="base", solver_name="s1",
+        metrics={"runtime_seconds": 1.0, "mlups": 100.0},
+        baseline=True,
+    ))
+    store_run(db_path, _make_result(
+        job_name="other", solver_name="s1",
+        metrics={"runtime_seconds": 1.2, "mlups": 90.0},
+        baseline=False,
+    ))
+
+    comparison = get_baseline_comparison(db_path, solver_name="s1")
+    assert len(comparison) == 1
+    entry = comparison[0]
+    assert entry["solver_name"] == "s1"
+    assert entry["baseline_run"] is not None
+    assert entry["baseline_run"]["job_name"] == "base"
+    assert len(entry["comparisons"]) == 1
+    vs = entry["comparisons"][0]["vs_baseline"]
+    assert vs["runtime_seconds"]["baseline"] == 1.0
+    assert vs["runtime_seconds"]["value"] == 1.2
+    assert vs["runtime_seconds"]["delta"] == pytest.approx(0.2)
+    assert vs["runtime_seconds"]["delta_pct"] == pytest.approx(20.0)
+    assert vs["mlups"]["delta"] == pytest.approx(-10.0)
+    assert vs["mlups"]["delta_pct"] == pytest.approx(-10.0)
+
+
+def test_get_baseline_comparison_zero_baseline_metric(tmp_path):
+    """When baseline value is 0, delta_pct is None to avoid division by zero."""
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    store_run(db_path, _make_result(
+        job_name="base", solver_name="s1",
+        metrics={"count": 0.0},
+        baseline=True,
+    ))
+    store_run(db_path, _make_result(
+        job_name="other", solver_name="s1",
+        metrics={"count": 5.0},
+        baseline=False,
+    ))
+    comparison = get_baseline_comparison(db_path, solver_name="s1")
+    assert len(comparison) == 1
+    vs = comparison[0]["comparisons"][0]["vs_baseline"]
+    assert vs["count"]["baseline"] == 0.0
+    assert vs["count"]["value"] == 5.0
+    assert vs["count"]["delta"] == 5.0
+    assert vs["count"]["delta_pct"] is None
+
+
+def test_get_baseline_comparison_solver_without_baseline(tmp_path):
+    """Solver with no baseline run still appears with baseline_run=None and empty comparisons."""
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    store_run(db_path, _make_result(job_name="any", solver_name="s1", baseline=False))
+
+    comparison = get_baseline_comparison(db_path, solver_name="s1")
+    assert len(comparison) == 1
+    assert comparison[0]["solver_name"] == "s1"
+    assert comparison[0]["baseline_run"] is None
+    assert comparison[0]["comparisons"] == []

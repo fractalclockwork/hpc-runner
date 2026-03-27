@@ -17,8 +17,12 @@ from harness import (
     get_run_by_id,
     get_metrics_history,
     get_all_metrics_series,
+    get_baseline_run,
+    set_baseline_run,
+    get_baseline_comparison,
     get_config_dir,
     get_db_path,
+    get_job_batch_uuids,
 )
 
 app = FastAPI(title="HPC Regression API", version="0.1.0")
@@ -42,6 +46,7 @@ def config_error_handler(request, exc: ConfigError):
 
 class RunJobsRequest(BaseModel):
     jobs: list[str] | None = None
+    batch_name: str = ""
 
 
 @app.get("/")
@@ -62,6 +67,7 @@ def api_solvers():
     """List configured solvers."""
     _, _, solvers, _ = _load_definitions()
     return [
+
         {
             "name": s.name,
             "version": s.version,
@@ -80,7 +86,7 @@ def api_systems():
             "name": s.name,
             "resources": s.resources,
             "env": s.env,
-            "constriants": s.constraints,
+            "constraints": s.constraints,
             "extra": s.extra,
         }
         for s in systems.values()
@@ -91,14 +97,14 @@ def api_jobs():
     """List configured jobs."""
     _, _, _, jobs = _load_definitions()
     return [
-        {"name": j.name, "solver": j.solver, "system": j.system}
+        {"name": j.name, "solver": j.solver, "system": j.system, "baseline": j.baseline}
         for j in jobs.values()
     ]
 
 
 @app.post("/api/run_jobs")
 def api_run_jobs(body: RunJobsRequest | None = None):
-    """Run jobs. Optional body: { "jobs": ["job1", "job2"] }."""
+    """Run jobs. Optional body: { "jobs": ["job1", "job2"], "batch_name": "batch1" }."""
     _, systems, solvers, jobs = _load_definitions()
     job_names = body.jobs if body and body.jobs else None
 
@@ -117,7 +123,8 @@ def api_run_jobs(body: RunJobsRequest | None = None):
             },
         )
 
-    results = run_jobs(job_list, solvers, systems)
+    batch_name = body.batch_name if body and body.batch_name else ""
+    results = run_jobs(job_list, solvers, systems, batch_name = batch_name)
     init_db(DB_PATH)
     for r in results:
         store_run(DB_PATH, r)
@@ -169,6 +176,7 @@ def api_runs(
         else:
             r["validation_errors"] = []
         r["passed"] = bool(r.get("passed"))
+        r["is_baseline"] = bool(r.get("is_baseline", False))
     return runs
 
 
@@ -193,6 +201,41 @@ def api_run_detail(run_id: int):
     else:
         run["validation_errors"] = []
     run["passed"] = bool(run.get("passed"))
+    run["is_baseline"] = bool(run.get("is_baseline", False))
+    return run
+
+
+@app.get("/api/baseline_comparison")
+def api_baseline_comparison(solver: str | None = None, limit: int = 50):
+    """
+    Compare all other runs to the baseline run per solver.
+    Returns for each solver: baseline_run, other runs, and per-metric deltas (vs_baseline).
+    """
+    limit = min(limit, 200)
+    init_db(DB_PATH)
+    return get_baseline_comparison(DB_PATH, solver_name=solver, limit_per_solver=limit)
+
+
+@app.get("/api/solvers/{solver_name}/baseline")
+def api_solver_baseline(solver_name: str):
+    """Return the current baseline run for the given solver, or 404."""
+    init_db(DB_PATH)
+    run = get_baseline_run(DB_PATH, solver_name)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"No baseline run for solver '{solver_name}'")
+    return run
+
+
+@app.post("/api/runs/{run_id}/set_baseline")
+def api_set_baseline(run_id: int):
+    """
+    Set a specific run as the baseline for its solver.
+    Other runs of the same solver are no longer baseline. Returns the updated run.
+    """
+    init_db(DB_PATH)
+    run = set_baseline_run(DB_PATH, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
     return run
 
 
@@ -217,6 +260,14 @@ def api_available_metrics(
     init_db(DB_PATH)
     available_metrics: list[tuple[str, str]] = get_all_metrics_series(DB_PATH)
     return [{"solver": s, "metric": m} for s, m in available_metrics]
+
+@app.get("/api/get_job_batch_uuids")
+def api_job_batch_uuids(limit: int = 100):
+    """
+    Gets a list of
+    """
+    init_db(DB_PATH)
+    return get_job_batch_uuids(DB_PATH, limit=limit)
 
 def main():
     import uvicorn

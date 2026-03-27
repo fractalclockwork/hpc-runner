@@ -76,6 +76,10 @@ This glossary defines key terms for the HPC Regression Platform. It helps **deve
 
 **success_criteria** — Job-level conditions for pass/fail. Currently supports `returncode` (expected value, default 0).
 
+**baseline (run)** — A reference run selected per solver for comparison. Only one baseline is active per `solver_name` at a time. Stored in the `runs` table (via an `is_baseline` flag) and set via the API/UI.
+
+**baseline comparison** — A per-metric comparison of a run against its solver’s baseline, including delta and percent delta (and optionally ratio to baseline).
+
 ---
 
 ## Metrics and Parsing

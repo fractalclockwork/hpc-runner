@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import uuid
 
 import structlog
 
@@ -38,6 +39,10 @@ class RunResult:
     passed: bool = False
     raw_logs: str = ""
     processor: str | None = None
+    baseline: bool = False
+    job_batch_uuid: str = "" # "" means no batch id is found for the run. don't use null here so we can index, also because "" is guaranteed to not be a valid uuid
+    job_batch_date: str | None = None # This could actually be annoying in the future, but jobs don't have to have a batch date since they might not be run as a batch
+    job_batch_name: str  = ""
 
 
 def _build_env(system: System, base_env: dict[str, str] | None = None) -> dict[str, str]:
@@ -55,6 +60,9 @@ def run_job(
     system: System,
     *,
     capture_output: bool = True,
+    job_batch_uuid: str = "",
+    job_batch_date: str | None = None,
+    job_batch_name: str = "",
 ) -> RunResult:
     """
     Execute a job by running the solver script with system environment.
@@ -110,6 +118,10 @@ def run_job(
             passed=False,
             metrics={"runtime_seconds": runtime},
             processor=processor,
+            baseline=job.baseline,
+            job_batch_uuid=job_batch_uuid,
+            job_batch_date=job_batch_date,
+            job_batch_name=job_batch_name,
         )
         logger.warning("runner.timeout", job=job.name, runtime=runtime)
         return run_result
@@ -130,6 +142,10 @@ def run_job(
             passed=False,
             metrics={"runtime_seconds": runtime},
             processor=processor,
+            baseline=job.baseline,
+            job_batch_uuid=job_batch_uuid,
+            job_batch_date=job_batch_date,
+            job_batch_name=job_batch_name,
         )
         logger.exception("runner.error", job=job.name, error=str(e))
         return run_result
@@ -186,6 +202,10 @@ def run_job(
         raw_logs=raw_logs,
         metrics=metrics,
         processor=processor,
+        baseline=job.baseline,
+        job_batch_uuid=job_batch_uuid,
+        job_batch_date=job_batch_date,
+        job_batch_name=job_batch_name,
     )
 
     logger.info(
@@ -202,10 +222,12 @@ def run_jobs(
     jobs: list[Job],
     solvers: dict[str, Solver],
     systems: dict[str, System],
+    batch_name: str = "",
 ) -> list[RunResult]:
     """Run multiple jobs and return results."""
     results: list[RunResult] = []
     now = datetime.now(timezone.utc).isoformat()
+    batch_uuid = uuid.uuid4().hex
     for job in jobs:
         solver = solvers.get(job.solver)
         system = systems.get(job.system)
@@ -226,6 +248,10 @@ def run_jobs(
                     passed=False,
                     metrics={"runtime_seconds": 0.0},
                     processor=probe_processor(),
+                    baseline=job.baseline,
+                    job_batch_uuid=batch_uuid,
+                    job_batch_date=now,
+                    job_batch_name=batch_name,
                 )
             )
             continue
@@ -246,8 +272,13 @@ def run_jobs(
                     passed=False,
                     metrics={"runtime_seconds": 0.0},
                     processor=probe_processor(),
+                    baseline=job.baseline,
+                    job_batch_uuid=batch_uuid,
+                    job_batch_date=now,
+                    job_batch_name=batch_name,
                 )
             )
             continue
-        results.append(run_job(job, solver, system))
+        # why do we append the results separately only in this case?
+        results.append(run_job(job, solver, system, job_batch_uuid=batch_uuid, job_batch_date=now, job_batch_name=batch_name))
     return results

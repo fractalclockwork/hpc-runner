@@ -74,3 +74,40 @@ def test_api_config_error_returns_500(tmp_path):
     assert "error" in data
     assert "Config load failed" in data["error"]
     assert "detail" in data
+
+
+def test_api_solver_baseline_returns_404_when_no_baseline(client):
+    """GET /api/solvers/{solver}/baseline returns 404 when solver has no baseline run."""
+    # Use a solver name that is unlikely to have any runs in the test env
+    response = client.get("/api/solvers/no-baseline-solver-xyz/baseline")
+    assert response.status_code == 404
+    data = response.json()
+    assert "detail" in data
+
+
+def test_api_set_baseline_returns_404_when_run_not_found(client):
+    """POST /api/runs/{run_id}/set_baseline returns 404 when run_id does not exist."""
+    response = client.post("/api/runs/999999/set_baseline")
+    assert response.status_code == 404
+    data = response.json()
+    assert "detail" in data
+
+
+def test_api_baseline_comparison_returns_list(client):
+    """GET /api/baseline_comparison returns 200 and a list of solver comparison entries."""
+    response = client.get("/api/baseline_comparison")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    for entry in data:
+        assert "solver_name" in entry
+        assert "baseline_run" in entry
+        assert "other_runs" in entry
+        assert "comparisons" in entry
+
+def test_api_job_batch_uuids_returns_list(client):
+    """GET /api/baseline_comparison returns 200 and a list of solver comparison entries."""
+    response = client.get("/api/get_job_batch_uuids")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
