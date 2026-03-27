@@ -256,7 +256,7 @@ Two interfaces are available:
 
 **REST API (FastAPI):** `make api` → http://localhost:8000 (root redirects to `/docs` for interactive API documentation). Use for programmatic access or automation.
 
-**Streamlit UI:** `make ui` → http://localhost:8501. Use for interactive running of jobs and viewing results in a browser.
+**Streamlit UI:** `make ui` → http://localhost:8501. Use for interactive running of jobs and viewing results in a browser. The UI talks to the harness **only via the REST API** (HTTP), not embedded Python calls—start **`make api`** first (or point **`HPC_API_URL`** at a reachable API), or pages such as **Run Jobs** and **Run History** cannot load jobs or runs.
 
 Both allow you to:
 
@@ -273,9 +273,18 @@ For automation:
 |----------------------------|--------|--------------------------------------|
 | `/api/solvers`             | GET    | List solvers                         |
 | `/api/jobs`                | GET    | List jobs                            |
-| `/api/run_jobs`            | POST   | Run jobs; body: `{"jobs": ["job1"]}` |
+| `/api/run_jobs`            | POST   | Run jobs; body: `{"jobs": [...], "batch_name": "...", "background": true, "group_by": "solver" \| "batch"}` — 202 returns `invocations` list; use **`group_by: "solver"`** for one background worker per solver (monitor/cancel per solver) |
 | `/api/runs`                | GET    | List runs (?solver=, ?processor=, ?limit=) |
+| `/api/runs`                | DELETE | Body `{"ids": [1,2]}` — remove stored runs (baseline rows allowed) |
 | `/api/runs/<id>`           | GET    | Run detail                           |
+| `/api/runs/<id>/slurm_status` | GET | Live `squeue`/`sacct` when `RUN_SLURM_E2E=1` and run has SLURM metadata |
+| `/api/invocations`         | GET    | List invocations; `?active_only=true` for queued/running only |
+| `/api/invocations/<id>`    | GET    | Status, `batch_name`, live `scheduler_job_ids`, `jobs_total` / `jobs_completed`, and `results` when done |
+| `/api/invocations/<id>/slurm_status` | GET | Live `squeue`/`sacct` for SLURM ids captured on this invocation (`RUN_SLURM_E2E=1`) |
+| `/api/invocations/<id>/cancel` | POST | Cancel background run (subprocess + best-effort `scancel`; see env vars below) |
+| `/api/solver_summaries`   | GET    | Per-solver pass counts and last run info |
+
+**Background cancel (`scancel`):** set **`HARNESS_ALLOW_SCANCEL=1`** for explicit opt-in, or rely on **`RUN_SLURM_E2E=1`** (tests / Docker SLURM E2E), or configure **`DOCKER_SLURM_CONTAINER`** / **`DOCKER_SLURM_SUBMIT_CONTAINER`** so the API can `docker exec` and run `scancel`. Subprocess termination always runs on cancel regardless of those flags.
 | `/api/metrics/<solver>/<metric>` | GET | Metric history for trends            |
 | `/api/solvers/<solver>/baseline` | GET | Current baseline run for a solver    |
 | `/api/runs/<id>/set_baseline` | POST | Set a run as the baseline for its solver |
@@ -301,10 +310,12 @@ CLI output is JSON. Results are stored in `data/harness.db` unless you use `--no
 
 The Streamlit UI provides:
 
-- **Home:** Metrics for each solver over the entire job history — select solver and metric, view line chart
-- **Run History:** Table of runs with status, processor, timestamp; filter by solver or processor; expand a run for full stdout, stderr, and metrics
-- **Run Jobs:** Execute jobs from the browser; view results immediately after running
+- **Home:** Welcome text and a **solver monitoring** table (aggregates from stored runs); **Individual Trends** — select solver and metric, line chart
+- **Run History:** Batches of runs; filter by solver or processor; expand for stdout, stderr, metrics; **select runs and delete** from the database (with confirm); for SLURM-backed runs, optional **Refresh SLURM status** (needs API env in [slurm_lammps_e2e.md](slurm_lammps_e2e.md))
+- **Run Jobs:** Select jobs; **background** run with per-solver or single-batch orchestration; **Active runs** lists invocations from the API (in-memory registry); requires API up
 - **Long-Term Trends:** Heatmaps and trend charts over time, with optional baseline-relative views
+
+Set **`HPC_API_URL`** if the Streamlit process must call an API that is not `http://localhost:8000` (e.g. Docker networking).
 
 ---
 

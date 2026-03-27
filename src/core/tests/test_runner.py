@@ -6,6 +6,7 @@ import yaml
 
 from harness import load_all, run_jobs
 from harness.config import Job
+from harness.runner import InvocationControl, RunResult
 
 
 def test_run_minimal(tmp_path):
@@ -437,6 +438,110 @@ def test_run_job_timeout_stderr_message(tmp_path):
     assert not result.passed
     assert "timed out" in result.stderr
     assert "3600" in result.stderr
+
+
+def test_run_jobs_cancel_before_start_skips_all_with_same_batch(tmp_path):
+    """If cancel_event is set before any run_job, every runnable job is skipped with Cancelled by user."""
+    (tmp_path / "resources").mkdir()
+    (tmp_path / "systems").mkdir()
+    (tmp_path / "jobs").mkdir()
+    solvers_dir = tmp_path / "solvers"
+    solvers_dir.mkdir()
+    (tmp_path / "resources" / "r.yaml").write_text(
+        yaml.safe_dump({"resources": [{"name": "r1"}]})
+    )
+    (tmp_path / "systems" / "s.yaml").write_text(
+        yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1"]}]})
+    )
+    (tmp_path / "jobs" / "t.yaml").write_text(
+        yaml.safe_dump({
+            "jobs": [
+                {"name": "j1", "solver": "sol1", "system": "s1"},
+                {"name": "j2", "solver": "sol1", "system": "s1"},
+            ]
+        })
+    )
+    (solvers_dir / "sol1").mkdir()
+    (solvers_dir / "sol1" / "solver.yaml").write_text(
+        yaml.safe_dump({"name": "sol1", "entrypoint": "run.sh", "allowed_systems": ["s1"]})
+    )
+    (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
+
+    _, systems, solvers, jobs = load_all(tmp_path, solvers_dir)
+    ctl = InvocationControl()
+    ctl.cancel_event.set()
+    job_list = [jobs["j1"], jobs["j2"]]
+    with patch("harness.runner.run_job") as mock_rj:
+        results = run_jobs(job_list, solvers, systems, invoke_ctl=ctl)
+        mock_rj.assert_not_called()
+    assert len(results) == 2
+    for r in results:
+        assert r.validation_errors == ["Cancelled by user"]
+        assert not r.passed
+    assert ctl.jobs_total == 2
+    assert ctl.jobs_completed == 2
+
+
+def test_run_jobs_cancel_after_first_job_skips_second(tmp_path):
+    """After the first run_job returns, cancel prevents starting the second job."""
+    (tmp_path / "resources").mkdir()
+    (tmp_path / "systems").mkdir()
+    (tmp_path / "jobs").mkdir()
+    solvers_dir = tmp_path / "solvers"
+    solvers_dir.mkdir()
+    (tmp_path / "resources" / "r.yaml").write_text(
+        yaml.safe_dump({"resources": [{"name": "r1"}]})
+    )
+    (tmp_path / "systems" / "s.yaml").write_text(
+        yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1"]}]})
+    )
+    (tmp_path / "jobs" / "t.yaml").write_text(
+        yaml.safe_dump({
+            "jobs": [
+                {"name": "j1", "solver": "sol1", "system": "s1"},
+                {"name": "j2", "solver": "sol1", "system": "s1"},
+            ]
+        })
+    )
+    (solvers_dir / "sol1").mkdir()
+    (solvers_dir / "sol1" / "solver.yaml").write_text(
+        yaml.safe_dump({"name": "sol1", "entrypoint": "run.sh", "allowed_systems": ["s1"]})
+    )
+    (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
+
+    _, systems, solvers, jobs = load_all(tmp_path, solvers_dir)
+    ctl = InvocationControl()
+
+    def fake_run_job(j, sol, sys, **kwargs):
+        if j.name == "j1":
+            ctl.cancel_event.set()
+            return RunResult(
+                job_name=j.name,
+                solver_name=sol.name,
+                system_name=sys.name,
+                returncode=0,
+                stdout="ok",
+                stderr="",
+                runtime_seconds=0.01,
+                timestamp="t1",
+                validation_errors=[],
+                passed=True,
+                processor="x86_64",
+                baseline=j.baseline,
+                job_batch_uuid=kwargs.get("job_batch_uuid", ""),
+                job_batch_date=kwargs.get("job_batch_date"),
+                job_batch_name=kwargs.get("job_batch_name", ""),
+            )
+        raise AssertionError("second job should not run")
+
+    job_list = [jobs["j1"], jobs["j2"]]
+    with patch("harness.runner.run_job", side_effect=fake_run_job):
+        results = run_jobs(job_list, solvers, systems, invoke_ctl=ctl)
+    assert len(results) == 2
+    assert results[0].passed
+    assert results[0].job_name == "j1"
+    assert results[1].validation_errors == ["Cancelled by user"]
+    assert results[1].job_name == "j2"
 
 
 def test_run_job_exception_stderr_message(tmp_path):

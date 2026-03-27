@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import subprocess
+import threading
+import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-import uuid
 
 import structlog
 
@@ -42,7 +45,133 @@ class RunResult:
     baseline: bool = False
     job_batch_uuid: str = "" # "" means no batch id is found for the run. don't use null here so we can index, also because "" is guaranteed to not be a valid uuid
     job_batch_date: str | None = None # This could actually be annoying in the future, but jobs don't have to have a batch date since they might not be run as a batch
-    job_batch_name: str  = ""
+    job_batch_name: str = ""
+    scheduler_backend: str = ""
+    scheduler_job_ids: list[str] = field(default_factory=list)
+    submit_container: str = ""
+
+
+@dataclass
+class InvocationControl:
+    """Used for background runs: cooperative cancel and streaming SLURM job id capture."""
+
+    cancel_event: threading.Event = field(default_factory=threading.Event)
+    current_proc: subprocess.Popen | None = None
+    slurm_job_ids: list[str] = field(default_factory=list)
+    submit_container: str | None = None
+    jobs_total: int = 0
+    jobs_completed: int = 0
+
+
+def _parse_scheduler_metadata(text: str) -> tuple[str, list[str], str]:
+    """Parse HARNESS_* lines from solver stdout/stderr (see lammps-slurm run.sh)."""
+    backend = ""
+    job_ids: list[str] = []
+    submit_c = ""
+    for line in text.splitlines():
+        s = line.strip()
+        if m := re.match(r"HARNESS_SCHEDULER_BACKEND=(.+)", s):
+            backend = m.group(1).strip()
+        elif m := re.match(r"HARNESS_SLURM_JOB_ID=(\d+)", s):
+            jid = m.group(1)
+            if jid not in job_ids:
+                job_ids.append(jid)
+        elif m := re.match(r"HARNESS_SUBMIT_CONTAINER=(.+)", s):
+            submit_c = m.group(1).strip()
+    return backend, job_ids, submit_c
+
+
+def _merge_scheduler_into_result(
+    res: RunResult,
+    stdout: str,
+    stderr: str,
+    invoke: InvocationControl | None,
+) -> None:
+    comb = (stdout or "") + "\n" + (stderr or "")
+    back, ids, sub = _parse_scheduler_metadata(comb)
+    if invoke and invoke.slurm_job_ids:
+        ids = list(dict.fromkeys(invoke.slurm_job_ids + ids))
+    if invoke and invoke.submit_container:
+        sub = invoke.submit_container.strip() or sub
+    if not back and ids:
+        back = "slurm"
+    res.scheduler_backend = back
+    res.scheduler_job_ids = ids
+    res.submit_container = sub or ""
+
+
+def _run_subprocess_for_job(
+    cmd: list[str],
+    cwd: str,
+    env: dict[str, str],
+    timeout_sec: int,
+    capture_output: bool,
+    invoke_ctl: InvocationControl | None,
+) -> subprocess.CompletedProcess[str]:
+    """subprocess.run, or Popen + cancel/stream path when invoke_ctl is set."""
+    if invoke_ctl is None:
+        return subprocess.run(
+            cmd,
+            cwd=cwd,
+            env=env,
+            capture_output=capture_output,
+            text=True,
+            timeout=timeout_sec,
+        )
+    if not capture_output:
+        raise ValueError("invoke_ctl requires capture_output=True")
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    invoke_ctl.current_proc = proc
+    chunks: list[str] = []
+
+    def reader() -> None:
+        assert proc.stdout is not None
+        try:
+            for line in proc.stdout:
+                chunks.append(line)
+                if m := re.search(r"HARNESS_SLURM_JOB_ID=(\d+)", line):
+                    jid = m.group(1)
+                    if jid not in invoke_ctl.slurm_job_ids:
+                        invoke_ctl.slurm_job_ids.append(jid)
+                if m2 := re.search(r"HARNESS_SUBMIT_CONTAINER=(.+)", line.rstrip()):
+                    invoke_ctl.submit_container = m2.group(1).strip()
+        except Exception:
+            pass
+
+    rt = threading.Thread(target=reader, daemon=True)
+    rt.start()
+    t0 = time.monotonic()
+    timed_out = False
+    while proc.poll() is None:
+        if invoke_ctl.cancel_event.is_set():
+            proc.terminate()
+            try:
+                proc.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            break
+        if time.monotonic() - t0 > timeout_sec:
+            timed_out = True
+            proc.kill()
+            try:
+                proc.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                pass
+            break
+        time.sleep(0.25)
+    rt.join(timeout=60)
+    out = "".join(chunks)
+    rc = proc.returncode if proc.returncode is not None else -1
+    if timed_out:
+        raise subprocess.TimeoutExpired(cmd, timeout_sec, output=out, stderr=None)
+    return subprocess.CompletedProcess(cmd, rc, out, "")
 
 
 def _build_env(system: System, base_env: dict[str, str] | None = None) -> dict[str, str]:
@@ -63,6 +192,7 @@ def run_job(
     job_batch_uuid: str = "",
     job_batch_date: str | None = None,
     job_batch_name: str = "",
+    invoke_ctl: InvocationControl | None = None,
 ) -> RunResult:
     """
     Execute a job by running the solver script with system environment.
@@ -93,24 +223,25 @@ def run_job(
     timeout_sec = job.timeout_seconds if job.timeout_seconds is not None else 3600
 
     try:
-        result = subprocess.run(
+        result = _run_subprocess_for_job(
             cmd,
-            cwd=str(cwd),
-            env=env,
-            capture_output=capture_output,
-            text=True,
-            timeout=timeout_sec,
+            str(cwd),
+            env,
+            timeout_sec,
+            capture_output,
+            invoke_ctl,
         )
     except subprocess.TimeoutExpired as e:
         end = datetime.now(timezone.utc)
         runtime = (end - start).total_seconds()
         timeout_msg = f"Job timed out after {timeout_sec}s"
+        tout = (e.output or "") if getattr(e, "output", None) else ""
         run_result = RunResult(
             job_name=job.name,
             solver_name=solver.name,
             system_name=system.name,
             returncode=-1,
-            stdout=(e.stdout or "") if capture_output else "",
+            stdout=tout if capture_output else "",
             stderr=timeout_msg,
             runtime_seconds=runtime,
             timestamp=end.isoformat(),
@@ -123,6 +254,7 @@ def run_job(
             job_batch_date=job_batch_date,
             job_batch_name=job_batch_name,
         )
+        _merge_scheduler_into_result(run_result, run_result.stdout, run_result.stderr, invoke_ctl)
         logger.warning("runner.timeout", job=job.name, runtime=runtime)
         return run_result
     except Exception as e:
@@ -188,6 +320,11 @@ def run_job(
             )
         else:
             validation_errors = []
+    if invoke_ctl and invoke_ctl.cancel_event.is_set():
+        passed = False
+        if not validation_errors:
+            validation_errors = ["Cancelled by user"]
+
     run_result = RunResult(
         job_name=job.name,
         solver_name=solver.name,
@@ -207,6 +344,7 @@ def run_job(
         job_batch_date=job_batch_date,
         job_batch_name=job_batch_name,
     )
+    _merge_scheduler_into_result(run_result, run_result.stdout, run_result.stderr, invoke_ctl)
 
     logger.info(
         "runner.finish",
@@ -223,62 +361,103 @@ def run_jobs(
     solvers: dict[str, Solver],
     systems: dict[str, System],
     batch_name: str = "",
+    invoke_ctl: InvocationControl | None = None,
 ) -> list[RunResult]:
     """Run multiple jobs and return results."""
     results: list[RunResult] = []
     now = datetime.now(timezone.utc).isoformat()
     batch_uuid = uuid.uuid4().hex
+    if invoke_ctl is not None:
+        invoke_ctl.jobs_total = len(jobs)
+        invoke_ctl.jobs_completed = 0
     for job in jobs:
-        solver = solvers.get(job.solver)
-        system = systems.get(job.system)
-        if not solver:
-            msg = f"Solver '{job.solver}' not found for job '{job.name}'"
-            logger.warning("runner.skip", job=job.name, reason=msg)
+        try:
+            solver = solvers.get(job.solver)
+            system = systems.get(job.system)
+            if not solver:
+                msg = f"Solver '{job.solver}' not found for job '{job.name}'"
+                logger.warning("runner.skip", job=job.name, reason=msg)
+                results.append(
+                    RunResult(
+                        job_name=job.name,
+                        solver_name=job.solver,
+                        system_name=job.system,
+                        returncode=-1,
+                        stdout="",
+                        stderr=msg,
+                        runtime_seconds=0.0,
+                        timestamp=now,
+                        validation_errors=[],
+                        passed=False,
+                        metrics={"runtime_seconds": 0.0},
+                        processor=probe_processor(),
+                        baseline=job.baseline,
+                        job_batch_uuid=batch_uuid,
+                        job_batch_date=now,
+                        job_batch_name=batch_name,
+                    )
+                )
+                continue
+            if not system:
+                msg = f"System '{job.system}' not found for job '{job.name}'"
+                logger.warning("runner.skip", job=job.name, reason=msg)
+                results.append(
+                    RunResult(
+                        job_name=job.name,
+                        solver_name=job.solver,
+                        system_name=job.system,
+                        returncode=-1,
+                        stdout="",
+                        stderr=msg,
+                        runtime_seconds=0.0,
+                        timestamp=now,
+                        validation_errors=[],
+                        passed=False,
+                        metrics={"runtime_seconds": 0.0},
+                        processor=probe_processor(),
+                        baseline=job.baseline,
+                        job_batch_uuid=batch_uuid,
+                        job_batch_date=now,
+                        job_batch_name=batch_name,
+                    )
+                )
+                continue
+            if invoke_ctl and invoke_ctl.cancel_event.is_set():
+                ts = datetime.now(timezone.utc).isoformat()
+                logger.info("runner.skip", job=job.name, reason="cancelled_before_start")
+                results.append(
+                    RunResult(
+                        job_name=job.name,
+                        solver_name=solver.name,
+                        system_name=system.name,
+                        returncode=-1,
+                        stdout="",
+                        stderr="",
+                        runtime_seconds=0.0,
+                        timestamp=ts,
+                        validation_errors=["Cancelled by user"],
+                        passed=False,
+                        metrics={"runtime_seconds": 0.0},
+                        processor=probe_processor(),
+                        baseline=job.baseline,
+                        job_batch_uuid=batch_uuid,
+                        job_batch_date=now,
+                        job_batch_name=batch_name,
+                    )
+                )
+                continue
             results.append(
-                RunResult(
-                    job_name=job.name,
-                    solver_name=job.solver,
-                    system_name=job.system,
-                    returncode=-1,
-                    stdout="",
-                    stderr=msg,
-                    runtime_seconds=0.0,
-                    timestamp=now,
-                    validation_errors=[],
-                    passed=False,
-                    metrics={"runtime_seconds": 0.0},
-                    processor=probe_processor(),
-                    baseline=job.baseline,
+                run_job(
+                    job,
+                    solver,
+                    system,
                     job_batch_uuid=batch_uuid,
                     job_batch_date=now,
                     job_batch_name=batch_name,
+                    invoke_ctl=invoke_ctl,
                 )
             )
-            continue
-        if not system:
-            msg = f"System '{job.system}' not found for job '{job.name}'"
-            logger.warning("runner.skip", job=job.name, reason=msg)
-            results.append(
-                RunResult(
-                    job_name=job.name,
-                    solver_name=job.solver,
-                    system_name=job.system,
-                    returncode=-1,
-                    stdout="",
-                    stderr=msg,
-                    runtime_seconds=0.0,
-                    timestamp=now,
-                    validation_errors=[],
-                    passed=False,
-                    metrics={"runtime_seconds": 0.0},
-                    processor=probe_processor(),
-                    baseline=job.baseline,
-                    job_batch_uuid=batch_uuid,
-                    job_batch_date=now,
-                    job_batch_name=batch_name,
-                )
-            )
-            continue
-        # why do we append the results separately only in this case?
-        results.append(run_job(job, solver, system, job_batch_uuid=batch_uuid, job_batch_date=now, job_batch_name=batch_name))
+        finally:
+            if invoke_ctl is not None:
+                invoke_ctl.jobs_completed += 1
     return results

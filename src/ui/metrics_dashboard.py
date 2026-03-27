@@ -12,10 +12,11 @@ import streamlit as st
 
 from harness import get_db_path
 
+from api_config import API_URL
+
 DB_PATH = get_db_path()
 
 _TREND_QUERY_TTL = 60  # seconds
-API_URL = "http://localhost:8000"
 
 
 @st.cache_data(ttl=_TREND_QUERY_TTL)

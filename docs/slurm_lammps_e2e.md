@@ -12,6 +12,14 @@ When **`DOCKER_SLURM_CONTAINER`** is set, the default path is:
 4. **`cat`** `slurm-<jobid>.out` and `slurm-<jobid>.err` to stdout/stderr (so the harness captures them).
 5. Exit with the batch exit code from **`sacct`** (`ExitCode`, before the `:`).
 
+After a successful **`sbatch`**, `run.sh` prints **machine-readable lines** (to the combined process stdout) so the harness can store SLURM metadata and support cancellation/monitoring:
+
+- `HARNESS_SCHEDULER_BACKEND=slurm`
+- `HARNESS_SLURM_JOB_ID=<numeric id>`
+- `HARNESS_SUBMIT_CONTAINER=<docker container name or host>`
+
+The runner parses these into each stored run (`scheduler_backend`, `scheduler_job_ids`, `submit_container`). The UI can call **`GET /api/runs/{id}/slurm_status`** when **`RUN_SLURM_E2E=1`**.
+
 **Start your stack** (e.g. `docker compose up` for `sci_slurm`), then on the **host** (Docker CLI + harness):
 
 ```bash

@@ -2,13 +2,15 @@
 
 from .config import ConfigError, load_all, Resource, System, Solver, Job
 from .paths import get_project_root, get_db_path, get_config_dir
-from .runner import run_job, run_jobs, RunResult
+from .runner import run_job, run_jobs, RunResult, InvocationControl
 from .parser import extract_metrics
 from .storage import (
     init_db,
     store_run,
     get_runs,
     get_run_by_id,
+    delete_runs,
+    get_solver_run_summaries,
     get_all_metrics_series,
     get_metrics_history,
     get_baseline_run,
@@ -30,11 +32,14 @@ __all__ = [
     "run_job",
     "run_jobs",
     "RunResult",
+    "InvocationControl",
     "extract_metrics",
     "init_db",
     "store_run",
     "get_runs",
     "get_run_by_id",
+    "delete_runs",
+    "get_solver_run_summaries",
     "get_all_metrics_series",
     "get_metrics_history",
     "get_baseline_run",
