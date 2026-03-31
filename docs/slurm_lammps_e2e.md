@@ -2,6 +2,39 @@
 
 The harness invokes `configs/solvers/lammps-slurm/run.sh` as a black-box subprocess. SLURM and LAMMPS are **not** called by the platform directly—only by the script.
 
+## Quickstart using docker to provide slurm nodes
+**Start your stack** (e.g. `docker compose up` for `sci_slurm`)
+Start the docker stack by following the instructions on the repository: https://github.com/fractalclockwork/sci-slurm 
+
+The commands you'll run will look something like this:
+```bash
+# preferably in another location that's not DOW-1-26
+git clone https://github.com/fractalclockwork/sci-slurm.git
+cd sci-slurm
+cp .env.example .env   # set MYSQL_* and secrets; VERSION matches release
+make validate
+make build
+make up                # or: GPU_WORKER_COUNT=2 make up
+make status
+make test-lammps
+```
+
+**Configure environment variables and run on host** (Docker CLI + harness):
+
+```bash
+cd /path/to/e2e_testing
+export RUN_SLURM_E2E=1
+export DOCKER_SLURM_CONTAINER=sci_slurm-gpu-worker-1   # or your compute / login node (see below)
+uv run hpc-runner configs --job lammps-slurm-smoke --db data/harness.db
+# or: make test-slurm
+```
+
+**See full solver output** (LAMMPS log, `Submitted batch job …`, `slurm-*.out` / `.err` text): add **`-v` / `--verbose`**. Details print to **stderr**; the JSON summary on **stdout** still parses the same, with **`stdout`** / **`stderr`** fields included when `-v` is set:
+
+```bash
+uv run hpc-runner configs --job lammps-slurm-smoke --no-store -v 2>&1 | less
+```
+
 ## Fully worked example: `sbatch` + result collection (Docker)
 
 When **`DOCKER_SLURM_CONTAINER`** is set, the default path is:
@@ -19,22 +52,6 @@ After a successful **`sbatch`**, `run.sh` prints **machine-readable lines** (to 
 - `HARNESS_SUBMIT_CONTAINER=<docker container name or host>`
 
 The runner parses these into each stored run (`scheduler_backend`, `scheduler_job_ids`, `submit_container`). The UI can call **`GET /api/runs/{id}/slurm_status`** when **`RUN_SLURM_E2E=1`**.
-
-**Start your stack** (e.g. `docker compose up` for `sci_slurm`), then on the **host** (Docker CLI + harness):
-
-```bash
-cd /path/to/e2e_testing
-export RUN_SLURM_E2E=1
-export DOCKER_SLURM_CONTAINER=sci_slurm-gpu-worker-1   # or your compute / login node (see below)
-uv run hpc-runner configs --job lammps-slurm-smoke --db data/harness.db
-# or: make test-slurm
-```
-
-**See full solver output** (LAMMPS log, `Submitted batch job …`, `slurm-*.out` / `.err` text): add **`-v` / `--verbose`**. Details print to **stderr**; the JSON summary on **stdout** still parses the same, with **`stdout`** / **`stderr`** fields included when `-v` is set:
-
-```bash
-uv run hpc-runner configs --job lammps-slurm-smoke --no-store -v 2>&1 | less
-```
 
 ### Choosing the container
 
