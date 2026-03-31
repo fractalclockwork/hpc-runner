@@ -2,6 +2,8 @@
 
 Modular, execution-agnostic HPC regression testing system for the Dow/Berkeley Capstone (Spring 2026).
 
+Notable changes by release period: [CHANGELOG.md](CHANGELOG.md).
+
 ## Architecture Overview
 
 - **Configuration Layer** — YAML definitions for Resources, Systems, Solvers, Jobs
@@ -128,24 +130,23 @@ docker/
 
 | Command | Description |
 |---------|-------------|
-| `hpc-runner [config_dir]` | Run all jobs (config_dir defaults to `configs`) |
-| `hpc-runner [config_dir] --list` | List available jobs |
+| `hpc-runner [config_dir]` | Run all solvers (config_dir defaults to `configs`) |
+| `hpc-runner [config_dir] --list` | List available solvers |
 | `hpc-runner [config_dir] --list-runs` | List recent runs from DB (last 20) |
-| `hpc-runner [config_dir] --job NAME` | Run specific job(s); repeat `--job` for multiple |
+| `hpc-runner [config_dir] --solver NAME` | Run specific solver(s); repeat `--solver` for multiple |
 | `hpc-runner [config_dir] -v` | Verbose: print each job’s stdout/stderr (solver output) on stderr; JSON includes `stdout`/`stderr` |
 | `hpc-runner [config_dir] --no-store` | Run without persisting to DB |
 | `hpc-runner [config_dir] --db PATH` | Override database path |
 | `hpc-runner [config_dir] --solvers-dir PATH` | Override solvers directory (default: `configs/solvers`) |
-| `hpc-runner --add CMD --system NAME` | Create solver from command, add job, run it |
+| `hpc-runner --add CMD --system NAME` | Create solver from command and run it |
 
 ## REST API
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/health` | GET | Health check (returns `{"status": "ok"}`) |
-| `/api/solvers` | GET | List configured solvers |
-| `/api/jobs` | GET | List configured jobs |
-| `/api/run_jobs` | POST | Run jobs (`jobs`, `batch_name`, `background`, `group_by`: `batch` or `solver`; 202 + `invocations`) |
+| `/api/solvers` | GET | List configured solvers (includes `default_system`) |
+| `/api/run_solvers` | POST | Run solvers (`solvers`, `batch_name`, `background`; one invocation per solver when background; 202 + `invocations`) |
 | `/api/runs` | GET | List recent runs (?solver=, ?processor=, ?limit=, ?offset=) |
 | `/api/runs` | DELETE | Delete runs (body: `{"ids": [1,2,3]}`) |
 | `/api/runs/<id>` | GET | Get run details |
@@ -163,5 +164,5 @@ docker/
 ## Design Principles
 
 - **Execution-Agnostic** — Solver scripts control execution (SLURM, MPI, `docker exec`, etc.); harness code does not embed scheduler APIs
-- **Modular** — Resources, systems, solvers, jobs defined independently
+- **Modular** — Resources, systems, and solvers defined independently
 - **Pluggable** — Add solvers by dropping a folder with `solver.yaml` + run script

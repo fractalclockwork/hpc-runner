@@ -105,7 +105,6 @@ def test_load_all(tmp_path):
     """Load all config entities."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -113,20 +112,16 @@ def test_load_all(tmp_path):
     (tmp_path / "systems" / "s.yaml").write_text(yaml.safe_dump({
         "systems": [{"name": "s1", "resources": ["r1"]}]
     }))
-    (tmp_path / "jobs" / "t.yaml").write_text(yaml.safe_dump({
-        "jobs": [{"name": "t1", "solver": "sol1", "system": "s1"}]
-    }))
     (solvers_dir / "sol1").mkdir()
     (solvers_dir / "sol1" / "solver.yaml").write_text(yaml.safe_dump({
         "name": "sol1", "entrypoint": "run.sh", "allowed_systems": ["s1"]
     }))
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    resources, systems, solvers, jobs = load_all(tmp_path, None)
+    resources, systems, solvers = load_all(tmp_path, None)
     assert "r1" in resources
     assert "s1" in systems
     assert "sol1" in solvers
-    assert "t1" in jobs
 
 
 def test_load_all_config_dir_not_found(tmp_path):
@@ -136,11 +131,10 @@ def test_load_all_config_dir_not_found(tmp_path):
         load_all(missing)
 
 
-def test_load_all_validates_job_solver_ref(tmp_path):
-    """load_all raises ConfigError when job references unknown solver."""
+def test_load_all_validates_solver_allowed_system_exists(tmp_path):
+    """load_all raises ConfigError when solver lists unknown system in allowed_systems."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -150,18 +144,13 @@ def test_load_all_validates_job_solver_ref(tmp_path):
     (tmp_path / "systems" / "s.yaml").write_text(
         yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1"]}]})
     )
-    (tmp_path / "jobs" / "t.yaml").write_text(
-        yaml.safe_dump({
-            "jobs": [{"name": "t1", "solver": "unknown-solver", "system": "s1"}]
-        })
-    )
     (solvers_dir / "sol1").mkdir()
     (solvers_dir / "sol1" / "solver.yaml").write_text(
-        yaml.safe_dump({"name": "sol1", "entrypoint": "run.sh", "allowed_systems": ["s1"]})
+        yaml.safe_dump({"name": "sol1", "entrypoint": "run.sh", "allowed_systems": ["unknown-sys"]})
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    with pytest.raises(ConfigError, match="references unknown solver"):
+    with pytest.raises(ConfigError, match="unknown system"):
         load_all(tmp_path, None)
 
 
@@ -176,67 +165,10 @@ def test_load_resources_yml_extension(tmp_path):
     assert resources["dev"].cpus == 4
 
 
-def test_load_all_validates_job_system_ref(tmp_path):
-    """load_all raises ConfigError when job references unknown system."""
+def test_load_all_validates_default_system_in_allowed(tmp_path):
+    """load_all raises when default_system is not in allowed_systems."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
-    solvers_dir = tmp_path / "solvers"
-    solvers_dir.mkdir()
-
-    (tmp_path / "resources" / "r.yaml").write_text(
-        yaml.safe_dump({"resources": [{"name": "r1"}]})
-    )
-    (tmp_path / "systems" / "s.yaml").write_text(
-        yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1"]}]})
-    )
-    (tmp_path / "jobs" / "t.yaml").write_text(
-        yaml.safe_dump({
-            "jobs": [{"name": "t1", "solver": "sol1", "system": "unknown-system"}]
-        })
-    )
-    (solvers_dir / "sol1").mkdir()
-    (solvers_dir / "sol1" / "solver.yaml").write_text(
-        yaml.safe_dump({"name": "sol1", "entrypoint": "run.sh", "allowed_systems": ["s1"]})
-    )
-    (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
-
-    with pytest.raises(ConfigError, match="references unknown system"):
-        load_all(tmp_path, None)
-
-
-def test_load_all_validates_system_resource_ref(tmp_path):
-    """load_all raises ConfigError when system references unknown resource."""
-    (tmp_path / "resources").mkdir()
-    (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
-    solvers_dir = tmp_path / "solvers"
-    solvers_dir.mkdir()
-
-    (tmp_path / "resources" / "r.yaml").write_text(
-        yaml.safe_dump({"resources": [{"name": "r1"}]})
-    )
-    (tmp_path / "systems" / "s.yaml").write_text(
-        yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1", "unknown-resource"]}]})
-    )
-    (tmp_path / "jobs" / "t.yaml").write_text(
-        yaml.safe_dump({"jobs": [{"name": "t1", "solver": "sol1", "system": "s1"}]})
-    )
-    (solvers_dir / "sol1").mkdir()
-    (solvers_dir / "sol1" / "solver.yaml").write_text(
-        yaml.safe_dump({"name": "sol1", "entrypoint": "run.sh", "allowed_systems": ["s1"]})
-    )
-    (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
-
-    with pytest.raises(ConfigError, match="references unknown resource"):
-        load_all(tmp_path, None)
-
-
-def test_load_all_validates_solver_allowed_systems(tmp_path):
-    """load_all raises ConfigError when job uses system not in solver allowed_systems."""
-    (tmp_path / "resources").mkdir()
-    (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -251,10 +183,33 @@ def test_load_all_validates_solver_allowed_systems(tmp_path):
             ]
         })
     )
-    (tmp_path / "jobs" / "t.yaml").write_text(
+    (solvers_dir / "sol1").mkdir()
+    (solvers_dir / "sol1" / "solver.yaml").write_text(
         yaml.safe_dump({
-            "jobs": [{"name": "t1", "solver": "sol1", "system": "s2"}]
+            "name": "sol1",
+            "entrypoint": "run.sh",
+            "allowed_systems": ["s1"],
+            "default_system": "s2",
         })
+    )
+    (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
+
+    with pytest.raises(ConfigError, match="not in allowed_systems"):
+        load_all(tmp_path, None)
+
+
+def test_load_all_validates_system_resource_ref(tmp_path):
+    """load_all raises ConfigError when system references unknown resource."""
+    (tmp_path / "resources").mkdir()
+    (tmp_path / "systems").mkdir()
+    solvers_dir = tmp_path / "solvers"
+    solvers_dir.mkdir()
+
+    (tmp_path / "resources" / "r.yaml").write_text(
+        yaml.safe_dump({"resources": [{"name": "r1"}]})
+    )
+    (tmp_path / "systems" / "s.yaml").write_text(
+        yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1", "unknown-resource"]}]})
     )
     (solvers_dir / "sol1").mkdir()
     (solvers_dir / "sol1" / "solver.yaml").write_text(
@@ -262,15 +217,14 @@ def test_load_all_validates_solver_allowed_systems(tmp_path):
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    with pytest.raises(ConfigError, match="allows only"):
+    with pytest.raises(ConfigError, match="references unknown resource"):
         load_all(tmp_path, None)
 
 
-def test_load_all_validates_solver_entrypoint_exists(tmp_path):
-    """load_all raises ConfigError when solver entrypoint file does not exist."""
+def test_load_all_validates_default_system_exists(tmp_path):
+    """load_all raises when default_system names a missing system."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -280,8 +234,33 @@ def test_load_all_validates_solver_entrypoint_exists(tmp_path):
     (tmp_path / "systems" / "s.yaml").write_text(
         yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1"]}]})
     )
-    (tmp_path / "jobs" / "t.yaml").write_text(
-        yaml.safe_dump({"jobs": [{"name": "t1", "solver": "sol1", "system": "s1"}]})
+    (solvers_dir / "sol1").mkdir()
+    (solvers_dir / "sol1" / "solver.yaml").write_text(
+        yaml.safe_dump({
+            "name": "sol1",
+            "entrypoint": "run.sh",
+            "allowed_systems": ["s1"],
+            "default_system": "missing-sys",
+        })
+    )
+    (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
+
+    with pytest.raises(ConfigError, match="default_system"):
+        load_all(tmp_path, None)
+
+
+def test_load_all_validates_solver_entrypoint_exists(tmp_path):
+    """load_all raises ConfigError when solver entrypoint file does not exist."""
+    (tmp_path / "resources").mkdir()
+    (tmp_path / "systems").mkdir()
+    solvers_dir = tmp_path / "solvers"
+    solvers_dir.mkdir()
+
+    (tmp_path / "resources" / "r.yaml").write_text(
+        yaml.safe_dump({"resources": [{"name": "r1"}]})
+    )
+    (tmp_path / "systems" / "s.yaml").write_text(
+        yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1"]}]})
     )
     (solvers_dir / "sol1").mkdir()
     (solvers_dir / "sol1" / "solver.yaml").write_text(
@@ -294,10 +273,9 @@ def test_load_all_validates_solver_entrypoint_exists(tmp_path):
 
 
 def test_load_all_validate_false_skips_validation(tmp_path):
-    """load_all with validate=False does not raise on invalid cross-refs."""
+    """load_all with validate=False does not raise on invalid solver allowed_systems."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -307,20 +285,15 @@ def test_load_all_validate_false_skips_validation(tmp_path):
     (tmp_path / "systems" / "s.yaml").write_text(
         yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1"]}]})
     )
-    (tmp_path / "jobs" / "t.yaml").write_text(
-        yaml.safe_dump({
-            "jobs": [{"name": "t1", "solver": "unknown-solver", "system": "s1"}]
-        })
-    )
     (solvers_dir / "sol1").mkdir()
     (solvers_dir / "sol1" / "solver.yaml").write_text(
-        yaml.safe_dump({"name": "sol1", "entrypoint": "run.sh", "allowed_systems": ["s1"]})
+        yaml.safe_dump({"name": "sol1", "entrypoint": "run.sh", "allowed_systems": ["bogus-sys"]})
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    resources, systems, solvers, jobs = load_all(tmp_path, None, validate=False)
-    assert "t1" in jobs
-    assert jobs["t1"].solver == "unknown-solver"
+    resources, systems, solvers = load_all(tmp_path, None, validate=False)
+    assert "sol1" in solvers
+    assert "bogus-sys" in solvers["sol1"].allowed_systems
 
 
 def test_load_solvers_cwd_false(tmp_path):

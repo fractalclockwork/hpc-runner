@@ -27,6 +27,20 @@ REGISTRY: dict[str, "InvocationRecord"] = {}
 LOCK = threading.Lock()
 
 
+def _local_snapshot(ctl: InvocationControl) -> dict[str, Any] | None:
+    proc = ctl.current_proc
+    if proc is None:
+        return None
+    alive = proc.poll() is None
+    return {"pid": proc.pid, "alive": alive}
+
+
+def _execution_backend(ctl: InvocationControl) -> str:
+    if ctl.slurm_job_ids:
+        return "slurm"
+    return "local"
+
+
 @dataclass
 class InvocationRecord:
     id: str
@@ -115,18 +129,25 @@ def _results_to_json(results: list[Any]) -> list[dict[str, Any]]:
 def invocation_to_dict(rec: InvocationRecord) -> dict[str, Any]:
     """JSON-serializable view (includes live control snapshot while running)."""
     ctl = rec.control
+    labels = list(rec.job_names)
     return {
         "invocation_id": rec.id,
         "status": rec.status,
         "batch_name": rec.batch_name or "",
         "solver_name": rec.solver_name or "",
-        "job_names": list(rec.job_names),
+        "job_names": labels,
+        "run_labels": labels,
         "results": rec.results,
         "error": rec.error,
         "scheduler_job_ids": list(ctl.slurm_job_ids),
         "submit_container": (ctl.submit_container or "") or "",
         "jobs_total": ctl.jobs_total,
         "jobs_completed": ctl.jobs_completed,
+        "execution": {
+            "backend": _execution_backend(ctl),
+            "local": _local_snapshot(ctl),
+            "scheduler_job_ids": list(ctl.slurm_job_ids),
+        },
     }
 
 
@@ -200,6 +221,19 @@ def get_invocation_slurm_status(invocation_id: str) -> dict[str, Any] | None:
         return None
     ctl = rec.control
     return query_slurm_job_state(list(ctl.slurm_job_ids), ctl.submit_container)
+
+
+def get_invocation_execution_status(invocation_id: str) -> dict[str, Any] | None:
+    """Unified monitor payload: invocation snapshot + live scheduler query when SLURM ids exist."""
+    rec = get_invocation(invocation_id)
+    if not rec:
+        return None
+    ctl = rec.control
+    out: dict[str, Any] = dict(invocation_to_dict(rec))
+    out["scheduler_detail"] = {}
+    if ctl.slurm_job_ids:
+        out["scheduler_detail"] = query_slurm_job_state(list(ctl.slurm_job_ids), ctl.submit_container) or {}
+    return out
 
 
 def cancel_invocation(invocation_id: str) -> tuple[bool, str, list[str]]:

@@ -5,7 +5,7 @@ from unittest.mock import patch
 import yaml
 
 from harness import load_all, run_jobs
-from harness.config import Job
+from harness.config import Job, build_jobs_from_solver_specs
 from harness.runner import InvocationControl, RunResult
 
 
@@ -14,7 +14,6 @@ def test_run_minimal(tmp_path):
     # Create minimal config structure
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -35,17 +34,10 @@ def test_run_minimal(tmp_path):
     }))
     (solver_dir / "run.sh").write_text("#!/bin/bash\necho hi-from-test\n")
 
-    (tmp_path / "jobs" / "sample.yaml").write_text(yaml.safe_dump({
-        "jobs": [
-            {"name": "echo-test", "solver": "echo-solver", "system": "dev-system"}
-        ]
-    }))
-
-    resources, systems, solvers, jobs = load_all(tmp_path, None)
+    resources, systems, solvers = load_all(tmp_path, None)
     assert "echo-solver" in solvers
-    assert "echo-test" in jobs
-
-    results = run_jobs([jobs["echo-test"]], solvers, systems)
+    jl = build_jobs_from_solver_specs(solvers, systems, [{"name": "echo-solver", "system": None}])
+    results = run_jobs(jl, solvers, systems)
     assert len(results) == 1
     assert results[0].passed
     assert "hi-from-test" in results[0].stdout
@@ -57,7 +49,6 @@ def test_run_baseline_job_propagates_baseline_flag(tmp_path):
     """When a job has baseline: true, RunResult.baseline is True."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -67,25 +58,21 @@ def test_run_baseline_job_propagates_baseline_flag(tmp_path):
     (tmp_path / "systems" / "default.yaml").write_text(yaml.safe_dump({
         "systems": [{"name": "dev-system", "resources": ["dev"]}]
     }))
-    (tmp_path / "jobs" / "sample.yaml").write_text(yaml.safe_dump({
-        "jobs": [
-            {"name": "baseline-job", "solver": "echo-solver", "system": "dev-system", "baseline": True}
-        ]
-    }))
     solver_dir = solvers_dir / "echo-solver"
     solver_dir.mkdir()
     (solver_dir / "solver.yaml").write_text(yaml.safe_dump({
         "name": "echo-solver",
         "entrypoint": "run.sh",
         "allowed_systems": ["dev-system"],
+        "baseline": True,
     }))
     (solver_dir / "run.sh").write_text("#!/bin/bash\necho hi\n")
 
-    resources, systems, solvers, jobs = load_all(tmp_path, None)
-    job = jobs["baseline-job"]
-    assert job.baseline is True
+    resources, systems, solvers = load_all(tmp_path, None)
+    jl = build_jobs_from_solver_specs(solvers, systems, [{"name": "echo-solver", "system": None}])
+    assert jl[0].baseline is True
 
-    results = run_jobs([job], solvers, systems)
+    results = run_jobs(jl, solvers, systems)
     assert len(results) == 1
     assert results[0].baseline is True
 
@@ -94,7 +81,6 @@ def test_run_with_metric_extraction(tmp_path):
     """Run solver with parser_config; verify metrics are extracted."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -126,12 +112,9 @@ print("runtime: 25.5")
 sys.exit(0)
 """)
 
-    (tmp_path / "jobs" / "sample.yaml").write_text(yaml.safe_dump({
-        "jobs": [{"name": "metrics-test", "solver": "metrics-solver", "system": "dev-system"}]
-    }))
-
-    resources, systems, solvers, jobs = load_all(tmp_path, None)
-    results = run_jobs([jobs["metrics-test"]], solvers, systems)
+    resources, systems, solvers = load_all(tmp_path, None)
+    jl = build_jobs_from_solver_specs(solvers, systems, [{"name": "metrics-solver", "system": None}])
+    results = run_jobs(jl, solvers, systems)
     assert len(results) == 1
     assert results[0].passed
     assert results[0].metrics["mlups"] == 3200000.0
@@ -141,7 +124,6 @@ def test_run_with_metric_validation_failure(tmp_path, caplog):
     """Run solver with metrics spec where value is out of range; validation should fail."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -180,15 +162,12 @@ def test_run_with_metric_validation_failure(tmp_path, caplog):
         "print('MLUPS: 3.2e6')\n"  # 3.2e6 > max 1.0e6, should fail validation
     )
 
-    (tmp_path / "jobs" / "sample.yaml").write_text(yaml.safe_dump({
-        "jobs": [{"name": "metrics-test-bad", "solver": "metrics-solver-bad", "system": "dev-system"}]
-    }))
-
-    resources, systems, solvers, jobs = load_all(tmp_path, solvers_dir)
+    resources, systems, solvers = load_all(tmp_path, solvers_dir)
+    jl = build_jobs_from_solver_specs(solvers, systems, [{"name": "metrics-solver-bad", "system": None}])
 
     import logging
     with caplog.at_level(logging.WARNING):
-        results = run_jobs([jobs["metrics-test-bad"]], solvers, systems)
+        results = run_jobs(jl, solvers, systems)
 
     assert len(results) == 1
     result = results[0]
@@ -207,7 +186,6 @@ def test_run_with_metric_validation_success(tmp_path, caplog):
     """Run solver with metrics spec where value is in range; validation should pass."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -246,15 +224,12 @@ def test_run_with_metric_validation_success(tmp_path, caplog):
         "print('MLUPS: 3.2e6')\n"  # 3.2e6 < max 5.0e6, should pass validation
     )
 
-    (tmp_path / "jobs" / "sample.yaml").write_text(yaml.safe_dump({
-        "jobs": [{"name": "metrics-test-bad", "solver": "metrics-solver-bad", "system": "dev-system"}]
-    }))
-
-    resources, systems, solvers, jobs = load_all(tmp_path, solvers_dir)
+    resources, systems, solvers = load_all(tmp_path, solvers_dir)
+    jl = build_jobs_from_solver_specs(solvers, systems, [{"name": "metrics-solver-bad", "system": None}])
 
     import logging
     with caplog.at_level(logging.WARNING):
-        results = run_jobs([jobs["metrics-test-bad"]], solvers, systems)
+        results = run_jobs(jl, solvers, systems)
 
     assert len(results) == 1
     result = results[0]
@@ -272,7 +247,6 @@ def test_run_with_missing_required_metric(tmp_path, caplog):
     """Validation fails when a required metric is not present in extracted metrics."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -317,15 +291,12 @@ def test_run_with_missing_required_metric(tmp_path, caplog):
         "print('MLUPS: 3.2e6')\n"
     )
 
-    (tmp_path / "jobs" / "sample.yaml").write_text(yaml.safe_dump({
-        "jobs": [{"name": "metrics-test-missing", "solver": "metrics-solver-missing", "system": "dev-system"}]
-    }))
-
-    resources, systems, solvers, jobs = load_all(tmp_path, solvers_dir)
+    resources, systems, solvers = load_all(tmp_path, solvers_dir)
+    jl = build_jobs_from_solver_specs(solvers, systems, [{"name": "metrics-solver-missing", "system": None}])
 
     import logging
     with caplog.at_level(logging.WARNING):
-        results = run_jobs([jobs["metrics-test-missing"]], solvers, systems)
+        results = run_jobs(jl, solvers, systems)
 
     assert len(results) == 1
     result = results[0]
@@ -360,7 +331,7 @@ def test_run_jobs_missing_solver_returns_result_with_stderr(tmp_path):
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    _, systems, solvers, _ = load_all(tmp_path, None, validate=False)
+    _, systems, solvers = load_all(tmp_path, None, validate=False)
     job = Job(name="t1", solver="unknown-solver", system="s1")
 
     results = run_jobs([job], solvers, systems)
@@ -390,7 +361,7 @@ def test_run_jobs_missing_system_returns_result_with_stderr(tmp_path):
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    _, systems, solvers, _ = load_all(tmp_path, None, validate=False)
+    _, systems, solvers = load_all(tmp_path, None, validate=False)
     job = Job(name="t1", solver="sol1", system="unknown-system")
 
     results = run_jobs([job], solvers, systems)
@@ -407,7 +378,6 @@ def test_run_job_timeout_stderr_message(tmp_path):
 
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -417,23 +387,21 @@ def test_run_job_timeout_stderr_message(tmp_path):
     (tmp_path / "systems" / "s.yaml").write_text(
         yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1"]}]})
     )
-    (tmp_path / "jobs" / "t.yaml").write_text(
-        yaml.safe_dump({"jobs": [{"name": "t1", "solver": "sol1", "system": "s1"}]})
-    )
     (solvers_dir / "sol1").mkdir()
     (solvers_dir / "sol1" / "solver.yaml").write_text(
         yaml.safe_dump({"name": "sol1", "entrypoint": "run.sh", "allowed_systems": ["s1"]})
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\nsleep 999\n")
 
-    _, systems, solvers, jobs = load_all(tmp_path, solvers_dir)
+    _, systems, solvers = load_all(tmp_path, solvers_dir)
+    jl = build_jobs_from_solver_specs(solvers, systems, [{"name": "sol1", "system": None}])
     from harness.runner import run_job
 
     with patch("harness.runner.subprocess.run") as mock_run:
         mock_run.side_effect = subprocess.TimeoutExpired(
             "sleep 999", 3600, None, None
         )
-        result = run_job(jobs["t1"], solvers["sol1"], systems["s1"])
+        result = run_job(jl[0], solvers["sol1"], systems["s1"])
 
     assert not result.passed
     assert "timed out" in result.stderr
@@ -444,7 +412,6 @@ def test_run_jobs_cancel_before_start_skips_all_with_same_batch(tmp_path):
     """If cancel_event is set before any run_job, every runnable job is skipped with Cancelled by user."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
     (tmp_path / "resources" / "r.yaml").write_text(
@@ -453,24 +420,19 @@ def test_run_jobs_cancel_before_start_skips_all_with_same_batch(tmp_path):
     (tmp_path / "systems" / "s.yaml").write_text(
         yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1"]}]})
     )
-    (tmp_path / "jobs" / "t.yaml").write_text(
-        yaml.safe_dump({
-            "jobs": [
-                {"name": "j1", "solver": "sol1", "system": "s1"},
-                {"name": "j2", "solver": "sol1", "system": "s1"},
-            ]
-        })
-    )
     (solvers_dir / "sol1").mkdir()
     (solvers_dir / "sol1" / "solver.yaml").write_text(
         yaml.safe_dump({"name": "sol1", "entrypoint": "run.sh", "allowed_systems": ["s1"]})
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    _, systems, solvers, jobs = load_all(tmp_path, solvers_dir)
+    _, systems, solvers = load_all(tmp_path, solvers_dir)
     ctl = InvocationControl()
     ctl.cancel_event.set()
-    job_list = [jobs["j1"], jobs["j2"]]
+    job_list = [
+        Job(name="j1", solver="sol1", system="s1"),
+        Job(name="j2", solver="sol1", system="s1"),
+    ]
     with patch("harness.runner.run_job") as mock_rj:
         results = run_jobs(job_list, solvers, systems, invoke_ctl=ctl)
         mock_rj.assert_not_called()
@@ -486,7 +448,6 @@ def test_run_jobs_cancel_after_first_job_skips_second(tmp_path):
     """After the first run_job returns, cancel prevents starting the second job."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
     (tmp_path / "resources" / "r.yaml").write_text(
@@ -495,21 +456,13 @@ def test_run_jobs_cancel_after_first_job_skips_second(tmp_path):
     (tmp_path / "systems" / "s.yaml").write_text(
         yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1"]}]})
     )
-    (tmp_path / "jobs" / "t.yaml").write_text(
-        yaml.safe_dump({
-            "jobs": [
-                {"name": "j1", "solver": "sol1", "system": "s1"},
-                {"name": "j2", "solver": "sol1", "system": "s1"},
-            ]
-        })
-    )
     (solvers_dir / "sol1").mkdir()
     (solvers_dir / "sol1" / "solver.yaml").write_text(
         yaml.safe_dump({"name": "sol1", "entrypoint": "run.sh", "allowed_systems": ["s1"]})
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    _, systems, solvers, jobs = load_all(tmp_path, solvers_dir)
+    _, systems, solvers = load_all(tmp_path, solvers_dir)
     ctl = InvocationControl()
 
     def fake_run_job(j, sol, sys, **kwargs):
@@ -534,7 +487,10 @@ def test_run_jobs_cancel_after_first_job_skips_second(tmp_path):
             )
         raise AssertionError("second job should not run")
 
-    job_list = [jobs["j1"], jobs["j2"]]
+    job_list = [
+        Job(name="j1", solver="sol1", system="s1"),
+        Job(name="j2", solver="sol1", system="s1"),
+    ]
     with patch("harness.runner.run_job", side_effect=fake_run_job):
         results = run_jobs(job_list, solvers, systems, invoke_ctl=ctl)
     assert len(results) == 2
@@ -548,7 +504,6 @@ def test_run_job_exception_stderr_message(tmp_path):
     """run_job sets clear stderr when subprocess raises exception."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -558,21 +513,19 @@ def test_run_job_exception_stderr_message(tmp_path):
     (tmp_path / "systems" / "s.yaml").write_text(
         yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1"]}]})
     )
-    (tmp_path / "jobs" / "t.yaml").write_text(
-        yaml.safe_dump({"jobs": [{"name": "t1", "solver": "sol1", "system": "s1"}]})
-    )
     (solvers_dir / "sol1").mkdir()
     (solvers_dir / "sol1" / "solver.yaml").write_text(
         yaml.safe_dump({"name": "sol1", "entrypoint": "run.sh", "allowed_systems": ["s1"]})
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    _, systems, solvers, jobs = load_all(tmp_path, solvers_dir)
+    _, systems, solvers = load_all(tmp_path, solvers_dir)
+    jl = build_jobs_from_solver_specs(solvers, systems, [{"name": "sol1", "system": None}])
     from harness.runner import run_job
 
     with patch("harness.runner.subprocess.run") as mock_run:
         mock_run.side_effect = OSError("Exec format error")
-        result = run_job(jobs["t1"], solvers["sol1"], systems["s1"])
+        result = run_job(jl[0], solvers["sol1"], systems["s1"])
 
     assert not result.passed
     assert "Execution failed" in result.stderr

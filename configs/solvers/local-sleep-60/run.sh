@@ -1,13 +1,9 @@
-#!/bin/bash
-#SBATCH --job-name=lammps-harness
-#SBATCH --output=slurm-%j.out
-#SBATCH --error=slurm-%j.err
-#SBATCH --ntasks=1
-#SBATCH --time=00:15:00
-
-# Harness replaces __LAMMPS_BIN__ before submit (see docs/slurm_lammps_e2e.md).
+#!/usr/bin/env bash
+# Local subprocess sleep — for monitoring and cancel tests on dev-system (no SLURM).
+# Uses same HARNESS_SOLVER_WALL_SECONDS convention as Slurm batch scripts (see docs/slurm_lammps_e2e.md).
 set -euo pipefail
-cd "${SLURM_SUBMIT_DIR:-.}"
+
+SECS="${LOCAL_SLEEP_SECONDS:-60}"
 
 _harness_monotonic_now() {
   local x
@@ -23,9 +19,10 @@ _harness_monotonic_now() {
   date +%s
 }
 
+echo "local-sleep-60: starting sleep for ${SECS}s"
 t0=$(_harness_monotonic_now)
-rc=0
-__LAMMPS_BIN__ -in in.lammps || rc=$?
+sleep "${SECS}"
 t1=$(_harness_monotonic_now)
 echo "HARNESS_SOLVER_WALL_SECONDS=$(awk -v a="${t0}" -v b="${t1}" 'BEGIN{print b-a}')"
-exit "${rc}"
+echo "local-sleep-60: finished"
+exit 0

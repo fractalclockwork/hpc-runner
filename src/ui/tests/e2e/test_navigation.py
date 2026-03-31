@@ -9,7 +9,7 @@ def test_sidebar_nav_visible(page, streamlit_url, streamlit_process):
     expect(page.get_by_test_id("nav-sidebar")).to_be_attached()
     # Streamlit radio renders options as clickable labels
     expect(page.get_by_text("Home", exact=True)).to_be_visible()
-    expect(page.get_by_text("Run Jobs", exact=True)).to_be_visible()
+    expect(page.get_by_text("Run Solvers", exact=True)).to_be_visible()
     expect(page.get_by_text("Run History", exact=True)).to_be_visible()
     expect(page.get_by_text("Configs", exact=True)).to_be_visible()
 

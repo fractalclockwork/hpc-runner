@@ -34,4 +34,4 @@ nohup uv run streamlit run src/ui/app.py --server.port 8501 --server.headless tr
 echo $! > .ui.pid
 
 echo "API (8000) and UI (8501) started. PIDs: .api.pid, .ui.pid — logs: .api.log, .ui.log"
-echo "Run jobs from the UI (Run Jobs) or: curl -X POST http://localhost:8000/api/run_jobs -H 'Content-Type: application/json' -d '{\"jobs\":[\"lammps-slurm-smoke\"]}'"
+echo "Run solvers from the UI (Run Solvers) or: curl -X POST http://localhost:8000/api/run_solvers -H 'Content-Type: application/json' -d '{\"solvers\":[{\"name\":\"lammps-slurm\",\"system\":\"sci-slurm-lammps\"}]}'"

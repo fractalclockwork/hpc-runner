@@ -69,7 +69,6 @@ flowchart TB
 configs/
 ├── resources/     # Resource definitions (cpus, gpus, memory)
 ├── systems/       # System definitions (resources, env)
-├── jobs/          # Job definitions (solver+system pairings)
 └── solvers/       # Solver packages (lives inside configs)
     └── <solver-name>/
         ├── solver.yaml       # Metadata, entrypoint, parser_config path
@@ -79,7 +78,7 @@ configs/
 
 ## 5. Job Execution Flow
 
-### 5.0 Synchronous `POST /api/run_jobs` (default)
+### 5.0 Synchronous `POST /api/run_solvers` (default)
 
 ```mermaid
 sequenceDiagram
@@ -90,9 +89,9 @@ sequenceDiagram
     participant Parser
     participant Solver
     participant Storage
-    Client->>API: POST /api/run_jobs
+    Client->>API: POST /api/run_solvers
     API->>Config: load_all()
-    Config-->>API: jobs, solvers, systems
+    Config-->>API: solvers, systems
     API->>Runner: run_jobs(job_list, solvers, systems)
     loop For each job
         Runner->>Solver: subprocess.run or Popen path
@@ -106,18 +105,19 @@ sequenceDiagram
     API-->>Client: 200 JSON results
 ```
 
-### 5.0b Background `POST /api/run_jobs` with `"background": true`
+### 5.0b Background `POST /api/run_solvers` with `"background": true`
 
-Optional body field **`group_by`**: `"batch"` (default) or `"solver"`. With **`group_by: "solver"`**, the API partitions the selected jobs by `job.solver` and starts **one worker thread per solver**, each with its own `invocation_id`. The **202** body includes `group_by`, `invocations` (list of `{ solver_name, invocation_id, job_names }`), and `invocation_id` when there is exactly one invocation (convenience for legacy clients). With **`group_by: "batch"`**, a single invocation runs all selected jobs sequentially (same as before).
+The API builds a runtime job list via `build_jobs_from_solver_specs` from solver YAML + request body. With **`background: true`**, it starts **one worker thread per solver**, each with its own `invocation_id`. The **202** body includes `invocations` (list of `{ solver_name, invocation_id, run_labels }`).
 
-Each worker runs `run_jobs(..., invoke_ctl=...)` for its slice, stores rows, then updates the in-memory registry.
+Each worker runs `run_jobs(..., invoke_ctl=...)` for its single job, stores rows, then updates the in-memory registry.
 
-- **Poll**: `GET /api/invocations/{id}` returns `status`, `batch_name`, `solver_name`, `job_names`, live `scheduler_job_ids`, `submit_container`, `jobs_total`, `jobs_completed`, and `results` when the slice finishes.
+- **Poll**: `GET /api/invocations/{id}` returns `status`, `run_labels`, `execution` (local pid vs SLURM ids), `scheduler_job_ids`, `submit_container`, `jobs_total`, `jobs_completed`, and `results` when finished.
+- **Unified monitor**: `GET /api/invocations/{id}/execution_status` — adds `scheduler_detail` when SLURM ids exist.
 - **List**: `GET /api/invocations` — optional query `active_only=true` for `queued` / `running` rows only.
-- **Live SLURM** (same `RUN_SLURM_E2E=1` tooling gate as persisted runs): `GET /api/invocations/{id}/slurm_status`.
+- **Live SLURM**: `GET /api/invocations/{id}/slurm_status`.
 - **Cancel**: `POST /api/invocations/{id}/cancel` — sets a cooperative cancel flag, best-effort `scancel` for known job ids, and `terminate()` on the local subprocess. `scancel` runs when **`HARNESS_ALLOW_SCANCEL=1`**, **`RUN_SLURM_E2E=1`**, or **`DOCKER_SLURM_CONTAINER`** / **`DOCKER_SLURM_SUBMIT_CONTAINER`** is set (so production Docker SLURM setups do not require the E2E flag).
 
-`run_jobs` skips any **remaining** jobs after cancel with `validation_errors: ["Cancelled by user"]` so a multi-job batch does not keep running.
+`run_jobs` skips any **remaining** jobs after cancel with `validation_errors: ["Cancelled by user"]` when a multi-job invocation is used.
 
 Registry is **per-process**; not durable across API restarts or multiple workers.
 
@@ -126,12 +126,12 @@ Registry is **per-process**; not durable across API restarts or multiple workers
 ```mermaid
 flowchart TB
     subgraph UI["Web UI"]
-        A[User: Run jobs]
-        B["requests POST /api/run_jobs"]
+        A[User: Run solvers]
+        B["requests POST /api/run_solvers"]
         C["requests GET /api/runs"]
     end
     subgraph API["REST API"]
-        D[api_run_jobs]
+        D[api_run_solvers]
         E[load_all]
         F[run_jobs]
         G[store_run]
@@ -165,7 +165,7 @@ flowchart TB
 
 | Step | Message / data | Code path |
 |------|----------------|-----------|
-| 1–2 | User runs jobs → API | `requests.post('/api/run_jobs')` → `fastapi_app.api_run_jobs()` |
+| 1–2 | User runs solvers → API | `requests.post('/api/run_solvers')` → `fastapi_app.api_run_solvers()` |
 | 3 | Load definitions | `_load_definitions()` → `load_all(CONFIG_DIR, None)` |
 | 4 | Execute jobs | `run_jobs(...)` → `run_job()` |
 | 5–6 | Solver stdout/stderr | `subprocess.run` or Popen+reader when `invoke_ctl` set |
@@ -183,15 +183,15 @@ flowchart TB
 | `/api/health` | GET | Health check |
 | `/api/solvers` | GET | List solvers |
 | `/api/systems` | GET | List systems |
-| `/api/jobs` | GET | List jobs |
-| `/api/run_jobs` | POST | Run jobs (`jobs`, `batch_name`, `background`, optional `group_by`: `batch` \| `solver`) — 202 if background |
+| `/api/run_solvers` | POST | Run solvers (`solvers`, `batch_name`, `background`) — one invocation per solver when background — 202 |
 | `/api/runs` | GET | List runs (?solver=, ?processor=, ?limit=, ?offset=) |
 | `/api/runs` | DELETE | Body `{ "ids": [1,2,3] }` — delete stored runs |
 | `/api/runs/<id>` | GET | Run detail |
 | `/api/runs/<id>/slurm_status` | GET | Live `squeue`/`sacct` when `RUN_SLURM_E2E=1` |
 | `/api/runs/<id>/set_baseline` | POST | Set baseline for solver |
 | `/api/invocations` | GET | List invocations (`?active_only=true`) |
-| `/api/invocations/<id>` | GET | Background run status, live SLURM fields, progress, results |
+| `/api/invocations/<id>` | GET | Background run status, live SLURM fields, progress, results, `execution` block (local pid / scheduler ids) |
+| `/api/invocations/<id>/execution_status` | GET | Unified monitor payload + `scheduler_detail` when SLURM ids exist |
 | `/api/invocations/<id>/slurm_status` | GET | Live `squeue`/`sacct` for ids seen on this invocation (`RUN_SLURM_E2E=1`) |
 | `/api/invocations/<id>/cancel` | POST | Cancel background run |
 | `/api/solver_summaries` | GET | Per-solver aggregates from `runs` |
@@ -206,7 +206,7 @@ The **Streamlit UI** (`make ui`, port 8501):
 
 - **Home**: Welcome text; **solver monitoring** table (`GET /api/solver_summaries`)
 - **Individual Trends**: Solver/metric line charts
-- **Run Jobs**: **Active runs** (per-solver rows when using background); select jobs; background defaults on; **orchestration** per solver vs single batch; optional raw invocation-id inspect
+- **Run Solvers**: **Active runs** (one invocation per solver when background); select solvers; optional raw invocation-id inspect; Monitor / Stop
 - **Run History**: Batches; expand stdout/stderr/metrics; **delete selected runs**; optional **Refresh SLURM status** when run has scheduler metadata
 - **Long-Term Trends**: Filtered charts
 - **Configs**: Read-only YAML view (category/file)

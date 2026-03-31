@@ -26,7 +26,7 @@ src/api/
 ├── pyproject.toml
 ├── src/basic_restapi/
 │   ├── fastapi_app.py   # Routes, request models, DB wiring
-│   └── invocations.py   # Background run_jobs threads, cancel, scancel helpers
+│   └── invocations.py   # Background solver run threads, cancel, scancel helpers
 └── tests/
 ```
 
@@ -34,7 +34,7 @@ src/api/
 
 Explore the full list at `/docs`. Highlights:
 
-- `POST /api/run_jobs` — synchronous results, or `"background": true` with optional `"group_by": "solver"` (one invocation per solver) or `"batch"` (single invocation) → **202** + `invocations` list (+ `invocation_id` when a single invocation)
+- `POST /api/run_solvers` — body `{"solvers": [{"name": "...", "system": "..."}], "batch_name": "...", "background": true}` — synchronous results, or **202** + `invocations` (one per solver when background)
 - `GET /api/invocations` — list invocations (`?active_only=true`); `GET /api/invocations/{id}` — status, live SLURM metadata, progress; `GET .../slurm_status` — `squeue`/`sacct` when `RUN_SLURM_E2E=1`; `POST .../cancel` — cancel (subprocess + `scancel` when `HARNESS_ALLOW_SCANCEL=1`, `RUN_SLURM_E2E=1`, or Docker SLURM container env is set)
 - `DELETE /api/runs` — body `{"ids": [...]}`
 - `GET /api/runs/{id}/slurm_status` — live SLURM state when `RUN_SLURM_E2E=1`

@@ -1,6 +1,6 @@
 """Execution-agnostic harness for running solver jobs."""
 
-from .config import ConfigError, load_all, Resource, System, Solver, Job
+from .config import ConfigError, load_all, Resource, System, Solver, Job, build_jobs_from_solver_specs
 from .paths import get_project_root, get_db_path, get_config_dir
 from .runner import run_job, run_jobs, RunResult, InvocationControl
 from .parser import extract_metrics
@@ -25,6 +25,7 @@ __all__ = [
     "get_db_path",
     "get_config_dir",
     "load_all",
+    "build_jobs_from_solver_specs",
     "Resource",
     "System",
     "Solver",
@@ -47,4 +48,3 @@ __all__ = [
     "get_baseline_comparison",
     "get_job_batch_uuids",
 ]
-

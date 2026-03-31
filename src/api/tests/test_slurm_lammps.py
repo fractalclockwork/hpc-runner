@@ -14,15 +14,18 @@ def client():
 
 
 @pytest.mark.slurm
-def test_api_run_jobs_lammps_slurm_smoke(client: TestClient) -> None:
-    """POST /api/run_jobs for lammps-slurm-smoke when SLURM is configured."""
+def test_api_run_solvers_lammps_slurm_smoke(client: TestClient) -> None:
+    """POST /api/run_solvers for lammps-slurm when SLURM is configured."""
     if os.environ.get("RUN_SLURM_E2E") != "1":
         pytest.skip("Set RUN_SLURM_E2E=1 and DOCKER_SLURM_CONTAINER or host SLURM (see docs/slurm_lammps_e2e.md)")
 
-    response = client.post("/api/run_jobs", json={"jobs": ["lammps-slurm-smoke"]})
+    response = client.post(
+        "/api/run_solvers",
+        json={"solvers": [{"name": "lammps-slurm", "system": "sci-slurm-lammps"}]},
+    )
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
-    assert data[0]["job_name"] == "lammps-slurm-smoke"
+    assert data[0]["job_name"] == "lammps-slurm@sci-slurm-lammps"
     assert data[0]["passed"] is True
     assert data[0]["returncode"] == 0

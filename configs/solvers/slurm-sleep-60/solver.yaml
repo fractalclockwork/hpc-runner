@@ -1,0 +1,8 @@
+name: slurm-sleep-60
+version: "0.1.0"
+entrypoint: run.sh
+allowed_systems: [sci-slurm-lammps]
+default_system: sci-slurm-lammps
+metrics: []
+log_names: []
+timeout_seconds: 600

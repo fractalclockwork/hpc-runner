@@ -30,7 +30,7 @@ class ConfigFile:
     """A config file with its path and category."""
 
     path: Path
-    category: str  # "resources" | "systems" | "jobs" | "solvers"
+    category: str  # "resources" | "systems" | "solvers"
     display_name: str  # e.g. "default" or "python-solver"
 
 
@@ -38,7 +38,7 @@ def discover_config_files() -> list[ConfigFile]:
     """Discover all config YAML files in configs/."""
     files: list[ConfigFile] = []
 
-    for category in ("resources", "systems", "jobs"):
+    for category in ("resources", "systems"):
         dir_path = CONFIGS_DIR / category
         if dir_path.exists():
             for f in sorted(dir_path.glob("*.yaml")) + sorted(dir_path.glob("*.yml")):

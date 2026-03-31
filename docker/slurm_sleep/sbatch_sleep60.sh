@@ -1,14 +1,15 @@
 #!/bin/bash
-#SBATCH --job-name=lammps-harness
+#SBATCH --job-name=harness-sleep60
 #SBATCH --output=slurm-%j.out
 #SBATCH --error=slurm-%j.err
 #SBATCH --ntasks=1
-#SBATCH --time=00:15:00
+#SBATCH --time=00:10:00
 
-# Harness replaces __LAMMPS_BIN__ before submit (see docs/slurm_lammps_e2e.md).
+# Long-running no-op for monitoring / cancel tests (see slurm-sleep-60 solver).
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"
 
+# High-res wall clock for HARNESS_SOLVER_WALL_SECONDS (GNU date +%s.%N, else EPOCHREALTIME / %s).
 _harness_monotonic_now() {
   local x
   x=$(date +%s.%N 2>/dev/null || true)
@@ -23,9 +24,9 @@ _harness_monotonic_now() {
   date +%s
 }
 
+echo "harness sleep job starting, sleeping __SLEEP_SECONDS__s"
 t0=$(_harness_monotonic_now)
-rc=0
-__LAMMPS_BIN__ -in in.lammps || rc=$?
+sleep "__SLEEP_SECONDS__"
 t1=$(_harness_monotonic_now)
 echo "HARNESS_SOLVER_WALL_SECONDS=$(awk -v a="${t0}" -v b="${t1}" 'BEGIN{print b-a}')"
-exit "${rc}"
+echo "harness sleep job finished"

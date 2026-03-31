@@ -100,7 +100,7 @@ This glossary defines key terms for the HPC Regression Platform. It helps **deve
 
 **harness.db** — SQLite database (default `data/harness.db`) storing run metadata and metrics.
 
-**load_all** — Config loader function returning `(resources, systems, solvers, jobs)` from a config directory.
+**load_all** — Config loader function returning `(resources, systems, solvers)` from a config directory.
 
 **runs table** — Schema: `id`, `job_name`, `solver_name`, `system_name`, `returncode`, `passed`, `runtime_seconds`, `timestamp`, `stdout`, `stderr`, `metrics_json`, `processor`, `validation_errors` (TEXT JSON array).
 

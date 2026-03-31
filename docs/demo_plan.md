@@ -8,7 +8,7 @@ This document guides the sponsor through a feature demo of the **HPC Regression 
 
 Flash Demo #2 showcases the End-to-End MVP smoke test and these focus areas:
 
-- **Current UI functionality** — Streamlit pages: Home (metric charts), Run Jobs, Run History, Tests, Configs. See [design.md](design.md) for UI goals and [src/ui/app.py](../src/ui/app.py) for implementation.
+- **Current UI functionality** — Streamlit pages: Home (metric charts), Run Solvers, Run History, Tests, Configs. See [design.md](design.md) for UI goals and [src/ui/app.py](../src/ui/app.py) for implementation.
 - **Runner + parsing stability** — Job execution ([runner.py](../src/core/src/harness/runner.py)), metric extraction and validation ([parser/parser.py](../src/core/src/harness/parser/parser.py)), CLI ([cli.py](../src/core/src/harness/cli.py)).
 - **Architecture direction after Milestone 1** — We're past Milestone Review I; End-to-End MVP Assembly is in progress. See [architecture.md](architecture.md) for components (Config, Runner, Parser, Storage), data flow, and API.
 - **Early schema refinements** — Config schemas ([schemas.py](../src/core/src/harness/config/schemas.py): Resource, System, Solver, Job, MetricSpec) and storage schema ([architecture.md](architecture.md) §8: `runs` table including `validation_errors`).
@@ -21,14 +21,14 @@ One ordered walkthrough to validate the full workflow. For detailed commands and
 
 | Step | Action | How |
 |------|--------|-----|
-| 1 | **Load configs** | `uv run hpc-runner configs --list` — or start API and call `GET /api/jobs`, `GET /api/solvers` |
-| 2 | **Run jobs** | `uv run hpc-runner configs` or `uv run hpc-runner configs --job echo-test` — or use **Run Jobs** in the UI or `POST /api/run_jobs` |
+| 1 | **Load configs** | `uv run hpc-runner configs --list` — or start API and call `GET /api/solvers`, `GET /api/systems` |
+| 2 | **Run solvers** | `uv run hpc-runner configs` or `uv run hpc-runner configs --solver echo-solver` — or use **Run Solvers** in the UI or `POST /api/run_solvers` |
 | 3 | **Parse metrics** | Automatic: runner uses each solver's `parser_config.yaml` → `extract_metrics()` + `validate_metrics()`. See e.g. `configs/solvers/python-solver/parser_config.yaml` and solver stdout/stderr |
 | 4 | **Persist results** | By default results go to `data/harness.db`. Use `--no-store` to run without persisting |
 | 5 | **View in UI** | `make ui` → http://localhost:8501 — **Run History** (table; expand row for stdout, stderr, metrics), **Home** (solver + metric dropdown, line chart) |
 | 6 | **View in API** | `make api` → http://localhost:8000/docs — `GET /api/runs`, `GET /api/runs/<id>`, `GET /api/metrics/<solver>/<metric>` |
-| 7 | **Add a solver** | Follow **Part 2** below (copy `_template`, edit solver.yaml, run.sh, parser_config.yaml, add job) or quick-add: `uv run hpc-runner --add "echo hello" --system dev-system --name hello-check` |
-| 8 | **Re-run jobs** | Run the new job via CLI or **Run Jobs** in the UI; confirm the run appears in **Run History** and (if a metric is defined) on **Home** |
+| 7 | **Add a solver** | Follow **Part 2** below (copy `_template`, edit solver.yaml, run.sh, parser_config.yaml; set `default_system` when multiple systems are allowed) or quick–add: `uv run hpc-runner --add "echo hello" --system dev-system --name hello-check` |
+| 8 | **Re-run** | Run the new solver via CLI or **Run Solvers** in the UI; confirm the run appears in **Run History** and (if a metric is defined) on **Home** |
 
 ---
 
@@ -36,7 +36,7 @@ One ordered walkthrough to validate the full workflow. For detailed commands and
 
 For a single ordered flow, see **Part 0**. Below are all platform features in detail.
 
-Follow these steps to see all platform features. **Suggested order:** Run jobs first (1.2 or 1.3) so the Home page has data to display.
+Follow these steps to see all platform features. **Suggested order:** Run solvers first (1.2 or 1.3) so the Home page has data to display.
 
 ### 1.1 Setup and Quick Validation
 
@@ -48,16 +48,16 @@ make test
 uv run hpc-runner configs --list
 ```
 
-You should see available jobs (e.g. `echo-test`, `python-test`).
+You should see available solvers (e.g. `echo-solver`, `python-solver`).
 
-### 1.2 Running Jobs (CLI)
+### 1.2 Running solvers (CLI)
 
 ```bash
-# Run all jobs — JSON output with results
+# Run all solvers — JSON output with results
 uv run hpc-runner configs
 
-# Run a single job
-uv run hpc-runner configs --job echo-test
+# Run a single solver
+uv run hpc-runner configs --solver echo-solver
 
 # List recent runs from database
 uv run hpc-runner configs --list-runs
@@ -74,12 +74,12 @@ Open http://localhost:8501. Walk through each page:
 | Page | What to do | What you see |
 |------|------------|--------------|
 | **Home** | Select a solver and metric from the dropdown | Line chart of that metric over the entire job history; expand "View raw data" for the table |
-| **Run Jobs** | Select jobs, click "Run All" or "Run Selected" | Results (passed/failed, returncode, runtime) for each job |
+| **Run Solvers** | Select solvers, choose system when required, run in background or foreground | Results (passed/failed, returncode, runtime); active invocations with Monitor / Stop |
 | **Run History** | Filter by solver or processor; expand a run | Table of past runs; expand any row for stdout, stderr, and metrics |
 | **Tests** | Click "Run Test" | Unit test results (pytest output) |
-| **Configs** | Pick a category and file; edit YAML; click Validate or Save | Edit resources, systems, jobs, solvers, and parser_config.yaml; validate before saving |
+| **Configs** | Pick a category and file; edit YAML; click Validate or Save | Edit resources, systems, solvers, and parser_config.yaml; validate before saving |
 
-**Tip:** Run jobs via Run Jobs or the CLI before visiting Home so metrics data exists.
+**Tip:** Run solvers via Run Solvers or the CLI before visiting Home so metrics data exists.
 
 ### 1.4 REST API (for automation)
 
@@ -93,8 +93,7 @@ Open http://localhost:8000 (redirects to `/docs` for interactive Swagger UI). Av
 |---------|-------------|
 | `GET /api/health` | Health check (returns `{"status": "ok"}`) |
 | `GET /api/solvers` | List configured solvers |
-| `GET /api/jobs` | List configured jobs |
-| `POST /api/run_jobs` with `{"jobs": ["echo-test"]}` | Run specific jobs |
+| `POST /api/run_solvers` with `{"solvers": [{"name": "echo-solver", "system": "dev-system"}]}` | Run specific solvers (omit `system` when `default_system` or a single allowed system applies) |
 | `GET /api/runs` | List runs (?solver=, ?processor=, ?limit=) |
 | `GET /api/runs/<id>` | Get run details |
 | `GET /api/metrics/python-solver/mlups` | Metric history for trends |
@@ -107,16 +106,15 @@ Add a solver from a shell command without manual config:
 uv run hpc-runner --add "echo hello" --system dev-system --name hello-check
 ```
 
-Creates a solver and job, then runs it. Use `--no-store` to skip saving to the database.
+Creates a solver (with `default_system`), then runs it. Use `--no-store` to skip saving to the database.
 
 ### 1.6 Configuration Layer
 
 - **configs/resources/** — CPU, GPU, memory definitions
 - **configs/systems/** — Resource bundles + environment variables
-- **configs/jobs/** — Solver+system pairings, success criteria
-- **configs/solvers/** — Solver packages (solver.yaml, run script, optional parser_config.yaml)
+- **configs/solvers/** — Solver packages (solver.yaml includes `allowed_systems`, optional `default_system`, `success_criteria`, run script, optional parser_config.yaml)
 
-Flow: Resource → System → Job. See [user_guide.md](user_guide.md) for details.
+Flow: Resource → System → Solver (runtime pairings are built from solver YAML + CLI/API). See [user_guide.md](user_guide.md) for details.
 
 ### 1.7 Docker (optional)
 
@@ -150,8 +148,11 @@ Edit `configs/solvers/demo-solver/solver.yaml`:
 name: demo-solver
 entrypoint: run.sh
 allowed_systems: [dev-system]
+default_system: dev-system
 version: "1.0.0"
 parser_config: parser_config.yaml
+success_criteria:
+  returncode: 0
 metrics:
   - name: mlups
     unit: MLUPS
@@ -189,24 +190,15 @@ patterns:
     type: str
 ```
 
-### 2.5 Add a job
+### 2.5 Run pairing
 
-Add to `configs/jobs/sample.yaml` (or a new file):
-
-```yaml
-  - name: demo-test
-    solver: demo-solver
-    system: dev-system
-    parameters: {}
-    success_criteria:
-      returncode: 0
-```
+No separate job YAML is required: `hpc-runner` and `POST /api/run_solvers` build the run from `demo-solver` + resolved system (`default_system` or `--solver` with implicit system).
 
 ### 2.6 Run and verify
 
 ```bash
 uv run hpc-runner configs --list
-uv run hpc-runner configs --job demo-test
+uv run hpc-runner configs --solver demo-solver
 ```
 
 Check the dashboard: **Run History** for the new run, **Home** for the mlups metric chart. See [solver_template.md](solver_template.md) for the full specification.
@@ -217,7 +209,7 @@ Check the dashboard: **Run History** for the new run, **Home** for the mlups met
 
 ## Part 3: Sponsor Deliverables — What to Provide After Internal Testing
 
-After running jobs on your own HPC systems, please provide the following so we can aggregate and analyze results.
+After running solvers on your own HPC systems, please provide the following so we can aggregate and analyze results.
 
 ### 3.1 Run Results (Required)
 
@@ -225,8 +217,8 @@ Provide **one** of:
 
 | Option | Format | How to Produce |
 |--------|--------|----------------|
-| **harness.db** | SQLite file | Copy `data/harness.db` after running jobs (default: results are stored) |
-| **results.json** | JSON file | `uv run hpc-runner configs > results.json` (or `--job X` for specific jobs) |
+| **harness.db** | SQLite file | Copy `data/harness.db` after runs (default: results are stored) |
+| **results.json** | JSON file | `uv run hpc-runner configs > results.json` (or `--solver X` for specific solvers) |
 
 **Recommendation:** Prefer **harness.db** when possible (includes stdout/stderr for debugging). Use **results.json** if DB sharing is restricted.
 
@@ -236,7 +228,7 @@ Provide **one** of:
 
 | Deliverable | Purpose |
 |-------------|---------|
-| **configs/** | Copy your `configs/resources/`, `configs/systems/`, `configs/jobs/`, and `configs/solvers/` — so we know what was run and on what hardware |
+| **configs/** | Copy your `configs/resources/`, `configs/systems/`, and `configs/solvers/` — so we know what was run and on what hardware |
 | **System identifier** | Short name (e.g. "dow-hpc-01", "sponsor-cluster") — used to tag results |
 
 ### 3.3 Optional but Helpful
@@ -257,7 +249,6 @@ sponsor-results-YYYY-MM-DD/
 ├── configs/
 │   ├── resources/
 │   ├── systems/
-│   ├── jobs/
 │   └── solvers/
 ├── system-info.txt        # Optional: system name, notes
 └── README.txt             # Optional: what was run, any issues
@@ -274,10 +265,10 @@ sponsor-results-YYYY-MM-DD/
 
 ## Part 4: Summary Checklist
 
-- [ ] Complete Part 0 smoke test: load configs → run jobs → parse metrics → persist → view in UI → view in API → add solver → re-run
+- [ ] Complete Part 0 smoke test: load configs → run solvers → parse metrics → persist → view in UI → view in API → add solver → re-run
 - [ ] Run demo script (Part 1): setup, CLI, Streamlit, API
 - [ ] Add a new solver (Part 2)
-- [ ] Run jobs on sponsor systems
+- [ ] Run solvers on sponsor systems
 - [ ] Collect: harness.db (or results.json) + configs/
 - [ ] Submit deliverable package
 
@@ -287,7 +278,7 @@ sponsor-results-YYYY-MM-DD/
 
 - [Architecture](architecture.md) — Components, data flow, storage schema
 - [Design](design.md) — UI goals and page components
-- [User Guide](user_guide.md) — Defining solvers, systems, jobs, metrics
+- [User Guide](user_guide.md) — Defining solvers, systems, metrics
 - [Solver Template](solver_template.md) — Full solver specification
 - [Glossary](glossary.md) — Term definitions
 - [README](../README.md) — Quick start

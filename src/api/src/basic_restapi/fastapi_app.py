@@ -2,9 +2,6 @@
 
 import json
 import os
-from collections import defaultdict
-from typing import Literal
-
 import structlog
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -13,6 +10,7 @@ from pydantic import BaseModel
 from harness import (
     ConfigError,
     load_all,
+    build_jobs_from_solver_specs,
     run_jobs,
     init_db,
     store_run,
@@ -82,11 +80,15 @@ def config_error_handler(request, exc: ConfigError):
     )
 
 
-class RunJobsRequest(BaseModel):
-    jobs: list[str] | None = None
+class SolverSpecBody(BaseModel):
+    name: str
+    system: str | None = None
+
+
+class RunSolversRequest(BaseModel):
+    solvers: list[SolverSpecBody]
     batch_name: str = ""
     background: bool = False
-    group_by: Literal["batch", "solver"] = "batch"
 
 
 class DeleteRunsRequest(BaseModel):
@@ -109,13 +111,13 @@ def api_health():
 @app.get("/api/solvers")
 def api_solvers():
     """List configured solvers."""
-    _, _, solvers, _ = _load_definitions()
+    _, _, solvers = _load_definitions()
     return [
-
         {
             "name": s.name,
             "version": s.version,
             "allowed_systems": s.allowed_systems,
+            "default_system": s.default_system,
             "has_parser": s.parser_config is not None,
         }
         for s in solvers.values()
@@ -124,7 +126,7 @@ def api_solvers():
 @app.get("/api/systems")
 def api_systems():
     """List configured systems."""
-    _, systems, _, _ = _load_definitions()
+    _, systems, _ = _load_definitions()
     return [
         {
             "name": s.name,
@@ -136,96 +138,56 @@ def api_systems():
         for s in systems.values()
     ]
 
-@app.get("/api/jobs")
-def api_jobs():
-    """List configured jobs."""
-    _, _, _, jobs = _load_definitions()
-    return [
-        {"name": j.name, "solver": j.solver, "system": j.system, "baseline": j.baseline}
-        for j in jobs.values()
-    ]
-
-
-@app.post("/api/run_jobs")
-def api_run_jobs(body: RunJobsRequest | None = None):
-    """Run jobs. Body: jobs, batch_name, background, group_by (batch|solver when background)."""
-    _, systems, solvers, jobs = _load_definitions()
-    job_names = body.jobs if body and body.jobs else None
-
-    job_list = list(jobs.values())
-    if job_names:
-        job_list = [j for j in job_list if j.name in job_names]
-
-    if not job_list:
-        available = sorted(j.name for j in jobs.values())
+@app.post("/api/run_solvers")
+def api_run_solvers(body: RunSolversRequest | None = None):
+    """Run one or more solvers (solver-first). Each background solver gets its own invocation (cancel per solver)."""
+    _, systems, solvers = _load_definitions()
+    if not body or not body.solvers:
         return JSONResponse(
             status_code=400,
             content={
-                "error": "No jobs to run",
-                "available_jobs": available,
+                "error": "No solvers in request",
+                "available_solvers": sorted(solvers.keys()),
                 "results": [],
             },
         )
-
-    batch_name = body.batch_name if body and body.batch_name else ""
-    if body and body.background:
-        gb = body.group_by if body else "batch"
-        if gb == "solver":
-            buckets: dict[str, list] = defaultdict(list)
-            for j in job_list:
-                buckets[j.solver].append(j)
-            inv_rows: list[dict] = []
-            for solver in sorted(buckets.keys()):
-                jl = buckets[solver]
-                sub_batch = f"{batch_name}:{solver}" if batch_name.strip() else solver
-                inv_id = invocations.start_background_run(
-                    jl,
-                    solvers,
-                    systems,
-                    sub_batch,
-                    str(DB_PATH),
-                    solver_name=solver,
-                    job_names=[x.name for x in jl],
-                )
-                inv_rows.append(
-                    {
-                        "solver_name": solver,
-                        "invocation_id": inv_id,
-                        "job_names": [x.name for x in jl],
-                    }
-                )
-            content: dict = {
-                "group_by": "solver",
-                "status": "queued",
-                "invocations": inv_rows,
-            }
-            if len(inv_rows) == 1:
-                content["invocation_id"] = inv_rows[0]["invocation_id"]
-            return JSONResponse(status_code=202, content=content)
-        inv_id = invocations.start_background_run(
-            job_list,
-            solvers,
-            systems,
-            batch_name,
-            str(DB_PATH),
-            solver_name="",
-            job_names=[j.name for j in job_list],
-        )
+    try:
+        specs = [{"name": s.name, "system": s.system} for s in body.solvers]
+        job_list = build_jobs_from_solver_specs(solvers, systems, specs)
+    except ConfigError as e:
         return JSONResponse(
-            status_code=202,
-            content={
-                "group_by": "batch",
-                "status": "queued",
-                "invocation_id": inv_id,
-                "invocations": [
-                    {
-                        "solver_name": "",
-                        "invocation_id": inv_id,
-                        "job_names": [j.name for j in job_list],
-                    }
-                ],
-            },
+            status_code=400,
+            content={"error": str(e), "results": []},
         )
+
+    batch_name = body.batch_name if body.batch_name else ""
+    if body.background:
+        inv_rows: list[dict] = []
+        for j in job_list:
+            sub_batch = f"{batch_name}:{j.solver}" if batch_name.strip() else j.solver
+            inv_id = invocations.start_background_run(
+                [j],
+                solvers,
+                systems,
+                sub_batch,
+                str(DB_PATH),
+                solver_name=j.solver,
+                job_names=[j.name],
+            )
+            inv_rows.append(
+                {
+                    "solver_name": j.solver,
+                    "invocation_id": inv_id,
+                    "run_labels": [j.name],
+                }
+            )
+        content: dict = {
+            "status": "queued",
+            "invocations": inv_rows,
+        }
+        if len(inv_rows) == 1:
+            content["invocation_id"] = inv_rows[0]["invocation_id"]
+        return JSONResponse(status_code=202, content=content)
 
     results = run_jobs(job_list, solvers, systems, batch_name=batch_name)
     init_db(DB_PATH)
@@ -315,7 +277,7 @@ def api_run_slurm_status(run_id: int):
 
 @app.get("/api/invocations")
 def api_list_invocations(active_only: bool = False):
-    """List background run_jobs invocations (optionally only queued/running)."""
+    """List background solver invocations (optionally only queued/running)."""
     return invocations.list_invocations(active_only=active_only)
 
 
@@ -330,11 +292,20 @@ def api_invocation_slurm_status(invocation_id: str):
 
 @app.get("/api/invocations/{invocation_id}")
 def api_get_invocation(invocation_id: str):
-    """Status / results for a background run_jobs invocation."""
+    """Status / results for a background solver invocation."""
     rec = invocations.get_invocation(invocation_id)
     if not rec:
         raise HTTPException(status_code=404, detail="Invocation not found")
     return invocations.invocation_to_dict(rec)
+
+
+@app.get("/api/invocations/{invocation_id}/execution_status")
+def api_invocation_execution_status(invocation_id: str):
+    """Unified monitoring: invocation + scheduler_detail (squeue/sacct) when SLURM ids exist."""
+    body = invocations.get_invocation_execution_status(invocation_id)
+    if body is None:
+        raise HTTPException(status_code=404, detail="Invocation not found")
+    return body
 
 
 @app.post("/api/invocations/{invocation_id}/cancel")

@@ -135,7 +135,7 @@ st.markdown(
 # ---------------------------------------------------------------------------
 # Sidebar navigation
 # ---------------------------------------------------------------------------
-PAGES = ["Home", "Run Jobs", "Run History", "Individual Trends", "Long-Term Trends", "Configs"]
+PAGES = ["Home", "Run Solvers", "Run History", "Individual Trends", "Long-Term Trends", "Configs"]
 
 st.sidebar.markdown(
     '<span data-testid="nav-sidebar" style="display:none" aria-hidden="true"></span>',
@@ -198,7 +198,7 @@ def page_home() -> None:
     st.markdown("")
 
     if st.button("Get Started →", type="primary", key="home-get-started"):
-        st.session_state.page = "Run Jobs"
+        st.session_state.page = "Run Solvers"
         st.session_state.page_change_requested = True
         st.rerun()
 
@@ -229,7 +229,7 @@ def page_individual_trends() -> None:
         print(f"Error making request: {e}")
 
     if not available:
-        st.info("No metrics data yet. Run jobs via Run Jobs or the CLI to collect metrics.")
+        st.info("No metrics data yet. Run solvers via Run Solvers or the CLI to collect metrics.")
         return
 
     options = [f"{dictionary['solver']} / {dictionary['metric']}" for dictionary in available]
@@ -508,28 +508,182 @@ def render_job_expander(r: dict[str: Any]) -> None:
                         st.error(f"Request failed: {e}")
 
 # ---------------------------------------------------------------------------
-# Page: Run Jobs
+# Page: Run Solvers
 # ---------------------------------------------------------------------------
 
+def _run_solver_spec_for_name(solver_by_name: dict[str, Any], sn: str) -> dict[str, Any]:
+    """Build one POST /api/run_solvers solver entry (name + optional system)."""
+    s = solver_by_name[sn]
+    allowed = s.get("allowed_systems") or []
+    default = s.get("default_system")
+    need_pick = len(allowed) > 1 and not default
+    if need_pick:
+        sys_name = st.session_state.get(f"run-solver-system-{sn}")
+        return {"name": sn, "system": sys_name}
+    return {"name": sn, "system": None}
 
-def page_run_jobs() -> None:
-    _testid("page-run-jobs")
-    st.header("Run Jobs")
-    st.write("Execute HPC regression jobs. Select jobs and run them.")
 
-    systems: list[dict[str, Any]] = []
+def _register_background_invocations(invs: list[dict[str, Any]]) -> None:
+    """Remember invocation ids per solver and sync global monitor field."""
+    by_solver = st.session_state.setdefault("run_solvers_last_invocation_by_solver", {})
+    for inv in invs:
+        sn = inv.get("solver_name")
+        iid = inv.get("invocation_id", "")
+        if sn and iid:
+            by_solver[sn] = iid
+            st.session_state[f"run-solvers-mon-id-{sn}"] = iid
+    inv_top = ""
+    if invs:
+        inv_top = invs[0].get("invocation_id", "")
+    st.session_state.last_solver_invocations = invs
+    st.session_state.last_invocation_id = inv_top
+    if inv_top:
+        st.session_state._pending_run_solvers_monitor_invocation_id = inv_top
+
+
+def _post_run_solvers(
+    specs: list[dict[str, Any]],
+    batch_name_input: str,
+    run_background: bool,
+) -> tuple[list[Any] | None, bool]:
+    """
+    POST run_solvers. On background success returns (None, True) after session updates.
+    On synchronous success returns (results list, True). On failure returns (None, False).
+    """
+    payload: dict[str, Any] = {"solvers": specs}
+    bn = (batch_name_input or "").strip()
+    if bn:
+        payload["batch_name"] = bn
+    if run_background:
+        payload["background"] = True
+    endpoint = API_URL + "/api/run_solvers"
+    try:
+        response = requests.post(endpoint, json=payload, timeout=3600 if not run_background else 60)
+        if response.status_code == 202:
+            data = response.json()
+            invs = data.get("invocations") or []
+            _register_background_invocations(invs)
+            inv_top = data.get("invocation_id") or (invs[0].get("invocation_id", "") if invs else "")
+            n = len(invs)
+            if n > 1:
+                st.success(
+                    f"Started {n} background invocations (one per solver). See **Active runs** above."
+                )
+            else:
+                st.success(f"Background invocation started: `{inv_top}`")
+            return None, True
+        response.raise_for_status()
+        return response.json(), True
+    except requests.exceptions.RequestException as e:
+        st.error(f"Run request failed: {e}")
+        st.caption(f"API: `{API_URL}` — ensure the API is running and reachable.")
+    except Exception as e:
+        st.error(f"Unexpected error while running solvers: {e}")
+    return None, False
+
+
+def _display_last_run_compact(r: dict[str, Any], *, run_id_key_prefix: str) -> None:
+    """Show one stored run (from GET /api/runs) in compact form."""
+    passed = r.get("passed")
+    icon = "✅" if passed else "❌"
+    rid = r.get("id")
+    ts = (r.get("timestamp") or "")[:19]
+    st.markdown(
+        f"{icon} **{r.get('job_name', '')}** · {ts} · "
+        f"return {r.get('returncode')} · **{r.get('runtime_seconds')}s** · "
+        f"system `{r.get('system_name', '')}`"
+    )
+    raw_err = r.get("validation_errors")
+    if raw_err and raw_err != "[]":
+        if isinstance(raw_err, str):
+            try:
+                errs = json.loads(raw_err)
+                if errs:
+                    st.json(errs)
+            except json.JSONDecodeError:
+                st.text(raw_err)
+        else:
+            st.json(raw_err)
+    with st.expander("Output & metrics", expanded=False):
+        if r.get("stdout"):
+            st.caption("stdout")
+            st.code(r["stdout"], language="text")
+        if r.get("stderr"):
+            st.caption("stderr")
+            st.code(r["stderr"], language="text")
+        if r.get("metrics_json"):
+            try:
+                st.json(json.loads(r["metrics_json"]))
+            except json.JSONDecodeError:
+                st.text(r["metrics_json"])
+        if rid is not None and st.button("Refresh SLURM status", key=f"{run_id_key_prefix}-slurm-{rid}"):
+            try:
+                sresp = requests.get(API_URL + f"/api/runs/{rid}/slurm_status", timeout=120)
+                st.session_state[f"run_solvers_run_slurm_{rid}"] = sresp.json()
+            except requests.exceptions.RequestException as e:
+                st.session_state[f"run_solvers_run_slurm_{rid}"] = {"message": str(e)}
+        snap = st.session_state.get(f"run_solvers_run_slurm_{rid}")
+        if snap:
+            st.code(json.dumps(snap, indent=2), language="json")
+
+
+def _render_invocation_status_summary(payload: dict[str, Any]) -> None:
+    """Human-readable lines for GET /api/invocations/{id}/execution_status (local or SLURM)."""
+    status = payload.get("status") or "—"
+    ex = payload.get("execution") or {}
+    backend = ex.get("backend") or "—"
+    loc = ex.get("local") or {}
+    if isinstance(loc, dict) and loc.get("pid") is not None:
+        local_line = f"pid **{loc.get('pid')}** · alive={loc.get('alive')}"
+    else:
+        local_line = "no local subprocess snapshot"
+    jc = payload.get("jobs_completed", 0)
+    jt = payload.get("jobs_total", 0)
+    sids = payload.get("scheduler_job_ids") or ex.get("scheduler_job_ids") or []
+    sched_ids = ", ".join(str(x) for x in sids) if sids else "—"
+    detail = payload.get("scheduler_detail") or {}
+    if isinstance(detail, dict) and detail:
+        sched_state = "live scheduler data in raw response"
+    elif sids:
+        sched_state = "job ids recorded; live query empty or disabled"
+    else:
+        sched_state = "no scheduler jobs"
+    err = payload.get("error")
+    st.markdown(
+        f"**Status:** {status} · **Backend:** `{backend}` · **Jobs:** {jc}/{jt}  \n"
+        f"**Local:** {local_line}  \n"
+        f"**Scheduler ids:** {sched_ids} · _{sched_state}_"
+    )
+    if err:
+        st.warning(str(err))
+
+
+def _render_invocation_execution_payload(payload: dict[str, Any]) -> None:
+    """Summary plus full JSON in an expander (unified execution_status shape)."""
+    _render_invocation_status_summary(payload)
+    with st.expander("Raw response", expanded=False):
+        st.json(payload)
+
+
+def page_run_solvers() -> None:
+    _testid("page-run-solvers")
+    st.header("Run Solvers")
+    st.write(
+        "Every solver is listed below. Use **Batch run** to start several at once, or use each row’s **Run** for a "
+        "single solver. **Monitor** (live background work) and **Last run** (stored results) are under each row."
+    )
+    st.caption(
+        "**Last run** uses the same data as Run History. A later **Runs** hub could combine launching and history in one place."
+    )
+
     solvers: list[dict[str, Any]] = []
-    jobs: list[dict[str, Any]] = []
     try:
         r1 = requests.get(API_URL + "/api/systems", timeout=15)
         r1.raise_for_status()
-        systems = r1.json()
+        _ = r1.json()
         r2 = requests.get(API_URL + "/api/solvers", timeout=15)
         r2.raise_for_status()
         solvers = r2.json()
-        r3 = requests.get(API_URL + "/api/jobs", timeout=15)
-        r3.raise_for_status()
-        jobs = r3.json()
     except requests.exceptions.RequestException as e:
         st.error(
             "Cannot reach the HPC Regression API. Start it with `make api` (or `uv run uvicorn ...`) "
@@ -543,49 +697,43 @@ def page_run_jobs() -> None:
         st.caption(str(e))
         return
 
-    job_list = jobs
-    if not job_list:
-        st.warning("No jobs configured. Add jobs in configs/jobs/.")
+    if not solvers:
+        st.warning("No solvers configured. Add solvers under configs/solvers/.")
         return
 
-    # Job schedule summary # test
-    schedule_data = [
+    solver_by_name = {s["name"]: s for s in solvers}
+    overview = [
         {
-            "Job": j["name"],
-            "Solver": j["solver"],
-            "System": j["system"],
-            "Schedule": j.get("schedule") or "Manual",
+            "Solver": s["name"],
+            "default_system": s.get("default_system") or "—",
+            "allowed_systems": ", ".join(s.get("allowed_systems") or []),
         }
-        for j in job_list
+        for s in sorted(solvers, key=lambda x: x["name"])
     ]
-    schedule_df = pd.DataFrame(schedule_data)
-    with st.expander("Job schedule", expanded=True):
-        _testid("run-jobs-schedule")
-        st.caption("When each job is configured to run (cron or manual).")
-        st.dataframe(schedule_df, width='stretch', hide_index=True)
+    with st.expander("Solver overview", expanded=False):
+        _testid("run-solvers-overview")
+        st.dataframe(pd.DataFrame(overview), width="stretch", hide_index=True)
 
-    if "last_solver_invocations" not in st.session_state:
-        st.session_state.last_solver_invocations = []
-
-    # Must run before st.text_input(key="run_jobs_monitor_invocation_id"): cannot assign
-    # that key after the widget is instantiated in the same run.
-    if "_pending_run_jobs_monitor_invocation_id" in st.session_state:
-        st.session_state.run_jobs_monitor_invocation_id = st.session_state.pop(
-            "_pending_run_jobs_monitor_invocation_id"
+    st.session_state.setdefault("run_solvers_last_invocation_by_solver", {})
+    if "_pending_run_solvers_monitor_invocation_id" in st.session_state:
+        st.session_state.run_solvers_monitor_invocation_id = st.session_state.pop(
+            "_pending_run_solvers_monitor_invocation_id"
         )
-    elif "run_jobs_monitor_invocation_id" not in st.session_state:
-        st.session_state.run_jobs_monitor_invocation_id = ""
+    elif "run_solvers_monitor_invocation_id" not in st.session_state:
+        st.session_state.run_solvers_monitor_invocation_id = ""
+    st.session_state.setdefault("last_invocation_id", "")
 
     h_active, h_refresh = st.columns([5, 1])
     with h_active:
         st.subheader("Active runs")
     with h_refresh:
-        if st.button("Refresh", key="run-jobs-refresh-active", help="Reload the active invocations list"):
+        if st.button("Refresh", key="run-solvers-refresh-active", help="Reload the active invocations list"):
             st.rerun()
-    _testid("run-jobs-active-runs")
+    _testid("run-solvers-active-runs")
     st.caption(
-        "Background invocations live in the API process (in-memory); restarting the API clears the list. "
-        "Cancel or inspect SLURM ids per row. Data from `GET /api/invocations?active_only=true`."
+        "Each background solver has its own invocation (cancel independently). "
+        "**Monitor** uses `/execution_status` (unified local + embedded scheduler detail). "
+        "**SLURM status** queries `/slurm_status` for raw squeue/sacct-style output when job ids exist."
     )
     try:
         active_resp = requests.get(
@@ -606,23 +754,53 @@ def page_run_jobs() -> None:
     else:
         for rec in active_rows:
             iid = rec.get("invocation_id", "")
-            solver = rec.get("solver_name") or "(batch / mixed)"
-            jn = rec.get("job_names") or []
-            jobs_label = ", ".join(jn) if jn else "—"
+            solver = rec.get("solver_name") or "(unknown)"
+            labels = rec.get("run_labels") or rec.get("job_names") or []
+            jobs_label = ", ".join(labels) if labels else "—"
             jids = ", ".join(rec.get("scheduler_job_ids") or []) or "—"
             bname = rec.get("batch_name") or "—"
             jc = rec.get("jobs_completed", 0)
             jt = rec.get("jobs_total", 0)
-            cleft, cright = st.columns([5, 1])
+            ex = rec.get("execution") or {}
+            backend = ex.get("backend") or "—"
+            loc = ex.get("local") or {}
+            pid_info = f"pid {loc.get('pid')} alive={loc.get('alive')}" if loc else "—"
+            cleft, cmid, cslurm, cright = st.columns([4, 1, 1, 1])
             with cleft:
                 st.markdown(
                     f"**{solver}** · `{iid[:12]}…` · *{rec.get('status')}* · batch *{bname}* · "
-                    f"**{jc}/{jt}** jobs · SLURM: `{jids}`  \n"
-                    f"<small>Jobs: {jobs_label}</small>",
+                    f"**{jc}/{jt}** · backend **{backend}** · local: `{pid_info}` · scheduler ids: `{jids}`  \n"
+                    f"<small>Runs: {jobs_label}</small>",
                     unsafe_allow_html=True,
                 )
+            with cmid:
+                if st.button("Monitor", key=f"run-solvers-exec-{iid}"):
+                    try:
+                        er = requests.get(
+                            API_URL + f"/api/invocations/{iid}/execution_status",
+                            timeout=90,
+                        )
+                        if er.ok:
+                            _render_invocation_execution_payload(er.json())
+                        else:
+                            st.error(er.text)
+                    except requests.exceptions.RequestException as ex:
+                        st.error(str(ex))
+            with cslurm:
+                if st.button("SLURM status", key=f"run-solvers-slurm-active-{iid}"):
+                    try:
+                        sr = requests.get(
+                            API_URL + f"/api/invocations/{iid}/slurm_status",
+                            timeout=90,
+                        )
+                        if sr.ok:
+                            st.json(sr.json())
+                        else:
+                            st.error(sr.text)
+                    except requests.exceptions.RequestException as ex:
+                        st.error(str(ex))
             with cright:
-                if st.button("Cancel", key=f"run-jobs-active-cancel-{iid}"):
+                if st.button("Stop", key=f"run-solvers-cancel-{iid}"):
                     try:
                         cresp = requests.post(
                             API_URL + f"/api/invocations/{iid}/cancel",
@@ -632,86 +810,374 @@ def page_run_jobs() -> None:
                     except requests.exceptions.RequestException as ex:
                         st.error(str(ex))
 
-    job_names = [j["name"] for j in job_list]
-    selected = st.multiselect(
-        "Select jobs to run",
-        options=job_names,
-        default=job_names,
-        key="run-jobs-select",
-        help = "Solver and job configurations are defined in /configs/solvers and /configs/jobs respectively. Once a job is properly configured and validated, it will appear here. Please apply validation to check if your configuration is valid if it does not appear in the list."
+    solver_names = sorted(solver_by_name.keys())
+
+    def _batch_select_all_cb() -> None:
+        for n in solver_names:
+            st.session_state[f"run-solvers-include-{n}"] = True
+
+    def _batch_clear_cb() -> None:
+        for n in solver_names:
+            st.session_state[f"run-solvers-include-{n}"] = False
+
+    st.subheader("Batch run")
+    st.caption(
+        "Check the solvers to run together, then **Run batch**. Each solver row below is full width for Run / Monitor / Last run."
+    )
+    b_row1 = st.columns([2, 2, 1, 1])
+    with b_row1[0]:
+        batch_name_input = st.text_input(
+            "Batch name (optional)",
+            value="",
+            key="run-solvers-batch-name",
+            help="Optional label stored with this run batch (same as API field batch_name).",
+        )
+    with b_row1[1]:
+        run_background = st.checkbox(
+            "Run in background (recommended for SLURM / long jobs)",
+            value=True,
+            key="run-solvers-background",
+            help="One invocation per solver. Returns immediately with invocation id(s).",
+        )
+    with b_row1[2]:
+        st.button(
+            "Select all",
+            key="run-solvers-batch-all",
+            help="Include every solver in the batch",
+            on_click=_batch_select_all_cb,
+        )
+    with b_row1[3]:
+        st.button(
+            "Clear batch",
+            key="run-solvers-batch-none",
+            help="Uncheck all batch inclusions",
+            on_click=_batch_clear_cb,
+        )
+
+    _testid("run-solvers-batch-picks")
+    st.markdown("**Include in batch**")
+    _BATCH_PICK_COLS = 4
+    for i in range(0, len(solver_names), _BATCH_PICK_COLS):
+        chunk = solver_names[i : i + _BATCH_PICK_COLS]
+        cols = st.columns(len(chunk))
+        for col, sn in zip(cols, chunk, strict=True):
+            with col:
+                st.checkbox(
+                    sn,
+                    key=f"run-solvers-include-{sn}",
+                    help="Add this solver to the batch when you click Run batch.",
+                )
+
+    n_in_batch = sum(1 for sn in solver_names if st.session_state.get(f"run-solvers-include-{sn}", False))
+    run_batch = st.button(
+        f"Run batch ({n_in_batch})",
+        type="primary",
+        key="run-solvers-go",
+        disabled=n_in_batch == 0,
     )
 
-    batch_name_input = st.text_input(
-        "Batch name (optional)",
-        value="",
-        key="run-jobs-batch-name",
-        help="Optional label stored with this run batch (same as API field batch_name).",
-    )
-    if "last_invocation_id" not in st.session_state:
-        st.session_state.last_invocation_id = ""
+    if run_batch:
+        batch_specs = [_run_solver_spec_for_name(solver_by_name, sn) for sn in solver_names if st.session_state.get(f"run-solvers-include-{sn}", False)]
+        with st.spinner(f"Starting {len(batch_specs)} solver(s)…"):
+            results, ok = _post_run_solvers(batch_specs, batch_name_input, run_background)
+        if ok:
+            if results is not None:
+                st.session_state.run_solver_results = results
+            st.rerun()
 
-    run_background = st.checkbox(
-        "Run in background (recommended for SLURM / long jobs)",
-        value=True,
-        key="run-jobs-background",
-        help="Returns immediately with invocation id(s). Turn off to wait for all jobs in this session (blocking).",
-    )
-    st.radio(
-        "Background orchestration",
-        options=["solver", "batch"],
-        index=0,
-        key="run-jobs-group-by",
-        format_func=lambda v: (
-            "Per solver — separate monitor/cancel per solver"
-            if v == "solver"
-            else "Single batch — one invocation for the entire selection"
-        ),
-        disabled=not run_background,
-        help="Per solver runs jobs for each solver in a separate background worker.",
-    )
+    st.subheader("Solvers")
 
-    with st.expander("Inspect invocation by id (raw API)", expanded=False):
-        _testid("run-jobs-background-panel")
-        st.caption("Optional: paste any `invocation_id` for JSON from GET /api/invocations/{id} or SLURM status.")
+    active_by_solver: dict[str, list[dict[str, Any]]] = {}
+    for rec in active_rows:
+        sname = (rec.get("solver_name") or "").strip()
+        if sname:
+            active_by_solver.setdefault(sname, []).append(rec)
+
+    def render_solver_card(sn: str, active_for_sn: list[dict[str, Any]]) -> None:
+        s = solver_by_name[sn]
+        allowed = s.get("allowed_systems") or []
+        default_sys = s.get("default_system") or "—"
+        allowed_txt = ", ".join(allowed) if allowed else "—"
+        need_pick = len(allowed) > 1 and not s.get("default_system")
+
+        with st.container(border=True):
+            head_l, head_r = st.columns([4, 1])
+            with head_l:
+                st.markdown(f"**{sn}**")
+            with head_r:
+                run_one = st.button(
+                    "Run",
+                    key=f"run-solvers-one-{sn}",
+                    type="primary",
+                    help="Start this solver now (uses batch name + background settings above).",
+                )
+            st.caption(f"default_system: `{default_sys}` · allowed: {allowed_txt}")
+
+            if need_pick:
+                st.selectbox(
+                    "System (required for this solver)",
+                    options=allowed,
+                    key=f"run-solver-system-{sn}",
+                    help="Used for **Run** on this row and for **Run batch** when this solver is checked.",
+                )
+
+            if run_one:
+                specs = [_run_solver_spec_for_name(solver_by_name, sn)]
+                with st.spinner(f"Running {sn}…"):
+                    results, ok = _post_run_solvers(specs, batch_name_input, run_background)
+                if ok:
+                    if results is not None:
+                        st.session_state.run_solver_results = results
+                    st.rerun()
+
+            view = st.segmented_control(
+                "Panel",
+                options=["Monitor", "Last run"],
+                default="Monitor",
+                key=f"run-solvers-tab-{sn}",
+                label_visibility="collapsed",
+                width="stretch",
+            )
+
+            if view == "Monitor":
+                st.caption(
+                    "Unified monitor for this solver’s background invocations (local pid and/or scheduler), "
+                    "or any invocation id you paste."
+                )
+                if active_for_sn:
+                    if len(active_for_sn) == 1:
+                        ar0 = active_for_sn[0]
+                        a_iid = (ar0.get("invocation_id") or "").strip()
+                        st.caption(
+                            f"**Active** · `{a_iid[:12]}…` · _{ar0.get('status')}_ · "
+                            f"jobs {ar0.get('jobs_completed', 0)}/{ar0.get('jobs_total', 0)}"
+                        )
+                        ma1, ma2 = st.columns(2)
+                        with ma1:
+                            mon_active = st.button(
+                                "Monitor active run",
+                                key=f"run-solvers-mon-active-{sn}",
+                                help="GET /execution_status for this invocation.",
+                            )
+                        with ma2:
+                            slurm_active = st.button(
+                                "SLURM status",
+                                key=f"run-solvers-slurm-monactive-{sn}",
+                                help="GET /slurm_status for raw scheduler output.",
+                            )
+                        if mon_active and a_iid:
+                            try:
+                                er = requests.get(
+                                    API_URL + f"/api/invocations/{a_iid}/execution_status",
+                                    timeout=90,
+                                )
+                                if er.ok:
+                                    _render_invocation_execution_payload(er.json())
+                                else:
+                                    st.error(f"{er.status_code}: {er.text}")
+                            except requests.exceptions.RequestException as e:
+                                st.error(str(e))
+                        if slurm_active and a_iid:
+                            try:
+                                sr = requests.get(
+                                    API_URL + f"/api/invocations/{a_iid}/slurm_status",
+                                    timeout=90,
+                                )
+                                if sr.ok:
+                                    st.json(sr.json())
+                                else:
+                                    st.error(f"{sr.status_code}: {sr.text}")
+                            except requests.exceptions.RequestException as e:
+                                st.error(str(e))
+                    else:
+                        idx_key = f"run-solvers-active-pick-{sn}"
+                        pick_labels = [
+                            f"{(r.get('invocation_id') or '')[:12]}… · {r.get('status')} · "
+                            f"{r.get('jobs_completed', 0)}/{r.get('jobs_total', 0)}"
+                            for r in active_for_sn
+                        ]
+                        choice_i = st.selectbox(
+                            "Active invocation for this solver",
+                            range(len(active_for_sn)),
+                            format_func=lambda i: pick_labels[i],
+                            key=idx_key,
+                        )
+                        ms1, ms2 = st.columns(2)
+                        with ms1:
+                            mon_sel = st.button(
+                                "Monitor selected run",
+                                key=f"run-solvers-mon-activesel-{sn}",
+                            )
+                        with ms2:
+                            slurm_sel = st.button(
+                                "SLURM status (selected)",
+                                key=f"run-solvers-slurm-activesel-{sn}",
+                            )
+                        if mon_sel:
+                            a_iid = (active_for_sn[choice_i].get("invocation_id") or "").strip()
+                            if not a_iid:
+                                st.warning("No invocation id on selected row.")
+                            else:
+                                try:
+                                    er = requests.get(
+                                        API_URL + f"/api/invocations/{a_iid}/execution_status",
+                                        timeout=90,
+                                    )
+                                    if er.ok:
+                                        _render_invocation_execution_payload(er.json())
+                                    else:
+                                        st.error(f"{er.status_code}: {er.text}")
+                                except requests.exceptions.RequestException as e:
+                                    st.error(str(e))
+                        if slurm_sel:
+                            a_iid = (active_for_sn[choice_i].get("invocation_id") or "").strip()
+                            if not a_iid:
+                                st.warning("No invocation id on selected row.")
+                            else:
+                                try:
+                                    sr = requests.get(
+                                        API_URL + f"/api/invocations/{a_iid}/slurm_status",
+                                        timeout=90,
+                                    )
+                                    if sr.ok:
+                                        st.json(sr.json())
+                                    else:
+                                        st.error(f"{sr.status_code}: {sr.text}")
+                                except requests.exceptions.RequestException as e:
+                                    st.error(str(e))
+                else:
+                    st.caption("_No active background invocation for this solver._")
+
+                st.markdown("**Or by invocation id**")
+                mid_key = f"run-solvers-mon-id-{sn}"
+                st.session_state.setdefault(
+                    mid_key,
+                    st.session_state["run_solvers_last_invocation_by_solver"].get(sn, ""),
+                )
+                st.text_input(
+                    "Invocation id",
+                    key=mid_key,
+                    help="Filled after a background run from this page; paste any id to monitor.",
+                )
+                ra, rb, rc = st.columns(3)
+                with ra:
+                    refresh_inv = st.button("Monitor", key=f"run-solvers-refresh-inv-{sn}")
+                with rb:
+                    refresh_slurm = st.button("SLURM status", key=f"run-solvers-slurm-inv-{sn}")
+                with rc:
+                    cancel_picked = st.button("Cancel", key=f"run-solvers-cancel-inv-{sn}")
+                focus = (st.session_state.get(mid_key) or "").strip()
+                if refresh_inv:
+                    if not focus:
+                        st.warning("Enter an invocation id, or use **Monitor active run** when one exists.")
+                    else:
+                        try:
+                            er = requests.get(
+                                API_URL + f"/api/invocations/{focus}/execution_status",
+                                timeout=90,
+                            )
+                            if er.ok:
+                                _render_invocation_execution_payload(er.json())
+                            else:
+                                st.error(f"{er.status_code}: {er.text}")
+                        except requests.exceptions.RequestException as e:
+                            st.error(str(e))
+                if refresh_slurm:
+                    if not focus:
+                        st.warning("Enter an invocation id.")
+                    else:
+                        try:
+                            sr = requests.get(
+                                API_URL + f"/api/invocations/{focus}/slurm_status",
+                                timeout=90,
+                            )
+                            if sr.ok:
+                                st.json(sr.json())
+                            else:
+                                st.error(f"{sr.status_code}: {sr.text}")
+                        except requests.exceptions.RequestException as e:
+                            st.error(str(e))
+                if cancel_picked:
+                    if not focus:
+                        st.warning("Enter an invocation id.")
+                    else:
+                        try:
+                            cr = requests.post(
+                                API_URL + f"/api/invocations/{focus}/cancel",
+                                timeout=30,
+                            )
+                            st.json(cr.json())
+                        except requests.exceptions.RequestException as e:
+                            st.error(str(e))
+
+            elif view == "Last run":
+                cache = st.session_state.setdefault("run_solvers_last_run_cache", {})
+                lr_a, lr_b = st.columns([1, 3])
+                with lr_a:
+                    load_lr = st.button("Refresh", key=f"run-solvers-lastrun-refresh-{sn}")
+                with lr_b:
+                    st.caption("Loads the most recent stored run for this solver (same data as Run History).")
+
+                if load_lr:
+                    try:
+                        rows = requests.get(
+                            API_URL + "/api/runs",
+                            params={"solver": sn, "limit": 1},
+                            timeout=15,
+                        ).json()
+                        if rows:
+                            cache[sn] = rows[0]
+                        else:
+                            cache[sn] = None
+                    except requests.exceptions.RequestException as e:
+                        st.error(str(e))
+                entry = cache.get(sn)
+                if sn not in cache:
+                    st.caption("Click **Refresh** to load the latest stored run.")
+                elif entry is None:
+                    st.info("No completed runs in the database for this solver yet.")
+                else:
+                    _display_last_run_compact(entry, run_id_key_prefix=f"run-solvers-lr-{sn}")
+
+    for sn in solver_names:
+        render_solver_card(sn, active_by_solver.get(sn, []))
+
+    with st.expander("Advanced: inspect invocation by id", expanded=False):
+        _testid("run-solvers-background-panel")
+        st.caption(
+            "Optional: paste any `invocation_id`. **Monitor** → `/execution_status`; "
+            "**SLURM status** → `/slurm_status` (scheduler-only output)."
+        )
         st.text_input(
             "Invocation id to inspect",
-            key="run_jobs_monitor_invocation_id",
+            key="run_solvers_monitor_invocation_id",
             help="Filled when you start a background run here; paste any id otherwise.",
         )
         ra, rb, rc = st.columns(3)
         with ra:
-            refresh_inv = st.button("Refresh status", key="run-jobs-refresh-invocation")
+            refresh_inv = st.button("Monitor", key="run-solvers-refresh-invocation")
         with rb:
-            cancel_picked = st.button("Cancel this id", key="run-jobs-cancel-picked-invocation")
+            refresh_slurm_adv = st.button("SLURM status", key="run-solvers-refresh-inv-slurm")
         with rc:
-            refresh_slurm = st.button("Refresh SLURM status", key="run-jobs-refresh-inv-slurm")
+            cancel_picked = st.button("Cancel this id", key="run-solvers-cancel-picked-invocation")
 
-        focus = (st.session_state.get("run_jobs_monitor_invocation_id") or "").strip()
+        focus = (st.session_state.get("run_solvers_monitor_invocation_id") or "").strip()
         if refresh_inv:
             if not focus:
                 st.warning("Enter an invocation id above.")
             else:
                 try:
-                    ir = requests.get(API_URL + f"/api/invocations/{focus}", timeout=15)
-                    if ir.ok:
-                        st.json(ir.json())
-                    else:
-                        st.error(f"{ir.status_code}: {ir.text}")
-                except requests.exceptions.RequestException as e:
-                    st.error(str(e))
-        if cancel_picked:
-            if not focus:
-                st.warning("Enter an invocation id above.")
-            else:
-                try:
-                    cr = requests.post(
-                        API_URL + f"/api/invocations/{focus}/cancel",
-                        timeout=30,
+                    er = requests.get(
+                        API_URL + f"/api/invocations/{focus}/execution_status",
+                        timeout=90,
                     )
-                    st.json(cr.json())
+                    if er.ok:
+                        _render_invocation_execution_payload(er.json())
+                    else:
+                        st.error(f"{er.status_code}: {er.text}")
                 except requests.exceptions.RequestException as e:
                     st.error(str(e))
-        if refresh_slurm:
+        if refresh_slurm_adv:
             if not focus:
                 st.warning("Enter an invocation id above.")
             else:
@@ -726,86 +1192,43 @@ def page_run_jobs() -> None:
                         st.error(f"{sr.status_code}: {sr.text}")
                 except requests.exceptions.RequestException as e:
                     st.error(str(e))
-
-    col1, col2, col3 = st.columns([1, 1, 4])
-    with col1:
-        run_all = st.button("Run All", key="run-jobs-all")
-    with col2:
-        run_selected = st.button("Run Selected", key="run-jobs-selected")
-
-    if run_all or run_selected:
-        to_run = job_names if run_all else selected
-        if not to_run:
-            st.warning("Select at least one job.")
-        else:
-            results: list[Any] = []
-            with st.spinner(f"Running {len(to_run)} job(s)…"):
-                payload: dict[str, Any] = {"jobs": to_run}
-                bn = (batch_name_input or "").strip()
-                if bn:
-                    payload["batch_name"] = bn
-                if run_background:
-                    payload["background"] = True
-                    gb = st.session_state.get("run-jobs-group-by", "solver")
-                    payload["group_by"] = gb
-                endpoint = API_URL + "/api/run_jobs"
+        if cancel_picked:
+            if not focus:
+                st.warning("Enter an invocation id above.")
+            else:
                 try:
-                    response = requests.post(endpoint, json=payload, timeout=3600 if not run_background else 60)
-                    if response.status_code == 202:
-                        data = response.json()
-                        invs = data.get("invocations") or []
-                        st.session_state.last_solver_invocations = invs
-                        inv_top = data.get("invocation_id") or (
-                            invs[0].get("invocation_id", "") if invs else ""
-                        )
-                        st.session_state.last_invocation_id = inv_top
-                        if invs:
-                            st.session_state._pending_run_jobs_monitor_invocation_id = invs[0].get(
-                                "invocation_id", ""
-                            )
-                        elif inv_top:
-                            st.session_state._pending_run_jobs_monitor_invocation_id = inv_top
-                        n = len(invs)
-                        if n > 1:
-                            st.success(
-                                f"Started {n} background invocations (per solver). "
-                                f"See **Active runs** above."
-                            )
-                        else:
-                            st.success(f"Background invocation started: `{inv_top}`")
-                    else:
-                        response.raise_for_status()
-                        results = response.json()
+                    cr = requests.post(
+                        API_URL + f"/api/invocations/{focus}/cancel",
+                        timeout=30,
+                    )
+                    st.json(cr.json())
                 except requests.exceptions.RequestException as e:
-                    st.error(f"Run request failed: {e}")
-                    st.caption(f"API: `{API_URL}` — ensure the API is running and reachable.")
-                except Exception as e:
-                    st.error(f"Unexpected error while running jobs: {e}")
+                    st.error(str(e))
 
-            if results:
-                st.session_state.run_job_results = results
-            st.rerun()
-
-    if "run_job_results" in st.session_state and st.session_state.run_job_results:
-        results = st.session_state.run_job_results
-        st.subheader("Results")
+    if "run_solver_results" in st.session_state and st.session_state.run_solver_results:
+        results = st.session_state.run_solver_results
+        st.subheader("Results (synchronous run)")
         for r in results:
-            if r['passed']:
+            if r["passed"]:
                 status, icon = "Passed", "✅"
             elif r.get("returncode", 0) != 0:
-                status, icon = "Run failed", "❌"  # system/process failure
+                status, icon = "Run failed", "❌"
             elif r.get("validation_errors"):
-                status, icon = "Validation failed", "⚠️"  # validation only (returncode was 0)
+                status, icon = "Validation failed", "⚠️"
             else:
                 status, icon = "Run failed", "❌"
-            st.write(f"{icon} **{r['job_name']}** — {status} (returncode={r['returncode']}, runtime={r['runtime_seconds']:.2f}s)")
+            jn = r.get("job_name", "")
+            st.write(
+                f"{icon} **{jn}** — {status} "
+                f"(returncode={r['returncode']}, runtime={r['runtime_seconds']:.2f}s)"
+            )
             if r.get("validation_errors"):
                 for err in (r.get("validation_errors") or []):
                     st.caption(f"  • {err}")
             out = (r.get("stdout") or "").strip()
             err = (r.get("stderr") or "").strip()
             if out or err:
-                with st.expander(f"Solver output — {r['job_name']}", expanded=False):
+                with st.expander(f"Solver output — {jn}", expanded=False):
                     if out:
                         st.caption("stdout (e.g. sbatch line + LAMMPS log)")
                         st.code(out, language="text")
@@ -823,7 +1246,7 @@ def page_run_jobs() -> None:
 def page_configs() -> None:
     _testid("page-configs")
     st.header("Configs")
-    st.write("View jobs, resources, solvers, and systems configurations.")
+    st.write("View resources, solvers, and systems configurations.")
 
     config_files = discover_config_files()
     if not config_files:
@@ -913,7 +1336,7 @@ def page_long_term_trends() -> None:
     df_all = get_runtime_trend_data(str(DB_PATH))
 
     if df_all.empty:
-        st.info("No run data available yet. Run jobs via Run Jobs or the CLI to collect data.")
+        st.info("No run data available yet. Run solvers via Run Solvers or the CLI to collect data.")
         return
 
     # --- Sidebar filters ---------------------------------------------------
@@ -1512,8 +1935,8 @@ def multi_solver_heatmap(
 
 if st.session_state.page == "Home":
     page_home()
-elif st.session_state.page == "Run Jobs":
-    page_run_jobs()
+elif st.session_state.page == "Run Solvers":
+    page_run_solvers()
 elif st.session_state.page == "Individual Trends":
     page_individual_trends()
 elif st.session_state.page == "Run History":

@@ -1,0 +1,8 @@
+name: local-sleep-60
+version: "0.1.0"
+entrypoint: run.sh
+allowed_systems: [dev-system]
+default_system: dev-system
+metrics: []
+log_names: []
+timeout_seconds: 180
