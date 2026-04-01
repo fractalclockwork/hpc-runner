@@ -6,7 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **Streamlit navigation** — **Solvers** is the landing page (overview plus **Run Solvers** in one flow). Metric line charts moved to **Individual Trends**; multi-solver / heatmap views remain under **Long-Term Trends**. The in-app **Tests** page is disabled (run **`make test`** / Playwright from the repo instead).
+
+### Documentation
+
+- **`docs/demo_plan.md`** — Brought in line with the solver-first model, invocation and batch APIs, baseline and heatmap behavior, current sidebar pages, optional SLURM E2E, and removal of **`/api/run_jobs`**.
+
+### Tests
+
+- **Playwright e2e** — Navigation and run-flow tests updated for the new page names and **Solvers**-centric UI (`src/ui/tests/e2e/`).
 
 ## [0.0.0] - 2026-03-31
 
