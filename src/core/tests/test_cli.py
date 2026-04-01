@@ -15,13 +15,11 @@ def test_cli_config_error_exits_1(capsys, tmp_path):
     assert "not found" in captured.err or "nonexistent" in captured.err
 
 
-def test_cli_no_jobs_message(capsys, tmp_path):
-    """CLI prints helpful message when no jobs exist."""
+def test_cli_no_solvers_message(capsys, tmp_path):
+    """CLI prints helpful message when no solvers exist."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
-    solvers_dir = tmp_path / "solvers"
-    solvers_dir.mkdir()
+    (tmp_path / "solvers").mkdir()
 
     (tmp_path / "resources" / "r.yaml").write_text(
         yaml.safe_dump({"resources": [{"name": "r1"}]})
@@ -29,25 +27,17 @@ def test_cli_no_jobs_message(capsys, tmp_path):
     (tmp_path / "systems" / "s.yaml").write_text(
         yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1"]}]})
     )
-    # Empty jobs - no job definitions
-    (solvers_dir / "sol1").mkdir()
-    (solvers_dir / "sol1" / "solver.yaml").write_text(
-        yaml.safe_dump({"name": "sol1", "entrypoint": "run.sh", "allowed_systems": ["s1"]})
-    )
-    (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
     exit_code = main([str(tmp_path), "--no-store"])
     assert exit_code == 1
     captured = capsys.readouterr()
-    assert "No jobs to run" in captured.err
-    assert "Config dir" in captured.err or str(tmp_path) in captured.err
+    assert "No solvers" in captured.err or "solvers" in captured.err.lower()
 
 
-def test_cli_no_matching_jobs_shows_available(capsys, tmp_path):
-    """CLI prints requested vs available when --job filters to empty."""
+def test_cli_unknown_solver_shows_available(capsys, tmp_path):
+    """CLI prints requested vs available when --solver is unknown."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -56,9 +46,6 @@ def test_cli_no_matching_jobs_shows_available(capsys, tmp_path):
     )
     (tmp_path / "systems" / "s.yaml").write_text(
         yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1"]}]})
-    )
-    (tmp_path / "jobs" / "t.yaml").write_text(
-        yaml.safe_dump({"jobs": [{"name": "t1", "solver": "sol1", "system": "s1"}]})
     )
     (solvers_dir / "sol1").mkdir()
     (solvers_dir / "sol1" / "solver.yaml").write_text(
@@ -68,22 +55,20 @@ def test_cli_no_matching_jobs_shows_available(capsys, tmp_path):
 
     exit_code = main([
         str(tmp_path),
-        "--job", "nonexistent-job",
+        "--solver", "nonexistent-solver",
         "--no-store",
     ])
     assert exit_code == 1
     captured = capsys.readouterr()
-    assert "No matching jobs" in captured.err
-    assert "nonexistent-job" in captured.err
-    assert "t1" in captured.err
-    assert "Available" in captured.err or "available" in captured.err
+    assert "Unknown solver" in captured.err
+    assert "nonexistent-solver" in captured.err
+    assert "sol1" in captured.err
 
 
 def test_cli_list_success(capsys, tmp_path):
-    """CLI --list prints available jobs on success."""
+    """CLI --list prints available solvers on success."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -92,9 +77,6 @@ def test_cli_list_success(capsys, tmp_path):
     )
     (tmp_path / "systems" / "s.yaml").write_text(
         yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1"]}]})
-    )
-    (tmp_path / "jobs" / "t.yaml").write_text(
-        yaml.safe_dump({"jobs": [{"name": "t1", "solver": "sol1", "system": "s1"}]})
     )
     (solvers_dir / "sol1").mkdir()
     (solvers_dir / "sol1" / "solver.yaml").write_text(
@@ -105,15 +87,14 @@ def test_cli_list_success(capsys, tmp_path):
     exit_code = main([str(tmp_path), "--list"])
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert "Available jobs:" in captured.out
-    assert "t1" in captured.out
+    assert "Available solvers:" in captured.out
+    assert "sol1" in captured.out
 
 
 def test_cli_run_output_includes_validation_errors(capsys, tmp_path):
     """CLI JSON output includes validation_errors (list) on every result."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -122,9 +103,6 @@ def test_cli_run_output_includes_validation_errors(capsys, tmp_path):
     )
     (tmp_path / "systems" / "s.yaml").write_text(
         yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1"]}]})
-    )
-    (tmp_path / "jobs" / "t.yaml").write_text(
-        yaml.safe_dump({"jobs": [{"name": "t1", "solver": "sol1", "system": "s1"}]})
     )
     (solvers_dir / "sol1").mkdir()
     (solvers_dir / "sol1" / "solver.yaml").write_text(
@@ -145,7 +123,6 @@ def test_cli_run_with_validation_failure_shows_validation_errors(capsys, tmp_pat
     """When metric validation fails, CLI output includes non-empty validation_errors and exits 1."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -171,11 +148,7 @@ def test_cli_run_with_validation_failure_shows_validation_errors(capsys, tmp_pat
     }))
     (solver_dir / "run.py").write_text("print('MLUPS: 3.2e6')\n")
 
-    (tmp_path / "jobs" / "sample.yaml").write_text(yaml.safe_dump({
-        "jobs": [{"name": "metrics-test-bad", "solver": "metrics-solver-bad", "system": "dev-system"}],
-    }))
-
-    exit_code = main([str(tmp_path), "--no-store"])
+    exit_code = main([str(tmp_path), "--solver", "metrics-solver-bad", "--no-store"])
     assert exit_code == 1
     out = json.loads(capsys.readouterr().out)
     assert len(out) == 1
@@ -189,7 +162,6 @@ def test_cli_list_runs_shows_validation_error_count(capsys, tmp_path):
     """--list-runs shows validation error count when a run has validation_errors."""
     (tmp_path / "resources").mkdir()
     (tmp_path / "systems").mkdir()
-    (tmp_path / "jobs").mkdir()
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
@@ -199,9 +171,6 @@ def test_cli_list_runs_shows_validation_error_count(capsys, tmp_path):
     (tmp_path / "systems" / "default.yaml").write_text(
         yaml.safe_dump({"systems": [{"name": "dev-system", "resources": ["dev"]}]})
     )
-    (tmp_path / "jobs" / "t.yaml").write_text(yaml.safe_dump({
-        "jobs": [{"name": "t1", "solver": "sol1", "system": "dev-system"}],
-    }))
     (solvers_dir / "sol1").mkdir()
     (solvers_dir / "sol1" / "solver.yaml").write_text(yaml.safe_dump({
         "name": "sol1",

@@ -17,6 +17,7 @@ import structlog
 
 from .config import Solver, System, Job
 from .parser import extract_metrics, validate_metrics
+from .slurm_elapsed import refine_run_result_runtime_from_slurm
 
 logger = structlog.get_logger()
 
@@ -320,10 +321,6 @@ def run_job(
             )
         else:
             validation_errors = []
-    if invoke_ctl and invoke_ctl.cancel_event.is_set():
-        passed = False
-        if not validation_errors:
-            validation_errors = ["Cancelled by user"]
 
     run_result = RunResult(
         job_name=job.name,
@@ -345,13 +342,29 @@ def run_job(
         job_batch_name=job_batch_name,
     )
     _merge_scheduler_into_result(run_result, run_result.stdout, run_result.stderr, invoke_ctl)
+    refine_run_result_runtime_from_slurm(run_result)
+    if solver.metrics:
+        required = [m.name for m in (solver.metrics or []) if m.required]
+        ranges = {m.name: (m.min_, m.max_) for m in (solver.metrics or [])}
+        valid, errors = validate_metrics(run_result.metrics, required=required, ranges=ranges)
+        if not valid:
+            run_result.passed = False
+            run_result.validation_errors = errors
+        else:
+            run_result.validation_errors = []
+            expected_rc = (job.success_criteria or {}).get("returncode", 0)
+            run_result.passed = result.returncode == expected_rc
+    if invoke_ctl and invoke_ctl.cancel_event.is_set():
+        run_result.passed = False
+        if not run_result.validation_errors:
+            run_result.validation_errors = ["Cancelled by user"]
 
     logger.info(
         "runner.finish",
         job=job.name,
         returncode=result.returncode,
-        passed=passed,
-        runtime=runtime,
+        passed=run_result.passed,
+        runtime=run_result.runtime_seconds,
     )
     return run_result
 

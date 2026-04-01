@@ -39,13 +39,9 @@ def add_solver(
     cmd: str,
     system: str,
     name: str | None = None,
-) -> tuple[str, str]:
-    """Create a minimal solver that runs the given command.
-
-    Returns (solver_name, job_name).
-    """
+) -> str:
+    """Create a minimal solver that runs the given command. Returns solver_name."""
     solver_name = name or derive_name(cmd)
-    job_name = f"{solver_name}-test"
 
     solver_dir = solvers_dir / solver_name
     if solver_dir.exists():
@@ -62,6 +58,7 @@ def add_solver(
         "version": "0.0.0",
         "entrypoint": "run.sh",
         "allowed_systems": [system],
+        "default_system": system,
         "metrics": [
             {"name": "runtime_seconds", "unit": "s", "required": False},
         ],
@@ -80,7 +77,7 @@ set -e
     (solver_dir / "run.sh").write_text(run_sh, encoding="utf-8")
     (solver_dir / "run.sh").chmod(0o755)
 
-    return solver_name, job_name
+    return solver_name
 
 
 def add_job(

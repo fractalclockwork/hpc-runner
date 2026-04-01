@@ -10,7 +10,7 @@ def test_configs_page_readonly_view(page, streamlit_url, streamlit_process):
     expect(page.get_by_test_id("page-configs")).to_be_attached()
     expect(page.get_by_role("heading", name="Configs")).to_be_visible()
     expect(
-        page.get_by_text("View jobs, resources, solvers, and systems configurations.")
+        page.get_by_text("View resources, solvers, and systems configurations.")
     ).to_be_visible()
     expect(page.get_by_text("Category")).to_be_visible()
     expect(page.get_by_text("File")).to_be_visible()

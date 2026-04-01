@@ -1,14 +1,17 @@
 name: python-solver
-version: "1.0.0"
+version: 1.0.0
 entrypoint: run.py
-allowed_systems: [dev-system]
+allowed_systems:
+- dev-system
 parser_config: parser_config.yaml
 metrics:
-  - name: mlups
-    unit: MLUPS
-    min: 0
-    required: true
-  - name: runtime_seconds
-    unit: s
-    required: true
-log_names: [stdout]
+- name: mlups
+  unit: MLUPS
+  min: 0
+  required: true
+- name: runtime_seconds
+  unit: s
+  required: true
+log_names:
+- stdout
+default_system: dev-system

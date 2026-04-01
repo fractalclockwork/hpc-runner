@@ -43,6 +43,10 @@ class Solver:
     version: str = "0.0.0"
     cwd: str | None = None
     allowed_systems: list[str] = field(default_factory=list)
+    default_system: str | None = None  # Used when API/CLI does not pass a system
+    success_criteria: dict[str, Any] = field(default_factory=dict)  # e.g. returncode
+    timeout_seconds: int | None = None
+    baseline: bool = False
     parser_config: str | None = None  # Path to YAML parser config
     metrics: list[MetricSpec] = field(default_factory=list)
     log_names: list[str] = field(default_factory=list)

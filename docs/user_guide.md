@@ -265,15 +265,34 @@ Both allow you to:
 - Inspect run details (stdout, stderr, metrics)
 - View performance trends (metric history over time)
 
+### Local sleep solver (`local-sleep-60`)
+
+The **`local-sleep-60`** solver runs only on **`dev-system`** and sleeps **60 seconds** by default (override with **`LOCAL_SLEEP_SECONDS`**). Use it to exercise **Run Solvers**, **invocation monitoring**, and **Stop** for **local** subprocess runs (`GET /api/invocations/.../execution_status`, pid/alive) without SLURM.
+
+```bash
+uv run hpc-runner configs --solver local-sleep-60
+```
+
+For cancel testing, use **`background: true`** so the API returns immediately while the solver keeps running:
+
+```bash
+curl -s -X POST http://localhost:8000/api/run_solvers \
+  -H 'Content-Type: application/json' \
+  -d '{"solvers":[{"name":"local-sleep-60","system":"dev-system"}],"background":true}'
+```
+
+Then poll **`GET /api/invocations`** and call **`POST /api/invocations/<id>/cancel`** while the run is active.
+
+Like the Slurm batch templates, the script prints **`HARNESS_SOLVER_WALL_SECONDS`** (high-resolution wall time around the **`sleep`**). The harness prefers that value for **`runtime_seconds`** when present, matching the Slurm path.
+
 ### REST API
 
 For automation:
 
 | Endpoint                    | Method | Description                          |
 |----------------------------|--------|--------------------------------------|
-| `/api/solvers`             | GET    | List solvers                         |
-| `/api/jobs`                | GET    | List jobs                            |
-| `/api/run_jobs`            | POST   | Run jobs; body: `{"jobs": [...], "batch_name": "...", "background": true, "group_by": "solver" \| "batch"}` — 202 returns `invocations` list; use **`group_by: "solver"`** for one background worker per solver (monitor/cancel per solver) |
+| `/api/solvers`             | GET    | List solvers (`default_system`, `allowed_systems`) |
+| `/api/run_solvers`         | POST   | Run solvers; body `solvers`, optional `batch_name`, `background` — 202 returns one invocation per solver when background |
 | `/api/runs`                | GET    | List runs (?solver=, ?processor=, ?limit=) |
 | `/api/runs`                | DELETE | Body `{"ids": [1,2]}` — remove stored runs (baseline rows allowed) |
 | `/api/runs/<id>`           | GET    | Run detail                           |
@@ -285,6 +304,7 @@ For automation:
 | `/api/solver_summaries`   | GET    | Per-solver pass counts and last run info |
 
 **Background cancel (`scancel`):** set **`HARNESS_ALLOW_SCANCEL=1`** for explicit opt-in, or rely on **`RUN_SLURM_E2E=1`** (tests / Docker SLURM E2E), or configure **`DOCKER_SLURM_CONTAINER`** / **`DOCKER_SLURM_SUBMIT_CONTAINER`** so the API can `docker exec` and run `scancel`. Subprocess termination always runs on cancel regardless of those flags.
+
 | `/api/metrics/<solver>/<metric>` | GET | Metric history for trends            |
 | `/api/solvers/<solver>/baseline` | GET | Current baseline run for a solver    |
 | `/api/runs/<id>/set_baseline` | POST | Set a run as the baseline for its solver |

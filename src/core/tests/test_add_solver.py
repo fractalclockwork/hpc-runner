@@ -41,11 +41,10 @@ def test_add_solver_creates_files(tmp_path):
     solvers_dir = tmp_path / "solvers"
     solvers_dir.mkdir()
 
-    solver_name, job_name = add_solver(
+    solver_name = add_solver(
         tmp_path, solvers_dir, "echo hello", "s1", name="my-solver"
     )
     assert solver_name == "my-solver"
-    assert job_name == "my-solver-test"
 
     solver_dir = solvers_dir / "my-solver"
     assert solver_dir.exists()
@@ -56,6 +55,7 @@ def test_add_solver_creates_files(tmp_path):
     assert solver_data["name"] == "my-solver"
     assert solver_data["entrypoint"] == "run.sh"
     assert solver_data["allowed_systems"] == ["s1"]
+    assert solver_data.get("default_system") == "s1"
 
     run_sh = (solver_dir / "run.sh").read_text()
     assert "echo hello" in run_sh
@@ -168,9 +168,7 @@ def test_cli_add_creates_and_runs(capsys, tmp_path):
     # Solver and job created
     assert (tmp_path / "solvers" / "hello-solver" / "solver.yaml").exists()
     assert (tmp_path / "solvers" / "hello-solver" / "run.sh").exists()
-    assert (tmp_path / "jobs" / "added.yaml").exists()
-
     captured = capsys.readouterr()
     assert "hello-solver" in captured.out
-    assert "hello-solver-test" in captured.out
+    assert "hello-solver@s1" in captured.out or "job_name" in captured.out
     assert "passed" in captured.out or "true" in captured.out

@@ -7,10 +7,11 @@ def test_sidebar_nav_visible(page, streamlit_url, streamlit_process):
     """Sidebar has navigation options."""
     page.goto(streamlit_url)
     expect(page.get_by_test_id("nav-sidebar")).to_be_attached()
-    # Streamlit radio renders options as clickable labels
-    expect(page.get_by_text("Home", exact=True)).to_be_visible()
-    expect(page.get_by_text("Run Jobs", exact=True)).to_be_visible()
-    expect(page.get_by_text("Run History", exact=True)).to_be_visible()
+    # Streamlit radio renders options as clickable labels (sidebar only; main area also has "Solvers" heading)
+    sb = page.locator('section[data-testid="stSidebar"]')
+    expect(sb.get_by_text("Solvers", exact=True)).to_be_visible()
+    expect(sb.get_by_text("Run History", exact=True)).to_be_visible()
+    expect(page.get_by_role("heading", name="Run Solvers")).to_be_visible()
     expect(page.get_by_text("Configs", exact=True)).to_be_visible()
 
 

@@ -9,6 +9,7 @@ from .loader import (
     load_jobs,
     validate_config,
 )
+from .solver_runs import build_jobs_from_solver_specs, resolve_system_name
 
 __all__ = [
     "ConfigError",
@@ -23,4 +24,6 @@ __all__ = [
     "load_solvers",
     "load_jobs",
     "validate_config",
+    "build_jobs_from_solver_specs",
+    "resolve_system_name",
 ]

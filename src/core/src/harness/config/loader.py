@@ -128,11 +128,16 @@ def load_solvers(config_dir: Path, solvers_root: Path | None = None) -> dict[str
                 entrypoint=str(folder / ep),
                 cwd=cwd,
                 allowed_systems=data.get("allowed_systems", []),
+                default_system=data.get("default_system"),
+                success_criteria=dict(data.get("success_criteria") or {}),
+                timeout_seconds=data.get("timeout_seconds"),
+                baseline=bool(data.get("baseline", False)),
                 parser_config=str(folder / data["parser_config"]) if data.get("parser_config") else None,
                 metrics=metrics,
                 log_names=data.get("log_names", []),
                 extra={k: v for k, v in data.items() if k not in (
                     "name", "version", "entrypoint", "cwd", "allowed_systems",
+                    "default_system", "success_criteria", "timeout_seconds", "baseline",
                     "parser_config", "metrics", "log_names"
                 )},
             )
@@ -172,26 +177,8 @@ def validate_config(
     resources: dict[str, Resource],
     systems: dict[str, System],
     solvers: dict[str, Solver],
-    jobs: dict[str, Job],
 ) -> None:
     """Validate cross-references. Raises ConfigError on first failure."""
-    for job in jobs.values():
-        if job.solver not in solvers:
-            raise ConfigError(
-                f"Job '{job.name}' references unknown solver '{job.solver}'. "
-                f"Available solvers: {sorted(solvers.keys())}"
-            )
-        if job.system not in systems:
-            raise ConfigError(
-                f"Job '{job.name}' references unknown system '{job.system}'. "
-                f"Available systems: {sorted(systems.keys())}"
-            )
-        solver = solvers[job.solver]
-        if solver.allowed_systems and job.system not in solver.allowed_systems:
-            raise ConfigError(
-                f"Job '{job.name}' uses system '{job.system}' but solver '{solver.name}' "
-                f"allows only: {solver.allowed_systems}"
-            )
     for system in systems.values():
         for rname in system.resources:
             if rname not in resources:
@@ -205,14 +192,31 @@ def validate_config(
             raise ConfigError(
                 f"Solver '{solver.name}': entrypoint '{solver.entrypoint}' not found"
             )
+        for sys_name in solver.allowed_systems:
+            if sys_name not in systems:
+                raise ConfigError(
+                    f"Solver '{solver.name}' lists unknown system '{sys_name}' in allowed_systems. "
+                    f"Available systems: {sorted(systems.keys())}"
+                )
+        if solver.default_system is not None:
+            if solver.default_system not in systems:
+                raise ConfigError(
+                    f"Solver '{solver.name}': default_system '{solver.default_system}' "
+                    f"not found. Available systems: {sorted(systems.keys())}"
+                )
+            if solver.allowed_systems and solver.default_system not in solver.allowed_systems:
+                raise ConfigError(
+                    f"Solver '{solver.name}': default_system '{solver.default_system}' "
+                    f"not in allowed_systems {solver.allowed_systems}"
+                )
 
 
 def load_all(
     config_dir: Path,
     solvers_root: Path | None = None,
     validate: bool = True,
-) -> tuple[dict[str, Resource], dict[str, System], dict[str, Solver], dict[str, Job]]:
-    """Load all config entities from a config directory."""
+) -> tuple[dict[str, Resource], dict[str, System], dict[str, Solver]]:
+    """Load resources, systems, and solvers (solver-first; no jobs/)."""
     config_path = Path(config_dir)
     if not config_path.exists():
         raise ConfigError(f"Config directory not found: {config_path}")
@@ -221,7 +225,6 @@ def load_all(
     resources = load_resources(config_path)
     systems = load_systems(config_path)
     solvers = load_solvers(config_path, solvers_root)
-    jobs = load_jobs(config_path)
     if validate:
-        validate_config(resources, systems, solvers, jobs)
-    return resources, systems, solvers, jobs
+        validate_config(resources, systems, solvers)
+    return resources, systems, solvers

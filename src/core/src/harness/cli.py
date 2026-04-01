@@ -6,8 +6,8 @@ import json
 import sys
 from pathlib import Path
 
-from .add_solver import add_solver, add_job
-from .config import ConfigError, load_all, load_resources, load_systems
+from .add_solver import add_solver
+from .config import ConfigError, load_all, load_resources, load_systems, build_jobs_from_solver_specs
 from .runner import RunResult, run_jobs
 from .storage import init_db, store_run, get_runs
 
@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
         "config_dir",
         nargs="?",
         default="configs",
-        help="Path to configuration directory (resources, systems, solvers, jobs)",
+        help="Path to configuration directory (resources, systems, solvers)",
     )
     parser.add_argument(
         "--solvers-dir",
@@ -57,10 +57,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to solvers directory (default: config_dir/solvers)",
     )
     parser.add_argument(
-        "--job",
+        "--solver",
         action="append",
-        dest="jobs",
-        help="Run only these job names (can repeat)",
+        dest="solvers",
+        help="Run only these solver names (can repeat)",
     )
     parser.add_argument(
         "--db",
@@ -95,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--name",
         metavar="NAME",
-        help="Custom solver/job name (optional with --add)",
+        help="Custom solver name (optional with --add)",
     )
     parser.add_argument(
         "-v",
@@ -126,23 +126,27 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
         try:
-            solver_name, job_name = add_solver(
+            solver_name = add_solver(
                 config_dir, solvers_root, args.add, args.system, args.name
             )
-            add_job(config_dir, solver_name, args.system, job_name)
         except ValueError as e:
             print(str(e), file=sys.stderr)
             return 1
-        # Reload and run the new job
         try:
-            resources, systems, solvers, jobs = load_all(config_dir, solvers_root)
+            resources, systems, solvers = load_all(config_dir, solvers_root)
         except ConfigError as e:
             print(f"Configuration error: {e}", file=sys.stderr)
             return 1
-        if job_name not in jobs:
-            print(f"Job '{job_name}' not found after add", file=sys.stderr)
+        if solver_name not in solvers:
+            print(f"Solver '{solver_name}' not found after add", file=sys.stderr)
             return 1
-        job_list = [jobs[job_name]]
+        try:
+            job_list = build_jobs_from_solver_specs(
+                solvers, systems, [{"name": solver_name, "system": None}]
+            )
+        except ConfigError as e:
+            print(str(e), file=sys.stderr)
+            return 1
         results = run_jobs(job_list, solvers, systems)
         if not args.no_store:
             init_db(args.db)
@@ -153,15 +157,18 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if all(r.passed for r in results) else 1
 
     try:
-        resources, systems, solvers, jobs = load_all(config_dir, solvers_root)
+        resources, systems, solvers = load_all(config_dir, solvers_root)
     except ConfigError as e:
         print(f"Configuration error: {e}", file=sys.stderr)
         return 1
 
     if args.list:
-        print("Available jobs:")
-        for j in jobs.values():
-            print(f"  - {j.name} (solver={j.solver}, system={j.system})")
+        print("Available solvers:")
+        for s in sorted(solvers.values(), key=lambda x: x.name):
+            extra = f" default_system={s.default_system}" if s.default_system else ""
+            print(
+                f"  - {s.name}{extra} allowed_systems={s.allowed_systems}"
+            )
         return 0
 
     if args.list_runs:
@@ -187,23 +194,31 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {r['id']}: {r['job_name']} | {status} | {proc} | {r['timestamp']}{err_info}")
         return 0
 
-    job_list = list(jobs.values())
-    if args.jobs:
-        job_list = [j for j in job_list if j.name in args.jobs]
+    solver_names = sorted(solvers.keys())
+    if args.solvers:
+        unknown = [n for n in args.solvers if n not in solvers]
+        if unknown:
+            print(
+                f"Unknown solver(s): {unknown}. Available: {solver_names}",
+                file=sys.stderr,
+            )
+            return 1
+        selected = args.solvers
+    else:
+        selected = solver_names
 
-    if not job_list:
-        if args.jobs:
-            available = sorted(j.name for j in jobs.values())
-            print(
-                f"No matching jobs. Requested: {args.jobs}. Available: {available}",
-                file=sys.stderr,
-            )
-        else:
-            print(
-                f"No jobs to run. Config dir: {config_dir}. "
-                "Check configs/jobs/*.yaml and that jobs reference valid solvers/systems.",
-                file=sys.stderr,
-            )
+    if not selected:
+        print(
+            f"No solvers in {config_dir}/solvers. Add solver folders with solver.yaml.",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        specs = [{"name": n, "system": None} for n in selected]
+        job_list = build_jobs_from_solver_specs(solvers, systems, specs)
+    except ConfigError as e:
+        print(str(e), file=sys.stderr)
         return 1
 
     results = run_jobs(job_list, solvers, systems)
