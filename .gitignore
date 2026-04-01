@@ -43,3 +43,4 @@ __pycache__/
 
 
 docker/slurm_sleep/work/
+*.pdb
