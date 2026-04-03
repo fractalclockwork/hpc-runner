@@ -1,0 +1,14 @@
+REMARK    ALANINE DIPEPTIDE HEAVY ATOMS (ACE-ALA-NME)
+REMARK    Hydrogens added by OpenMM modeller.addHydrogens()
+REMARK    Geometry minimized before MD by simulation.minimizeEnergy()
+ATOM      1  CH3 ACE A   1      -1.824   0.000   0.000  1.00  0.00
+ATOM      2  C   ACE A   1      -0.300   0.000   0.000  1.00  0.00
+ATOM      3  O   ACE A   1       0.000   1.200   0.000  1.00  0.00
+ATOM      4  N   ALA A   2       0.800  -0.900   0.000  1.00  0.00
+ATOM      5  CA  ALA A   2       2.200  -0.900   0.000  1.00  0.00
+ATOM      6  CB  ALA A   2       2.700  -2.300   0.000  1.00  0.00
+ATOM      7  C   ALA A   2       2.900   0.100   1.100  1.00  0.00
+ATOM      8  O   ALA A   2       4.100   0.100   1.100  1.00  0.00
+ATOM      9  N   NME A   3       2.100   1.000   1.900  1.00  0.00
+ATOM     10  CH3 NME A   3       2.700   2.200   2.500  1.00  0.00
+END
