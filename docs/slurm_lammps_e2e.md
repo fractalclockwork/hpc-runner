@@ -147,11 +147,10 @@ The sidebar shows a short **SLURM/LAMMPS mode** note when `RUN_SLURM_E2E=1` is s
 ## Automated API test
 
 ```bash
-export DOCKER_SLURM_CONTAINER=sci_slurm-gpu-worker-1   # if using Docker
 make test-slurm
 ```
 
-`make test-slurm` sets **`RUN_SLURM_E2E=1`**. Export **`DOCKER_SLURM_CONTAINER`** when using Docker.
+`make test-slurm` sets **`RUN_SLURM_E2E=1`** and, when **`DOCKER_SLURM_CONTAINER`** is unset, defaults it to **`sci_slurm-gpu-worker-1`** (typical **sci_slurm** Compose worker). Export a different value if your container name or Compose project prefix differs.
 
 ## Docker Compose (optional)
 

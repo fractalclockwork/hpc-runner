@@ -121,11 +121,12 @@ uv run hpc-runner --add 'echo hello' --system <system_name>
 | Layer | Command / location | Role |
 |-------|-------------------|------|
 | Unit (core) | `make test` or `uv run pytest src/core/tests -q` | Config, parser, storage, runner, CLI, add-solver |
-| API | `uv run pytest src/api/tests` | REST contracts, optional SLURM/LAMMPS when enabled |
-| E2E (UI) | `make e2e` | Playwright against Streamlit ([docs/e2e_quickstart.md](docs/e2e_quickstart.md)) |
-| E2E (Docker) | `make e2e-docker` | UI tests in containerized stack |
+| API | `make test-api` or `uv run pytest src/api/tests` | REST contracts; use `make test-slurm` for gated SLURM/LAMMPS |
+| E2E (UI) | `make test-e2e` | Playwright against Streamlit ([docs/e2e_quickstart.md](docs/e2e_quickstart.md)); `make e2e` is an alias |
+| E2E (Docker) | `make test-e2e-docker` | Streamlit + Playwright in Compose; `make e2e-docker` is an alias |
+| E2E (UI in Docker, local Playwright) | `make test-e2e-docker-ui` | `make e2e-docker-ui` is an alias |
 | Docker images | `make docker-validate` | Build + API health check |
-| SLURM smoke | `make test-slurm` (with `RUN_SLURM_E2E=1`, see [docs/slurm_lammps_e2e.md](docs/slurm_lammps_e2e.md)) | Integration with external Slurm stack |
+| SLURM smoke | `make test-slurm` (sets `RUN_SLURM_E2E=1` and defaults `DOCKER_SLURM_CONTAINER` to `sci_slurm-gpu-worker-1`; override when needed, see [docs/slurm_lammps_e2e.md](docs/slurm_lammps_e2e.md)) | Integration with external Slurm stack |
 
 **Manual smoke:** After `uv run hpc-runner configs --solver echo-solver`, expect a completed run with metrics stored when not using `--no-store`; confirm in the UI or `hpc-runner configs --list-runs`.
 
@@ -183,7 +184,7 @@ make start-services-slurm
 make restart-services-slurm
 ```
 
-Inputs live under `docker/lammps/` (do not modify external `sci_slurm`). See [docs/slurm_lammps_e2e.md](docs/slurm_lammps_e2e.md). Start an external Slurm Docker stack: **`make slurm-up`** (set `SLURM_COMPOSE_DIR` if not using a `./sci_slurm` checkout). **`make test-slurm`** sets `RUN_SLURM_E2E=1` and runs the API test (export `DOCKER_SLURM_CONTAINER` when using Docker). Optional Compose overlay: `docker/docker-compose.slurm.yml` and [docker/README.md](docker/README.md).
+Inputs live under `docker/lammps/` (do not modify external `sci_slurm`). See [docs/slurm_lammps_e2e.md](docs/slurm_lammps_e2e.md). Start an external Slurm Docker stack: **`make slurm-up`** (set `SLURM_COMPOSE_DIR` if not using a `./sci_slurm` checkout). **`make test-slurm`** sets `RUN_SLURM_E2E=1` and defaults **`DOCKER_SLURM_CONTAINER=sci_slurm-gpu-worker-1`** for the pytest process (override if your Compose container name differs). Optional Compose overlay: `docker/docker-compose.slurm.yml` and [docker/README.md](docker/README.md).
 
 ## Docker
 

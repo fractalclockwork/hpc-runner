@@ -10,7 +10,7 @@ Presenter script for **Deliverable 2** (recorded Technical Review, 10–15 minut
 
 - [ ] `uv sync --all-extras --dev` completed
 - [ ] `make test` passes (core unit tests)
-- [ ] Optional: `make e2e` if you will mention Playwright UI automation ([e2e_quickstart.md](e2e_quickstart.md))
+- [ ] Optional: `make test-e2e` if you will mention Playwright UI automation ([e2e_quickstart.md](e2e_quickstart.md))
 - [ ] Before **Segment C**: `make api` and `make ui` running (or `make start-services`), or plan to start them on camera
 - [ ] **SLURM demo (`slurm-sleep-60`):** Stack and env per [slurm_lammps_e2e.md](slurm_lammps_e2e.md) (e.g. `RUN_SLURM_E2E=1`, `make start-services-slurm`, `slurm-lammps.env` if used). Solver uses system **`sci-slurm-lammps`** ([`configs/solvers/slurm-sleep-60/solver.yaml`](../configs/solvers/slurm-sleep-60/solver.yaml))
 - [ ] Decide whether `data/harness.db` already has runs or you will seed with a quick local solver; reserve **`slurm-sleep-60`** for the live start / monitor / **Stop** sequence
@@ -107,9 +107,9 @@ Follow [demo_plan.md](demo_plan.md) **Part 0** in spirit; **this team’s** SLUR
 | 4 | Parse / persist | Automatic; default `data/harness.db` |
 | 5 | UI | **Run History** (expand stdout/stderr for the SLURM run); trends if time |
 | 6 | API | Swagger: e.g. `GET /api/invocations`, `POST /api/invocations/{id}/cancel`, `GET /api/runs/{id}/slurm_status` when E2E enabled |
-| 7 | Tests | **`make test`** in terminal (required by outline §3.2.3); optional mention **`make e2e`** |
+| 7 | Tests | **`make test`** in terminal (required by outline §3.2.3); optional mention **`make test-e2e`** |
 
-**Important:** The in-app **Tests** page is **not** wired in the current Streamlit build ([demo_plan.md](demo_plan.md)). Say clearly that automated tests are run via **`make test`** (and optionally **`make e2e`**).
+**Important:** The in-app **Tests** page is **not** wired in the current Streamlit build ([demo_plan.md](demo_plan.md)). Say clearly that automated tests are run via **`make test`** (and optionally **`make test-e2e`**).
 
 ---
 
@@ -173,7 +173,7 @@ make stop-services
 
 # Optional: UI E2E (Playwright)
 # uv run playwright install chromium   # once
-make e2e
+make test-e2e
 
 # SLURM demo (slurm-sleep-60) — see docs/slurm_lammps_e2e.md
 # export RUN_SLURM_E2E=1
@@ -198,7 +198,7 @@ Canonical assignment matches [technical_review__outline.md](technical_review__ou
 | Speaker | Expertise | Segments | Responsibility |
 |---------|-----------|----------|----------------|
 | **Brent** | DevOps and Documentation | A (co), C (co) | Repo tree, `docs/`, README directory map, `Makefile` / `uv` / services; SLURM env and **`make start-services-slurm`** setup for **`slurm-sleep-60`** |
-| **Kayleen** | Testing and Validation | C (co-lead) | **`make test`** (and optional **`make e2e`**); narrate **start → monitor → Stop** for **`slurm-sleep-60`** as validation proof |
+| **Kayleen** | Testing and Validation | C (co-lead) | **`make test`** (and optional **`make test-e2e`**); narrate **start → monitor → Stop** for **`slurm-sleep-60`** as validation proof |
 | **Shree Patel** | UI and Project Management | A (co), C (co) | Sponsor framing and scope; drive Streamlit **Solvers** / **Run History** for SLURM demo; timekeeping |
 | **Shawn** | Design and Architecture | B, D (optional) | Deep dive (runner/parser/storage + secondary API or UI thread); optional Segment D recap vs [CHANGELOG.md](../CHANGELOG.md) |
 

@@ -35,9 +35,13 @@ testv:
 test-cov:
 	uv run pytest src/core/tests -v --cov=src/core/src/harness --cov-report=term-missing
 
-# SLURM + LAMMPS API integration test (sets RUN_SLURM_E2E=1; export DOCKER_SLURM_CONTAINER when using Docker; see docs/slurm_lammps_e2e.md)
+# SLURM + LAMMPS API integration test (RUN_SLURM_E2E=1; default DOCKER_SLURM_CONTAINER matches sci_slurm compose worker name — override if your project prefix differs; see docs/slurm_lammps_e2e.md)
 test-slurm:
-	RUN_SLURM_E2E=1 uv run pytest src/api/tests/test_slurm_lammps.py -v -m slurm
+	RUN_SLURM_E2E=1 DOCKER_SLURM_CONTAINER=$${DOCKER_SLURM_CONTAINER:-sci_slurm-gpu-worker-1} uv run pytest src/api/tests/test_slurm_lammps.py -v -m slurm
+
+# API tests (REST contracts; SLURM/LAMMPS when RUN_SLURM_E2E=1 — use test-slurm for gated file)
+test-api:
+	uv run pytest src/api/tests -q
 
 # ---------------------------------------------------------------------------
 # Project entrypoints
@@ -143,21 +147,26 @@ docker-ui:
 	docker run --rm -p 8501:8501 -v $(PWD)/data:/app/data dow-workspace uv run streamlit run src/ui/app.py --server.port 8501 --server.address 0.0.0.0
 
 # Run Playwright E2E tests locally (starts Streamlit automatically)
-e2e:
+test-e2e:
 	uv run pytest src/ui/tests/e2e -v --browser chromium
 
 # Run Playwright E2E tests in Docker (Streamlit + Playwright containers)
-e2e-docker:
+test-e2e-docker:
 	docker compose -f docker/docker-compose.e2e.yml up --build --abort-on-container-exit
 
 # Run Streamlit UI in Docker, then run E2E tests against it (local Playwright)
-e2e-docker-ui:
+test-e2e-docker-ui:
 	@cid=$$(docker run -d -p 8501:8501 -v $(PWD)/data:/app/data dow-workspace uv run streamlit run src/ui/app.py --server.port 8501 --server.address 0.0.0.0); \
 	sleep 8; \
 	STREAMLIT_ALREADY_RUNNING=1 uv run pytest src/ui/tests/e2e -v --browser chromium; \
 	exit_code=$$?; \
 	docker rm -f $$cid 2>/dev/null; \
 	exit $$exit_code
+
+# Aliases (deprecated names; prefer test-e2e*)
+e2e: test-e2e
+e2e-docker: test-e2e-docker
+e2e-docker-ui: test-e2e-docker-ui
 
 # Validate Docker images (build + API health check)
 docker-validate:
@@ -236,7 +245,7 @@ clear-db:
 # Meta
 # ---------------------------------------------------------------------------
 
-.PHONY: stop-services start-services start-services-slurm restart-services restart-services-slurm test-slurm slurm-up slurm-down slurm-ps
+.PHONY: sync resync test test-core testv test-cov test-api test-slurm test-e2e test-e2e-docker test-e2e-docker-ui e2e e2e-docker e2e-docker-ui runner api ui stop-services start-services start-services-slurm restart-services restart-services-slurm slurm-up slurm-down slurm-ps docker-build docker-run docker-test docker-build-playwright docker-up docker-ui docker-validate tree list lint fix clean purge clear-db default
 
 # Default target
 default: sync
