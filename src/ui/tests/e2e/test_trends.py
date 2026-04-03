@@ -11,7 +11,7 @@ from playwright.sync_api import expect
 def _go_to_trends(page, streamlit_url: str) -> None:
     """Navigate to the Long-Term Trends page and wait for the testid marker."""
     page.goto(streamlit_url)
-    page.get_by_text("Long-Term Trends", exact=True).click()
+    page.locator('section[data-testid="stSidebar"]').get_by_text("Long-Term Trends", exact=True).click()
     expect(page.get_by_test_id("page-long-term-trends")).to_be_attached()
     # page-long-term-trends is emitted at the top; charts and sidebar filters render later.
     # Wait so _has_run_data and empty-state checks are not flaky on slower runs.
@@ -32,7 +32,8 @@ def _has_run_data(page) -> bool:
 def test_long_term_trends_nav_item_visible(page, streamlit_url, streamlit_process):
     """'Long-Term Trends' option is present in the sidebar navigation."""
     page.goto(streamlit_url)
-    expect(page.get_by_text("Long-Term Trends", exact=True)).to_be_visible()
+    sb = page.locator('section[data-testid="stSidebar"]')
+    expect(sb.get_by_text("Long-Term Trends", exact=True)).to_be_visible()
 
 
 def test_long_term_trends_page_loads(page, streamlit_url, streamlit_process):
@@ -65,11 +66,12 @@ def test_runtime_trend_section_present(page, streamlit_url, streamlit_process):
     if not _has_run_data(page):
         pytest.skip("No run data in DB — runtime trend section not rendered")
     expect(page.get_by_test_id("section-runtime-trend")).to_be_attached()
-    chart_title = page.get_by_text("Runtime Trend — Wall-Clock Time per Run")
+    # Plotly titles live in SVG tspans that Playwright treats as not visible — assert chart widget or empty-state text
+    chart_first = page.locator('[data-testid="stPlotlyChart"]').first
     no_runs = page.get_by_text("No run data available yet")
     no_runtime = page.get_by_text("No runtime data recorded")
     unexpected = page.get_by_text("Unexpected data format")
-    expect(chart_title.or_(no_runs).or_(no_runtime).or_(unexpected)).to_be_visible(timeout=10000)
+    expect(chart_first.or_(no_runs).or_(no_runtime).or_(unexpected)).to_be_visible(timeout=10000)
 
 
 def test_runtime_trend_chart_or_empty_message(page, streamlit_url, streamlit_process):
@@ -106,11 +108,10 @@ def test_mlups_trend_section_present(page, streamlit_url, streamlit_process):
     if not _has_run_data(page):
         pytest.skip("No run data in DB — MLUPS trend section not rendered")
     expect(page.get_by_test_id("section-mlups-trend")).to_be_attached()
-    # No st.subheader for MLUPS — title is on the Plotly figure, or st.info if no MLUPS rows
-    chart_title = page.get_by_text("Throughput Trend — MLUPS per Run")
+    chart_first = page.locator('[data-testid="stPlotlyChart"]').first
     no_mlups = page.get_by_text("No MLUPS data available")
     no_vals = page.get_by_text("No MLUPS values recorded")
-    expect(chart_title.or_(no_mlups).or_(no_vals)).to_be_visible(timeout=10000)
+    expect(chart_first.or_(no_mlups).or_(no_vals)).to_be_visible(timeout=10000)
 
 
 def test_mlups_trend_chart_or_empty_message(page, streamlit_url, streamlit_process):
