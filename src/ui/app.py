@@ -58,16 +58,12 @@ st.set_page_config(layout="wide", page_title="HPC Regression Platform")
 # Session state initialisation
 # ---------------------------------------------------------------------------
 if "page" not in st.session_state:
-    st.session_state.page = "Solvers"
+    st.session_state.page = "Home"
 if st.session_state.page == "Test Results":
     st.session_state.page = "Tests"
 if st.session_state.page == "Run Solvers":
     st.session_state.page = "Solvers"
-if st.session_state.page == "Home":
-    st.session_state.page = "Solvers"
 if st.session_state.get("page_radio") == "Run Solvers":
-    st.session_state.page_radio = "Solvers"
-if st.session_state.get("page_radio") == "Home":
     st.session_state.page_radio = "Solvers"
 
 if "test_result" not in st.session_state:
@@ -155,7 +151,7 @@ st.markdown(
 # ---------------------------------------------------------------------------
 # Sidebar navigation
 # ---------------------------------------------------------------------------
-PAGES = ["Solvers", "Run History", "Individual Trends", "Long-Term Trends", "Configs"]
+PAGES = ["Home", "Solvers", "Run History", "Individual Trends", "Long-Term Trends", "Configs"]
 
 st.sidebar.markdown(
     '<span data-testid="nav-sidebar" style="display:none" aria-hidden="true"></span>',
@@ -191,12 +187,12 @@ selected_page = st.sidebar.radio(
 )
 
 # ---------------------------------------------------------------------------
-# Page: Solvers (landing: overview + run solvers)
+# Page: Home (welcome / platform overview)
 # ---------------------------------------------------------------------------
 
-def page_solvers() -> None:
-    _testid("page-solvers")
-    st.header("Solvers")
+def page_home() -> None:
+    _testid("page-home")
+    st.header("Welcome to the HPC Regression Platform")
 
     st.markdown(
         """
@@ -210,14 +206,18 @@ def page_solvers() -> None:
         """
     )
 
-    st.markdown("")
-    st.markdown(
-        "Launch and monitor jobs in the **Run Solvers** section below."
-    )
+    st.markdown("Use the sidebar to navigate to **Solvers**, **Run History**, and **Trends**.")
 
-    st.divider()
+
+# ---------------------------------------------------------------------------
+# Page: Solvers (overview + run solvers)
+# ---------------------------------------------------------------------------
+
+def page_solvers() -> None:
+    _testid("page-solvers")
+    st.header("Solvers")
+
     _testid("page-run-solvers")
-    st.header("Run Solvers")
     _render_run_solvers_panel()
 
 
@@ -777,41 +777,38 @@ def _run_solvers_active_runs_live_fragment() -> None:
     if not rows:
         return
 
-    st.caption(
-        "Live **execution_status** (summary + JSON) auto-refreshes below each row. "
-        "When SLURM job ids exist, use **Scheduler output** for a one-off raw query; **Stop** cancels the invocation."
-    )
     for rec in rows:
         iid = rec.get("invocation_id", "")
         solver = rec.get("solver_name") or "(unknown)"
-        labels = rec.get("run_labels") or rec.get("job_names") or []
-        jobs_label = ", ".join(labels) if labels else "—"
-        jids = ", ".join(rec.get("scheduler_job_ids") or []) or "—"
-        bname = rec.get("batch_name") or "—"
-        jc = rec.get("jobs_completed", 0)
-        jt = rec.get("jobs_total", 0)
+        jids = ", ".join(rec.get("scheduler_job_ids") or []) or None
+        bname = rec.get("batch_name") or None
+        jc = rec.get("jobs_completed") or 0
+        jt = rec.get("jobs_total") or 0
         ex = rec.get("execution") or {}
-        backend = ex.get("backend") or "—"
-        loc = ex.get("local") or {}
-        pid_info = f"pid {loc.get('pid')} alive={loc.get('alive')}" if loc else "—"
+        backend = ex.get("backend") or "local"
+        status = rec.get("status") or "running"
         has_sched_row = _invocation_has_scheduler_jobs(rec)
         sec_lbl_row, sec_hlp_row = _compact_secondary_status_label_help(has_sched_row)
-        st.markdown(
-            f"**{solver}** · `{iid[:12]}…` · *{rec.get('status')}* · batch *{bname}* · "
-            f"**{jc}/{jt}** · backend **{backend}** · local: `{pid_info}` · scheduler ids: `{jids}`  \n"
-            f"<small>Runs: {jobs_label}</small>",
-            unsafe_allow_html=True,
-        )
-        if has_sched_row:
-            b_run_l, b_run_m, _ = st.columns([1, 1, 8])
-            with b_run_l:
-                if st.button(sec_lbl_row, key=f"run-solvers-slurm-active-{iid}", help=sec_hlp_row):
-                    _run_secondary_invocation_status(iid, has_scheduler=has_sched_row)
-            stop_col = b_run_m
-        else:
-            stop_col, _ = st.columns([1, 11])
-        with stop_col:
-            if st.button("Stop", key=f"run-solvers-cancel-{iid}"):
+
+        # ── Card header: solver name + id chip + status + Stop ──
+        col_title, col_stop = st.columns([8, 1])
+        with col_title:
+            meta_parts = [f"`{backend}`"]
+            if bname:
+                meta_parts.append(f"batch: *{bname}*")
+            if jids:
+                meta_parts.append(f"scheduler ids: `{jids}`")
+            st.markdown(
+                f"**{solver}**"
+                f"&nbsp;<code style='font-size:0.75rem;padding:2px 6px;"
+                f"background:#e2e8f0;border-radius:4px'>{iid[:10]}…</code>"
+                f"&nbsp;<span style='color:gray;font-size:0.85rem'>{status}</span>",
+                unsafe_allow_html=True,
+            )
+            st.caption(" · ".join(meta_parts))
+        with col_stop:
+            st.markdown("<div style='padding-top:0.35rem'></div>", unsafe_allow_html=True)
+            if st.button("⏹ Stop", key=f"run-solvers-cancel-{iid}", type="secondary"):
                 try:
                     cresp = requests.post(
                         API_URL + f"/api/invocations/{iid}/cancel",
@@ -821,17 +818,36 @@ def _run_solvers_active_runs_live_fragment() -> None:
                 except requests.exceptions.RequestException as ex:
                     st.error(str(ex))
 
-        try:
-            er = requests.get(
-                API_URL + f"/api/invocations/{iid}/execution_status",
-                timeout=90,
+        # ── Progress bar ──
+        progress_frac = (jc / jt) if jt > 0 else 0.0
+        prog_col, count_col = st.columns([7, 1])
+        with prog_col:
+            st.progress(progress_frac)
+        with count_col:
+            st.markdown(
+                f"<div style='text-align:right;padding-top:0.25rem'><b>{jc}/{jt}</b> jobs</div>",
+                unsafe_allow_html=True,
             )
-            if er.ok:
-                _render_invocation_execution_payload(er.json())
-            else:
-                st.error(er.text)
-        except requests.exceptions.RequestException as ex:
-            st.error(str(ex))
+
+        # ── Scheduler output button + collapsible execution details ──
+        if has_sched_row:
+            if st.button(sec_lbl_row, key=f"run-solvers-slurm-active-{iid}", help=sec_hlp_row):
+                _run_secondary_invocation_status(iid, has_scheduler=has_sched_row)
+
+        with st.expander("Details", expanded=False):
+            try:
+                er = requests.get(
+                    API_URL + f"/api/invocations/{iid}/execution_status",
+                    timeout=90,
+                )
+                if er.ok:
+                    _render_invocation_execution_payload(er.json())
+                else:
+                    st.error(er.text)
+            except requests.exceptions.RequestException as ex:
+                st.error(str(ex))
+
+        st.divider()
 
 
 @st.fragment(run_every=timedelta(seconds=4))
@@ -955,9 +971,9 @@ def _render_run_solvers_panel() -> None:
         merged["last_passed"] = "—"
 
     _testid("run-solvers-overview")
-    st.subheader("Solver overview")
-    st.caption("Configured solvers plus aggregates from stored runs (when the database has history).")
-    st.dataframe(merged, width="stretch", hide_index=True)
+    with st.expander("Solver overview", expanded=False):
+        st.caption("Configured solvers plus aggregates from stored runs (when the database has history).")
+        st.dataframe(merged, width="stretch", hide_index=True)
 
     st.session_state.setdefault("run_solvers_last_invocation_by_solver", {})
     if "_pending_run_solvers_monitor_invocation_id" in st.session_state:
@@ -989,7 +1005,7 @@ def _render_run_solvers_panel() -> None:
     if active_rows:
         _run_solvers_active_runs_live_fragment()
     else:
-        st.info("No queued or running background invocations.")
+        st.caption("_No active runs._")
 
     active_rows = st.session_state.get("run_solvers_active_rows", [])
     solver_names = sorted(solver_by_name.keys())
@@ -1244,10 +1260,14 @@ def _render_run_solvers_panel() -> None:
             else:
                 _display_last_run_compact(entry, run_id_key_prefix=f"run-solvers-lr-{sn}")
 
-    for i, sn in enumerate(solver_names):
-        if i > 0:
-            st.divider()
-        render_solver_card(sn, active_by_solver.get(sn, []))
+    tab_labels = [
+        f"🔵 {sn}" if sn in active_by_solver else sn
+        for sn in solver_names
+    ]
+    solver_tabs = st.tabs(tab_labels)
+    for tab, sn in zip(solver_tabs, solver_names):
+        with tab:
+            render_solver_card(sn, active_by_solver.get(sn, []))
 
     any_paste = any((st.session_state.get(f"run-solvers-mon-id-{sn}") or "").strip() for sn in solver_names)
     if any_paste:
@@ -1990,7 +2010,9 @@ def multi_solver_heatmap(
 # Router
 # ---------------------------------------------------------------------------
 
-if st.session_state.page == "Solvers":
+if st.session_state.page == "Home":
+    page_home()
+elif st.session_state.page == "Solvers":
     page_solvers()
 elif st.session_state.page == "Individual Trends":
     page_individual_trends()
