@@ -215,8 +215,7 @@ def page_home() -> None:
 
 def page_solvers() -> None:
     _testid("page-solvers")
-    st.header("Solvers")
-
+    st.header("Solvers", help = "Every solver is listed below. Use **Batch run** to start several at once, or use each section’s **Run** for a single solver. Runs are always **queued in the background** (invocation ids); **Active runs** auto-refreshes live **execution_status**. **Quick status** / **Scheduler output** are for pasted ids or raw SLURM output; **Last run** shows stored results.")
     _testid("page-run-solvers")
     _render_run_solvers_panel()
 
@@ -847,8 +846,6 @@ def _run_solvers_active_runs_live_fragment() -> None:
             except requests.exceptions.RequestException as ex:
                 st.error(str(ex))
 
-        st.divider()
-
 
 @st.fragment(run_every=timedelta(seconds=4))
 def _run_solvers_pasted_ids_live_fragment() -> None:
@@ -886,15 +883,6 @@ def _run_solvers_advanced_invocation_live_fragment() -> None:
 
 def _render_run_solvers_panel() -> None:
     st.session_state.pop("run_solver_results", None)
-    st.write(
-        "Every solver is listed below. Use **Batch run** to start several at once, or use each section’s **Run** for a "
-        "single solver. Runs are always **queued in the background** (invocation ids); **Active runs** auto-refreshes "
-        "live **execution_status**. **Quick status** / **Scheduler output** are for pasted ids or raw SLURM output; "
-        "**Last run** shows stored results."
-    )
-    st.caption(
-        "**Last run** uses the same data as Run History. A later **Runs** hub could combine launching and history in one place."
-    )
 
     solvers: list[dict[str, Any]] = []
     try:
@@ -984,30 +972,6 @@ def _render_run_solvers_panel() -> None:
         st.session_state.run_solvers_monitor_invocation_id = ""
     st.session_state.setdefault("last_invocation_id", "")
 
-    h_active, h_refresh = st.columns([5, 1])
-    with h_active:
-        st.subheader("Active runs")
-    with h_refresh:
-        if st.button("Refresh", key="run-solvers-refresh-active", help="Reload the active invocations list"):
-            st.rerun()
-    _testid("run-solvers-active-runs")
-    st.caption(
-        "Each background solver has its own invocation (cancel independently). **Active runs** polls `GET /execution_status` "
-        "about every 4s while something is active, and triggers a full page refresh when the active set changes so cards stay "
-        "in sync. **Scheduler output** appears only when SLURM job ids exist (raw `GET /slurm_status`)."
-    )
-
-    active_rows = _fetch_active_invocations_safe()
-    sig0 = _active_invocation_sig(active_rows)
-    st.session_state["run_solvers_active_rows"] = active_rows
-    st.session_state["_run_solvers_active_sig"] = sig0
-
-    if active_rows:
-        _run_solvers_active_runs_live_fragment()
-    else:
-        st.caption("_No active runs._")
-
-    active_rows = st.session_state.get("run_solvers_active_rows", [])
     solver_names = sorted(solver_by_name.keys())
 
     def _batch_select_all_cb() -> None:
@@ -1018,10 +982,7 @@ def _render_run_solvers_panel() -> None:
         for n in solver_names:
             st.session_state[f"run-solvers-include-{n}"] = False
 
-    st.subheader("Batch run")
-    st.caption(
-        "Check the solvers to run together, then **Run batch**. Below: each solver has **Run**, then **Invocation** or **Last run**."
-    )
+    st.subheader("Batch run", help = "Check the solvers to run together, then **Run batch**. Below: each solver has **Run**, then **Invocation** or **Last run**.")
     b_row1 = st.columns([4, 1, 1])
     with b_row1[0]:
         batch_name_input = st.text_input(
@@ -1029,6 +990,7 @@ def _render_run_solvers_panel() -> None:
             value="",
             key="run-solvers-batch-name",
             help="Optional label stored with this run batch (same as API field batch_name).",
+            placeholder="Enter an optional batch name here"
         )
     with b_row1[1]:
         st.button(
@@ -1076,12 +1038,34 @@ def _render_run_solvers_panel() -> None:
 
     with st.expander("How manual status works", expanded=False):
         st.markdown(
-            "**Active runs** (above) is the canonical live monitor: full `execution_status` (~4s) plus **Stop**. "
+            "**Active runs** (immediately below) is the canonical live monitor: full `execution_status` (~4s) plus **Stop**. "
             "When the job has scheduler ids, **Scheduler output** there runs one-off `slurm_status`. "
-            "Per-solver **Invocation** (below): active jobs point you to **Active runs**; paste a *different* id for "
+            "Per-solver **Invocation** (below Active runs): active jobs point you to **Active runs**; paste a *different* id for "
             "**Quick status** / **Scheduler output** or **Cancel**."
         )
+    st.divider()
 
+    h_active, h_refresh = st.columns([5, 1])
+    with h_active:
+        st.subheader("Active runs", help = "Each background solver has its own invocation (cancel independently). **Active runs** polls `GET /execution_status` about every 4s while something is active, and triggers a full page refresh when the active set changes so cards stay in sync. **Scheduler output** appears only when SLURM job ids exist (raw `GET /slurm_status`).")
+    with h_refresh:
+        if st.button("Refresh", key="run-solvers-refresh-active", help="Reload the active invocations list"):
+            st.rerun()
+    _testid("run-solvers-active-runs")
+
+    active_rows = _fetch_active_invocations_safe()
+    sig0 = _active_invocation_sig(active_rows)
+    st.session_state["run_solvers_active_rows"] = active_rows
+    st.session_state["_run_solvers_active_sig"] = sig0
+
+    if active_rows:
+        _run_solvers_active_runs_live_fragment()
+    else:
+        st.caption("_No active runs._")
+
+    st.divider()
+
+    active_rows = st.session_state.get("run_solvers_active_rows", [])
     st.subheader("Solvers")
 
     active_by_solver: dict[str, list[dict[str, Any]]] = {}
@@ -1126,13 +1110,13 @@ def _render_run_solvers_panel() -> None:
 
         view = st.radio(
             "Panel",
-            ["Invocation", "Last run"],
+            ["Last run", "Enter Invocation ID"],
             horizontal=True,
             key=f"run-solvers-tab-{sn}",
             label_visibility="collapsed",
         )
 
-        if view == "Invocation":
+        if view == "Enter Invocation ID":
             canonical_active_iid = ""
             if active_for_sn:
                 if len(active_for_sn) == 1:
