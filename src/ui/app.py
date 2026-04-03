@@ -1470,9 +1470,9 @@ def page_long_term_trends() -> None:
     )
     df_filtered = df_all[mask]
 
-    col1, col2, col3 = st.columns(3)
+    tab_heatmap, tab_runtime, tab_mlups = st.tabs(["Heatmap", "Runtime Trend", "MLUPS Trend"])
 
-    with col1:
+    with tab_heatmap:
         # --- Heatmap -----------------------------------------------------------
         # st.subheader("Metrics Heatmap")
 
@@ -1641,13 +1641,13 @@ def page_long_term_trends() -> None:
                     df_filtered[["timestamp", "solver_name", "system_name", "job_name", "runtime_seconds", "passed"]],
                     width='stretch',
             )
-    with col2:
+    with tab_runtime:
         # --- Runtime trend chart -----------------------------------------------
         _testid("section-runtime-trend")
         # st.subheader("Runtime (wall-clock) Trend")
         render_runtime_trend(df_filtered, st.session_state)
 
-    with col3:
+    with tab_mlups:
         # --- MLUPS trend chart -------------------------------------------------
         _testid("section-mlups-trend")
         # st.subheader("Throughput Trend (MLUPS)")
