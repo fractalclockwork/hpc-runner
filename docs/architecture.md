@@ -1,10 +1,14 @@
 # System Architecture
 
+Style guide, repository directory map, and sponsor-facing overview: [README.md](../README.md).
+
 ## 1. High-Level Overview
 
-- **Purpose**: Execution-agnostic harness for running solver jobs (HPC regression testing)
+- **Purpose**: Execution-agnostic harness for HPC regression testing (solver runs with stored metrics and baselines).
+- **Config model (solver-first)**: On disk, only **`configs/resources/`**, **`configs/systems/`**, and **`configs/solvers/`**. There is **no** `configs/jobs/` tree—runnables are expanded from each solver’s `allowed_systems` and `default_system`; the harness uses **`{solver}@{system}`** as the run identity in storage and APIs.
 - **Entry points**: CLI (`hpc-runner`), REST API (FastAPI), Streamlit UI
 - **Key principle**: Solver scripts are black-box **subprocesses**. The harness does **not** embed SLURM/MPI APIs; solver entrypoints may call schedulers, `docker exec`, etc. (e.g. [`configs/solvers/lammps-slurm/run.sh`](../configs/solvers/lammps-slurm/run.sh)).
+- **Data flow (end-to-end)**: CLI → Runner → Parser → Storage → API → UI (Streamlit uses the REST API over HTTP).
 
 ## 2. Component Architecture
 
@@ -30,7 +34,7 @@ flowchart TB
         Storage[Storage]
     end
     subgraph data [Data]
-        YAML[configs/ resources systems jobs solvers]
+        YAML["configs: resources, systems, solvers"]
         DB[(data/harness.db)]
     end
     subgraph external [External]
@@ -59,19 +63,23 @@ flowchart TB
 | Resource | `src/core/src/harness/config/schemas.py` | CPU/GPU, memory, node definitions |
 | System | `src/core/src/harness/config/schemas.py` | Resource bundle, env vars, constraints |
 | Solver | `src/core/src/harness/config/schemas.py` | Entrypoint, parser_config, allowed_systems |
-| Job | `src/core/src/harness/config/schemas.py` | Solver+system pairing, success_criteria |
+| Job | `src/core/src/harness/config/schemas.py` | Runtime pairing (solver+system); expanded from solver-first config—not a separate `configs/jobs/` file |
 | RunResult | `src/core/src/harness/runner.py` | job_name, returncode, metrics, passed, processor, validation_errors, batch fields, optional `scheduler_backend`, `scheduler_job_ids`, `submit_container` (from SLURM smoke scripts) |
 | InvocationControl | `src/core/src/harness/runner.py` | Background runs: cancel event, subprocess handle, streamed SLURM job ids |
 
 ## 4. Config Structure
 
+The platform is **solver-first**: `load_all()` loads **resources**, **systems**, and **solvers** only. For each solver, the runner builds concrete run targets from **`allowed_systems`** and **`default_system`**, producing identities **`{solver}@{system}`**. There is **no** user-maintained `configs/jobs/` directory in this repository.
+
+The loader still exposes `load_jobs()` for a legacy `configs/jobs/` layout if such a directory exists elsewhere; **default paths and this repo use solver-first YAML only.**
+
 ```
 configs/
 ├── resources/     # Resource definitions (cpus, gpus, memory)
 ├── systems/       # System definitions (resources, env)
-└── solvers/       # Solver packages (lives inside configs)
+└── solvers/       # Solver packages
     └── <solver-name>/
-        ├── solver.yaml       # Metadata, entrypoint, parser_config path
+        ├── solver.yaml       # Metadata, entrypoint, allowed_systems, default_system, parser_config path
         ├── run.sh or run.py  # Executed as black-box
         └── parser_config.yaml  # Optional: regex patterns for metrics
 ```
@@ -228,13 +236,17 @@ Table **`runs`**: id, job_name, solver_name, system_name, returncode, passed, ru
 
 ```
 e2e_testing/
-├── configs/
+├── configs/           # resources/, systems/, solvers/ (YAML; solver-first)
 ├── data/              # harness.db (gitignored)
-├── docker/
+├── docker/            # compose, lammps/, slurm_sleep/, overlays (see docker/README.md)
+├── docs/              # architecture, user guide, E2E/SLURM guides
+├── scripts/           # Makefile helpers (services, docker validation)
 ├── src/
-│   ├── core/          # harness
-│   ├── api/           # basic_restapi
-│   └── ui/            # Streamlit
-├── pyproject.toml
-└── Makefile
+│   ├── core/          # harness package (src/harness/, tests/)
+│   ├── api/           # basic_restapi (src/basic_restapi/, tests/)
+│   └── ui/            # Streamlit app, tests/e2e/ (Playwright)
+├── .github/workflows/ # CI
+├── pyproject.toml     # uv workspace
+├── Makefile
+└── CHANGELOG.md
 ```

@@ -1,24 +1,69 @@
 # Demo Plan
 
-This document guides the sponsor through a feature demo of the **HPC Regression Platform**, adding a new solver, and collecting deliverables after running jobs on their own systems.
+This document supports **Flash Demo #3: The Pre-Flight Checklist** (in-class live demo) and continues to guide the **project sponsor** through a deeper feature walkthrough: running the platform, adding a solver, and collecting deliverables after jobs run on sponsor systems.
+
+For the recorded **Technical Review** (longer format), use [technical_review_plan.md](technical_review_plan.md).
 
 ---
 
-## This Week's Demo Focus
+## Flash Demo #3 — Course requirements (MSSE)
 
-Flash Demo #2 showcases the End-to-End MVP smoke test and these focus areas:
+**Format:** Live screen share — **4:00 minutes presentation** (strict hard stop) + **2:00 minutes Q&A** (six-minute block total).
 
-- **Current UI functionality** — Streamlit navigation: **Solvers** (landing copy plus **Run Solvers**: batch name, per-solver system, foreground **Run** vs background queue, **Active runs** with live **execution status**, **Stop**/cancel, optional SLURM scheduler view), **Run History** (filters, batch grouping, per-run **Set baseline**), **Individual Trends** (per-solver metric line charts with optional baseline line), **Long-Term Trends** (multi-solver views, heatmaps, baseline-relative coloring, manual baseline overrides), **Configs**. The in-app **Tests** page is not wired in the current build—run `make test` or `pytest` from the repo for unit/e2e checks. See [design.md](design.md) for UI goals and [src/ui/app.py](../src/ui/app.py) for implementation.
-- **Solver-first runs and invocations** — Runs are built from **solver + system** (no `configs/jobs/` tree). Harness display names follow **`{solver}@{system}`**. Background runs return **invocation ids**; the API exposes listing, **execution status**, unified **cancel** (local subprocess or **scancel** when SLURM is available), and optional **`slurm_status`** when SLURM E2E is enabled. See [CHANGELOG.md](../CHANGELOG.md) and [src/api/README.md](../src/api/README.md).
-- **Runner + parsing stability** — Execution ([runner.py](../src/core/src/harness/runner.py)), metric extraction and validation ([parser/parser.py](../src/core/src/harness/parser/parser.py)), CLI ([cli.py](../src/core/src/harness/cli.py)). Optional **`HARNESS_SOLVER_WALL_SECONDS`** in solver output refines **`runtime_seconds`** (with **sacct** fallback for SLURM); see the user guide and [slurm_lammps_e2e.md](slurm_lammps_e2e.md).
-- **Architecture direction after Milestone 1** — We're past Milestone Review I; End-to-End MVP Assembly is in progress. See [architecture.md](architecture.md) for components (Config, Runner, Parser, Storage), data flow, and API.
-- **Config model** — Declarative YAML under **resources**, **systems**, and **solvers** only. Core types: Resource, System, Solver, MetricSpec in [schemas.py](../src/core/src/harness/config/schemas.py); runtime pairings are materialized in code (internal **Job**-like records), not as separate job config files. Storage schema: [architecture.md](architecture.md) §8 (`runs` including `validation_errors`, batch fields, baseline flags).
+**Goal:** *Progress, not perfection.* Show momentum: code, data, architecture, or an honest blocker. If you show a blocker, state what it is and your timeline to resolve it. Be explicit about **what you plan to share with the project sponsor** (for this team: live harness + UI/API, and sponsor result handoff as in **Part 3** below).
+
+### Rules and logistics
+
+| Rule | Detail |
+|------|--------|
+| **No slides** | Everything must be **live** (IDE, terminal, schema, console, UI) except **one single slide** allowed for an **architecture diagram** if needed. |
+| **Roles** | **One driver** (screen share), **one narrator** (talking). |
+| **Audience** | Peers complete a **post-demo feedback survey** (Canvas); meaningful comments per team are part of audience expectations. |
+
+### Choose your path (map to this project)
+
+| Path | When | What to show live (examples for this repo) |
+|------|------|---------------------------------------------|
+| **A — Full access** | Real stack works on your machine | `make test`, `uv run hpc-runner configs --solver echo-solver`, Streamlit **Solvers** + **Run History**, or a real error/trace you are debugging. |
+| **B — Partial access** | Some pieces missing (e.g. no sponsor HPC yet) | Same harness against **mock/dev solvers** and `data/harness.db`; or Swagger **`/docs`** + one CLI run; public/sample configs only. |
+| **C — Blocked** | Waiting on access, legal, or environment | **One architecture slide** from [architecture.md](architecture.md) + repo tree in IDE; mock **solver YAML** / **parser_config**; clear blocker statement and **timeline**. |
+
+### Grading reminders (course)
+
+- **Presenters (pass/fail):** ~4 minutes of **technical substance** (code/architecture/data), not marketing; **show** more than **tell**.
+- **Audience (pass/fail):** Survey submitted with **meaningful feedback** for peers.
+
+### Suggested 4-minute live script (Path A or B — adjust as needed)
+
+Practice with a timer. Hard stop at **4:00**.
+
+| Time | Driver shows | Narrator says |
+|------|----------------|---------------|
+| 0:00–0:25 | Repo root in terminal or IDE sidebar | Project one-liner: solver-first HPC regression harness; sponsor will share run DB + configs (**Part 3**). |
+| 0:25–1:15 | Terminal: `make test` (or quick `pytest` line) then `uv run hpc-runner configs --list` | Tests green; configs load; we run black-box solvers, parse metrics, store SQLite. |
+| 1:15–2:45 | Terminal: `uv run hpc-runner configs --solver echo-solver` **or** `make api` + `make ui` → **Solvers** → **Batch run** or per-solver **Run**; **Active runs** / **Stop**; then **Run History** row expand | End-to-end smoke: run → persist → UI. UI queues **background invocations** (ids); API also supports sync `POST /api/run_solvers` for automation. |
+| 2:45–3:45 | Swagger `http://localhost:8000/docs` — `GET /api/runs` **or** IDE peek at [runner.py](../src/core/src/harness/runner.py) / [parser/parser.py](../src/core/src/harness/parser/parser.py) | API for automation; or “how execution + parsing works” in two sentences. |
+| 3:45–4:00 | Optional: single architecture slide **or** `configs/solvers/` YAML | Data flow: CLI/API → runner → parser → `harness.db` → API → Streamlit. Stop talking at 4:00. |
+
+**Path C:** Spend ~2 minutes on architecture + mock config schema, ~1.5 minutes on blocker/timeline, ~30s on sponsor plan.
+
+---
+
+## Platform focus (Flash Demo #3 and sponsor deep-dive)
+
+Use this list to decide what to emphasize live vs what to defer to **Part 1** / **Part 0**.
+
+- **Current UI functionality** — Streamlit sidebar: **Home**, **Solvers**, **Run History**, **Individual Trends**, **Long-Term Trends**, **Configs**. On **Solvers**: optional batch name, **Batch run** or per-solver **Run**; runs are **queued in the background** (invocation ids); **Active runs** with **execution_status** and **Stop** (cancel); **Quick status** / **Scheduler output** for pasted ids or SLURM output; **Last run** for stored results. Other pages: **Run History** (filters, batch grouping, **Set baseline**), **Individual Trends** (line chart + optional baseline via API), **Long-Term Trends** (heatmaps, baseline-relative views, manual overrides where implemented), **Configs** (YAML validate/save). The in-app **Tests** page is **not** in the sidebar in the current build—run `make test` or `pytest` from the repo. See [design.md](design.md) and [src/ui/app.py](../src/ui/app.py).
+- **Solver-first runs and invocations** — Runs from **solver + system** (no `configs/jobs/` tree). Display identity **`{solver}@{system}`**. API: invocation listing, **execution status**, unified **cancel** (local or **scancel** when SLURM applies), optional **`slurm_status`**. See [CHANGELOG.md](../CHANGELOG.md) and [src/api/README.md](../src/api/README.md).
+- **Runner + parsing** — [runner.py](../src/core/src/harness/runner.py), [parser/parser.py](../src/core/src/harness/parser/parser.py), [cli.py](../src/core/src/harness/cli.py). Optional **`HARNESS_SOLVER_WALL_SECONDS`** refines **`runtime_seconds`** (**sacct** fallback on SLURM): [user_guide.md](user_guide.md), [slurm_lammps_e2e.md](slurm_lammps_e2e.md).
+- **Architecture** — [architecture.md](architecture.md): Config, Runner, Parser, Storage, API, UI; data flow diagram.
+- **Config model** — YAML under **resources**, **systems**, **solvers** only; types in [schemas.py](../src/core/src/harness/config/schemas.py). Storage: [architecture.md](architecture.md) §8 (`runs`, validation, batch, baseline fields).
 
 ---
 
 ## Part 0: End-to-End MVP Smoke Test
 
-One ordered walkthrough to validate the full workflow. For detailed commands and UI tables, see Part 1 and Part 2.
+One ordered walkthrough to validate the full workflow (sponsor rehearsal, integration testing, or **Technical Review**). For a **Flash Demo #3** slot, use the **4-minute script** above instead of all eight steps. For detailed commands and UI tables, see Part 1 and Part 2.
 
 | Step | Action | How |
 |------|--------|-----|
@@ -74,7 +119,7 @@ Open http://localhost:8501. Walk through each page:
 
 | Page | What to do | What you see |
 |------|------------|--------------|
-| **Solvers** | Read the overview; scroll to **Run Solvers** | Optional **batch name**; include solvers in a **Run batch** or use per-row **Run** / **Invocation** (background). **Active runs** lists queued/running invocations with refresh, **execution status**, **Stop** (cancel), and when SLURM job ids exist, optional **Scheduler output** |
+| **Solvers** | Read the overview; use **Batch run** or per-solver **Run** | Optional **batch name**; runs are **always queued in the background** (invocation ids). **Active runs** auto-refreshes **execution_status**; **Stop** cancels. **Quick status** / **Scheduler output** for pasted ids or SLURM output; **Last run** shows stored results |
 | **Individual Trends** | Pick a solver/metric from the dropdown (from `GET /api/available_metrics`) | Line chart over run history; optional horizontal **baseline** line if a baseline run is set; raw data expander |
 | **Run History** | Filter by solver or processor | Runs grouped by **job batch** (name, date, UUID) when present; each row can **Set baseline** for the solver; expanders for stdout, stderr, metrics |
 | **Long-Term Trends** | Explore multi-solver charts and heatmaps | Long-horizon views; heatmaps with spec-range or **baseline-relative** coloring; manual baseline overrides where implemented |
@@ -90,14 +135,14 @@ Open http://localhost:8501. Walk through each page:
 make api
 ```
 
-Open http://localhost:8000 (redirects to `/docs` for interactive Swagger UI). Core endpoints:
+Open http://localhost:8000 (`GET /` redirects to `/docs`). The Streamlit app uses `HPC_API_URL` (default `http://localhost:8000`) — see [api_config.py](../src/ui/api_config.py). Core endpoints:
 
 | Request | Description |
 |---------|-------------|
 | `GET /api/health` | Health check (`{"status": "ok"}`) |
 | `GET /api/solvers` | List configured solvers |
 | `GET /api/systems` | List systems |
-| `POST /api/run_solvers` | Body: `solvers` (each `name`, optional `system`), optional `batch_name`, optional `background`. Foreground: **200** with result list. **`background: true`**: **202** with `invocations` (one invocation per solver) and optional top-level `invocation_id` when a single solver |
+| `POST /api/run_solvers` | Body: `solvers` (each `name`, optional `system`), optional `batch_name`, optional `background`. **`background: false`**: **200** with synchronous result list. **`background: true`**: **202** with `invocations` (one per solver) and optional top-level `invocation_id` when a single solver. The Streamlit **Solvers** page uses the **background** path |
 | `GET /api/runs` | List runs (`?solver=`, `?processor=`, `?limit=`, `?offset=`) |
 | `DELETE /api/runs` | Delete runs by id list (see OpenAPI schema) |
 | `GET /api/runs/<id>` | Run detail |
@@ -284,6 +329,15 @@ sponsor-results-YYYY-MM-DD/
 
 ## Part 4: Summary Checklist
 
+**Flash Demo #3 (in class)**
+
+- [ ] Assign **driver** and **narrator**; rehearse with a **4:00** timer (hard stop)
+- [ ] Choose **Path A, B, or C**; align live content with sponsor messaging (what sponsor will see later vs what is internal)
+- [ ] At most **one** architecture slide (if used); everything else live
+- [ ] Confirm screen share: terminal, IDE, Streamlit, and/or Swagger work without login surprises
+
+**Sponsor / integration (ongoing)**
+
 - [ ] Complete Part 0 smoke test: load configs → run solvers → parse metrics → persist → view in UI (Solvers / Run History / trends) → view in API (runs + optional invocations) → add solver → re-run
 - [ ] Run demo script (Part 1): setup, CLI, Streamlit pages, API (including `run_solvers` and, if useful, invocations/baseline/batch endpoints)
 - [ ] Add a new solver (Part 2)
@@ -295,6 +349,7 @@ sponsor-results-YYYY-MM-DD/
 
 ## See Also
 
+- [technical_review_plan.md](technical_review_plan.md) — Timed Technical Review video script (10–15 min)
 - [CHANGELOG.md](../CHANGELOG.md) — Solver-first model, invocations, SLURM, baselines, batching, breaking changes
 - [Architecture](architecture.md) — Components, data flow, storage schema
 - [Design](design.md) — UI goals and page components
