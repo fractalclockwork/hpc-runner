@@ -1,0 +1,13 @@
+patterns:
+  - name: ns_per_day
+    regex: 'ns/day:\s*([\d.e+-]+)'
+    type: float
+  - name: runtime_seconds
+    regex: 'runtime_seconds:\s*([\d.]+)'
+    type: float
+  - name: potential_energy_kj_mol
+    regex: 'potential_energy_kj_mol:\s*(-?[\d.e+-]+)'
+    type: float
+  - name: n_atoms
+    regex: 'n_atoms:\s*(\d+)'
+    type: int
