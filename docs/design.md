@@ -37,9 +37,9 @@ This page details how to select and run a handful of solvers at once or individu
 
 **Solver Overview**: A drop-down box containing a table of available solvers
 
-**Live Monitoring:** Show the progress bar on jobs that have been completed that fills as the test progresses. Under the test title, it shows the solver, system, resources, and job for that test. The progress bar also shows a percentage of job complete. This is also one spot where the user can stop an asynchronous job
-
 **Run a Batch**: The user can choose solvers to run as a batch from checkbox selection, and those can then be run from that place in the UI.
+
+**Active Runs/Live Monitoring:** Show the progress bar on jobs that have been completed that fills as the test progresses. Under the test title, it shows the solver, system, resources, and job for that test. The progress bar gives an indicator to the user that their solver is still in progress. This is also one spot where the user can stop an asynchronous job
 
 **Run Solvers (Individually):** Offer a set of tabs, one for each solver, to choose the solver then allow user to run it with a click or pull up the last run. Each solver gets an invocation ID and the results are shown at the bottom of the run. These jobs are technically run asynchronously and can also be cancelled from this portion too.  
 
