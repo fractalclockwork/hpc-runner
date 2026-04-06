@@ -25,33 +25,36 @@ Within this set of goals, the UI is critical to ensure that the user can:
 To accomplish these goals, the following architecture is proposed:
 
 ### Page 1: Landing / Dashboard + Run Test
-The goal of this page is to provide a quick, high-level overview of the system to the user with some CTA to promote engagement with the features of the platform.
+The goal of this page is to provide a quick, high-level overview of the system to the user.
 #### Components:
-**Run Tests Button**: A button in the primary accent color of the platform for a user to click, which triggers the running of jobs through the test harness. The UI should call 
-In the future, it is possible that the scope of this page contains solver authoring by the user. Thus, it may make sense to leave white space at the bottom of this page for that. In addition, when "run tests" is at the bottom, the click action upon it should take the user to the next page where the results are shown 
+**System Description**: A few paragraphs explaining the premise of the solver and the system.
 
-### Page 2: Run Jobs
-This page details how to select and run a handful of jobs at once 
+### Page 2: Run Solvers
+This page details how to select and run a handful of solvers at once or individually
 #### Components:
 
-**Description:** Provide 2-3 sentences of text detailing what a job vs a test is and how the user can identify what is best for them
+**Description:** Provide 2-3 sentences of text detailing what a solver is and how the user can identify what is best for them
 
-**Run Jobs:** Offer a select box to choose the tests then allow user to run them all or selected ones with a click, showcase the results on the bottom of the run. This should probably then trigger a POST request to the API backend which serves as a simple wrapper to the CLI, running the selected input tests. If user clicks on results, it will take them to page 3 to explore in further detail the results given. 
+**Solver Overview**: A drop-down box containing a table of available solvers
 
-**Dry Running:** A user should be able to dry run jobs, checking whether input configurations will work, parsing metrics vs an example output if available, and checking the syntax of the run script (this last one might be overkill). 
+**Live Monitoring:** Show the progress bar on jobs that have been completed that fills as the test progresses. Under the test title, it shows the solver, system, resources, and job for that test. The progress bar also shows a percentage of job complete. This is also one spot where the user can stop an asynchronous job
 
-**Run Tests:** Offer the run tests button from before as a separate option as well given what the user wants to achieve
+**Run a Batch**: The user can choose solvers to run as a batch from checkbox selection, and those can then be run from that place in the UI.
 
-**Live Monitoring:** Show the progress bar on jobs that have been completed that fills as the test progresses. Under the test title, it shows the solver, system, resources, and job for that test. The progress bar also shows a percentage of job complete. This is a good example of what I mean, but I want to remove the "remaining" portion of this 
-![image](https://github.berkeley.edu/Chem-283/DOW-1-26/assets/3735/78c879e6-21a2-4b47-9c7f-4da5a0beaa6b)
+**Run Solvers (Individually):** Offer a set of tabs, one for each solver, to choose the solver then allow user to run it with a click or pull up the last run. Each solver gets an invocation ID and the results are shown at the bottom of the run. These jobs are technically run asynchronously and can also be cancelled from this portion too.  
 
+### Page 3: Run History
+This page details the runs that have been completed thus far one by one
+#### Components: 
 
-### Page 3: Individual Test Performance
+**History Dropdown**: In this region, the user can click on each run as a drop-down to see the stdout, metrics, and stderr of each run. This can be filtered, grouped, and manipulated to showcase the runs that are useful. Check-mark and "X" emojis denote whether the run succeeded or failed. 
+
+### Page 4: Individual Test Performance
 This page details how the most recent test has performed. 
 #### Components:
 **Grasphs of Individual Test Metric performance:** This graph allows a drop down menu to select your job, and then you can see the runtime plotted. Improvements to this include being able to choose from a multiple-choice side panel to minimize the number of clicks, since users can choose multiple things to see per run.
 
-### Page 4: Long-Term Trend Performance
+### Page 5: Long-Term Trend Performance
 This page details the performance of the system, averaging across multiple tests. Results from individual tests is not within the scope of this page, and they can be included on another page for better user flow. The Long-Term trends view shows a default date range of its components, with an input for the user to set a different desired date range. This date range parameter should use streamlit's session state or other state management tool to keep this date range filter when the user clicks between tabs.  
 
 #### Components:
@@ -65,9 +68,10 @@ This page details the performance of the system, averaging across multiple tests
 ![image](https://github.berkeley.edu/Chem-283/DOW-1-26/assets/3736/4f8a5252-1cac-45af-9981-3c5be5f60112) (From Texas Advanced Computing Center: High Performance Computing Test
 Harness with Jenkins 2017 presentation)
 
-### Page 5: Settings
-This page shows basic settings that the user can edit. If more control over configurations such as uploading is required, that will also be exposed here. The settings page should primarily expose settings to configure the web browser UI and unless dictated as a requirement should avoid allowing a large number of user inputs or configuration of backend state.
+### Page 6: Configs
+This page shows the configs available to the user on the back-end. They cannot be edited from this page, simply viewed. 
 
+## System Design Principles
 Fonts: Streamlit basic font is fine imo
 
 Forms: For buttons, I think they should be in a different blue color for user attention.
