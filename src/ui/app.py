@@ -1109,7 +1109,8 @@ def _render_run_solvers_panel() -> None:
             with st.spinner(f"Starting {sn}…"):
                 ok = _post_run_solvers(specs, batch_name_input)
             if ok:
-                st.session_state["run_solvers_tab_radio"] = sn
+                # Defer: cannot set run_solvers_tab_radio after st.radio (same key) is drawn this run.
+                st.session_state["_pending_run_solvers_tab_radio"] = sn
                 st.rerun()
 
         view = st.radio(
@@ -1247,6 +1248,11 @@ def _render_run_solvers_panel() -> None:
                 st.info("No completed runs in the database for this solver yet.")
             else:
                 _display_last_run_compact(entry, run_id_key_prefix=f"run-solvers-lr-{sn}")
+
+    if "_pending_run_solvers_tab_radio" in st.session_state:
+        pending_sn = st.session_state.pop("_pending_run_solvers_tab_radio")
+        if pending_sn in solver_by_name:
+            st.session_state["run_solvers_tab_radio"] = pending_sn
 
     selected_sn = st.radio(
         "Solver",
@@ -1575,10 +1581,10 @@ def page_long_term_trends() -> None:
                     help="Baseline mode colors each solver relative to its baseline value for the selected metric.",
                 )
                 if selected_hm_metric == "mlups":
-                    metric_dictionary = {"python-solver": (2.1e6, 4e6)}
+                    metric_dictionary = {}
                 elif selected_hm_metric == "runtime_seconds":
                     metric_dictionary = {
-                        "python-solver": (0.008, 0.01),
+                        "python-solver": (0.0, 1.05),
                         "echo-solver": (0.0, 0.01),
                         "cpuinfo-test": (0.0, 0.01),
                     }

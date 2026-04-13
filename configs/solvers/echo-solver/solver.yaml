@@ -4,6 +4,9 @@ entrypoint: run.sh
 allowed_systems:
 - dev-system
 - hpc-cluster-01
-metrics: []
+parser_config: parser_config.yaml
+metrics:
+- name: solver_finished
+  required: true
 log_names: []
 default_system: dev-system

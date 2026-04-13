@@ -2,29 +2,62 @@
 
 The harness invokes `configs/solvers/lammps-slurm/run.sh` as a black-box subprocess. SLURM and LAMMPS are **not** called by the platform directly—only by the script.
 
-## Quickstart using docker to provide slurm nodes
-**Start your stack** (e.g. `docker compose up` for `sci_slurm`)
-Start the docker stack by following the instructions on the repository: https://github.com/fractalclockwork/sci-slurm 
+## Quickstart using Docker for SLURM nodes
 
-The commands you'll run will look something like this:
+Upstream stack: **[fractalclockwork/sci-slurm](https://github.com/fractalclockwork/sci-slurm)** (multi-container Slurm for dev/teaching).
+
+The harness needs a running Slurm cluster reachable from your machine. That project provides a multi-container Slurm **23.11** stack on Ubuntu 24.04 (controller, accounting, GPU workers, optional LAMMPS on compute). Clone it **outside** this repo (do not nest it under `DOW-1-26` unless you know what you are doing), then follow the upstream README: `cp .env.example .env`, `make validate`, `make build`, `make up`, `make status`, `make test-lammps`.
+
+### Bring the cluster up from this repo (`make slurm-up`)
+
+From the **DOW-1-26** root, `make slurm-up` runs `docker compose up -d` in a directory you point at with **`SLURM_COMPOSE_DIR`** (default: `sci_slurm` next to the Makefile—often a symlink to your clone). Override when your checkout lives elsewhere:
+
 ```bash
-# preferably in another location that's not DOW-1-26
-git clone https://github.com/fractalclockwork/sci-slurm.git
-cd sci-slurm
-cp .env.example .env   # set MYSQL_* and secrets; VERSION matches release
-make validate
-make build
-make up                # or: GPU_WORKER_COUNT=2 make up
-make status
-make test-lammps
+# Example: absolute path to your sci-slurm clone
+export SLURM_COMPOSE_DIR=/path/to/sci-slurm
+make slurm-up
+# Optional: rebuild images — make slurm-up SLURM_COMPOSE_EXTRA=--build
 ```
 
-**Configure environment variables and run on host** (Docker CLI + harness):
+Related targets: **`make slurm-down`** (compose down), **`make slurm-ps`** (compose ps). See comments in the root **`Makefile`** for `SLURM_COMPOSE_EXTRA`.
+
+**End-to-end shell example** (from the DOW-1-26 root; set `SLURM_COMPOSE_DIR` to your [sci-slurm](https://github.com/fractalclockwork/sci-slurm) clone):
 
 ```bash
-cd /path/to/e2e_testing
+export SLURM_COMPOSE_DIR=/path/to/sci-slurm
+make slurm-up
+# After the cluster is up (e.g. make slurm-ps shows workers idle):
+export DOCKER_SLURM_CONTAINER=sci_slurm-gpu-worker-1
+make restart-services-slurm
+```
+
+Use **`make start-services-slurm`** instead of **`restart-services-slurm`** when the API/UI are not running yet.
+
+### Match `DOCKER_SLURM_CONTAINER` to your worker
+
+Worker container names follow Docker Compose’s `<project>-gpu-worker-<n>` pattern. The default **`DOCKER_SLURM_CONTAINER`** in this project’s tests is **`sci_slurm-gpu-worker-1`**, which matches a Compose **project name** of `sci_slurm` and one GPU worker. Confirm the actual name with `make slurm-ps` or `docker ps` and export it before running solvers or restarting services:
+
+```bash
+export DOCKER_SLURM_CONTAINER=sci_slurm-gpu-worker-1   # adjust to match docker ps
+```
+
+### API + UI after the cluster is healthy
+
+If the API/UI were already running, pick up the container name and reload services:
+
+```bash
+export DOCKER_SLURM_CONTAINER=sci_slurm-gpu-worker-1
+make restart-services-slurm
+```
+
+That stops and starts the API and Streamlit stack described in **Start API + UI with SLURM/LAMMPS env** (loads **`slurm-lammps.env`** when present).
+
+### Configure environment variables and run jobs (host Docker CLI + harness)
+
+```bash
+cd /path/to/DOW-1-26
 export RUN_SLURM_E2E=1
-export DOCKER_SLURM_CONTAINER=sci_slurm-gpu-worker-1   # or your compute / login node (see below)
+export DOCKER_SLURM_CONTAINER=sci_slurm-gpu-worker-1   # or your compute / submit node (see below)
 uv run hpc-runner configs --job lammps-slurm-smoke --db data/harness.db
 # or: make test-slurm
 ```
@@ -153,6 +186,8 @@ make test-slurm
 `make test-slurm` sets **`RUN_SLURM_E2E=1`** and, when **`DOCKER_SLURM_CONTAINER`** is unset, defaults it to **`sci_slurm-gpu-worker-1`** (typical **sci_slurm** Compose worker). Export a different value if your container name or Compose project prefix differs.
 
 ## Docker Compose (optional)
+
+For the **external** Slurm cluster, prefer **`make slurm-up`** with **`SLURM_COMPOSE_DIR`** pointing at your sci-slurm checkout (see **Quickstart using Docker for SLURM nodes** at the top of this doc). The snippet below is an **alternate** in-repo Compose overlay for development.
 
 The API image includes `docker/lammps/` via `docker/Dockerfile`.
 

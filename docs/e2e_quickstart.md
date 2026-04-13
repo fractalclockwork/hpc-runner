@@ -50,6 +50,6 @@ For more on the app and config, see [architecture.md](architecture.md) and [user
 
 ## SLURM + LAMMPS (optional)
 
-This is separate from Playwright UI tests. Inputs live under `docker/lammps/` in the repo; **do not modify** the `sci_slurm` symlink directory—copy files into `docker/lammps/` as needed. See **[slurm_lammps_e2e.md](slurm_lammps_e2e.md)** for `RUN_SLURM_E2E`, `DOCKER_SLURM_CONTAINER`, and the gated API test.
+This is separate from Playwright UI tests. Inputs live under `docker/lammps/` in the repo; **do not modify** the `sci_slurm` symlink directory—copy files into `docker/lammps/` as needed. See **[slurm_lammps_e2e.md](slurm_lammps_e2e.md)** for the [sci-slurm](https://github.com/fractalclockwork/sci-slurm) stack, **`SLURM_COMPOSE_DIR`** / **`make slurm-up`**, `RUN_SLURM_E2E`, `DOCKER_SLURM_CONTAINER`, **`make restart-services-slurm`**, and the gated API test.
 
-With SLURM/LAMMPS available: `export DOCKER_SLURM_CONTAINER=...` if using Docker, then **`make test-slurm`** (it sets `RUN_SLURM_E2E=1` for you).
+With SLURM/LAMMPS available: start the cluster (e.g. `export SLURM_COMPOSE_DIR=/path/to/sci-slurm && make slurm-up`), set `export DOCKER_SLURM_CONTAINER=...` to your worker (often `sci_slurm-gpu-worker-1`), then **`make test-slurm`** (it sets `RUN_SLURM_E2E=1` for you).

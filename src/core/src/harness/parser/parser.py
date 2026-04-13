@@ -77,6 +77,8 @@ def validate_metrics(
         for name, (lo, hi) in ranges.items():
             if name not in metrics:
                 continue
+            if lo is None and hi is None:
+                continue
             #need to convert to float scientific notation is captured as a string
             try:
                 lo_val = float(lo) if lo is not None else None

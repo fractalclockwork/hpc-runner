@@ -5,10 +5,6 @@ allowed_systems:
 - dev-system
 parser_config: parser_config.yaml
 metrics:
-- name: mlups
-  unit: MLUPS
-  min: 0
-  required: true
 - name: runtime_seconds
   unit: s
   required: true
