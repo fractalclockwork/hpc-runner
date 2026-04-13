@@ -146,8 +146,14 @@ docker-up:
 docker-ui:
 	docker run --rm -p 8501:8501 -v $(PWD)/data:/app/data dow-workspace uv run streamlit run src/ui/app.py --server.port 8501 --server.address 0.0.0.0
 
-# Run Playwright E2E tests locally (starts Streamlit automatically)
+# Install Playwright Chromium only (idempotent). Use alone if you run pytest without Make.
+playwright-chromium:
+	uv run playwright install chromium
+
+# E2E: one command — download Chromium if needed, then run tests (Streamlit auto-started in conftest).
+# Note: pytest's --browser chromium only *selects* Chromium; it does not install it. The line above does.
 test-e2e:
+	uv run playwright install chromium
 	uv run pytest src/ui/tests/e2e -v --browser chromium
 
 # Run Playwright E2E tests in Docker (Streamlit + Playwright containers)
@@ -155,7 +161,7 @@ test-e2e-docker:
 	docker compose -f docker/docker-compose.e2e.yml up --build --abort-on-container-exit
 
 # Run Streamlit UI in Docker, then run E2E tests against it (local Playwright)
-test-e2e-docker-ui:
+test-e2e-docker-ui: playwright-chromium
 	@cid=$$(docker run -d -p 8501:8501 -v $(PWD)/data:/app/data dow-workspace uv run streamlit run src/ui/app.py --server.port 8501 --server.address 0.0.0.0); \
 	sleep 8; \
 	STREAMLIT_ALREADY_RUNNING=1 uv run pytest src/ui/tests/e2e -v --browser chromium; \
@@ -245,7 +251,7 @@ clear-db:
 # Meta
 # ---------------------------------------------------------------------------
 
-.PHONY: sync resync test test-core testv test-cov test-api test-slurm test-e2e test-e2e-docker test-e2e-docker-ui e2e e2e-docker e2e-docker-ui runner api ui stop-services start-services start-services-slurm restart-services restart-services-slurm slurm-up slurm-down slurm-ps docker-build docker-run docker-test docker-build-playwright docker-up docker-ui docker-validate tree list lint fix clean purge clear-db default
+.PHONY: sync resync test test-core testv test-cov test-api test-slurm playwright-chromium test-e2e test-e2e-docker test-e2e-docker-ui e2e e2e-docker e2e-docker-ui runner api ui stop-services start-services start-services-slurm restart-services restart-services-slurm slurm-up slurm-down slurm-ps docker-build docker-run docker-test docker-build-playwright docker-up docker-ui docker-validate tree list lint fix clean purge clear-db default
 
 # Default target
 default: sync
