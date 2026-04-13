@@ -65,3 +65,23 @@ def test_validate_metrics_ranges():
     valid, errors = validate_metrics(metrics, ranges={"x": (0, 3)})
     assert not valid
     assert any("above max" in e for e in errors)
+
+
+def test_validate_metrics_string_no_bounds():
+    """Required string metrics with no min/max skip numeric range checks."""
+    metrics = {"solver_finished": "Solver finished successfully"}
+    valid, errors = validate_metrics(
+        metrics,
+        required=["solver_finished"],
+        ranges={"solver_finished": (None, None)},
+    )
+    assert valid
+    assert errors == []
+
+    valid, errors = validate_metrics(
+        {},
+        required=["solver_finished"],
+        ranges={"solver_finished": (None, None)},
+    )
+    assert not valid
+    assert "Missing required metric: solver_finished" in errors

@@ -1,5 +1,5 @@
 # YAML-defined parser config for regex-based metric extraction
 patterns:
-  - name: status
-    regex: 'status:\s*(\w+)'
+  - name: solver_finished
+    regex: '(Solver finished successfully)'
     type: str

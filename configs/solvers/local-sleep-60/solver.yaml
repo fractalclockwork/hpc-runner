@@ -3,6 +3,13 @@ version: "0.1.0"
 entrypoint: run.sh
 allowed_systems: [dev-system]
 default_system: dev-system
-metrics: []
+metrics:
+  # runtime_seconds comes from HARNESS_SOLVER_WALL_SECONDS after refine (see run.sh).
+  # Target window ~[60, 61) seconds of workload wall time; bounds are inclusive (min/max) in validate_metrics.
+- name: runtime_seconds
+  unit: s
+  min: 60
+  max: 61
+  required: true
 log_names: []
 timeout_seconds: 180
