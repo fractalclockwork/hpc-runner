@@ -1012,14 +1012,17 @@ def _render_run_solvers_panel() -> None:
     _BATCH_PICK_COLS = 4
     for i in range(0, len(solver_names), _BATCH_PICK_COLS):
         chunk = solver_names[i : i + _BATCH_PICK_COLS]
-        cols = st.columns(len(chunk))
-        for col, sn in zip(cols, chunk, strict=True):
-            with col:
-                st.checkbox(
-                    sn,
-                    key=f"run-solvers-include-{sn}",
-                    help="Add this solver to the batch when you click Run batch.",
-                )
+        # Pad to a full row so every row has identical column widths
+        padded = chunk + [None] * (_BATCH_PICK_COLS - len(chunk))
+        cols = st.columns(_BATCH_PICK_COLS)
+        for col, sn in zip(cols, padded):
+            if sn is not None:
+                with col:
+                    st.checkbox(
+                        sn,
+                        key=f"run-solvers-include-{sn}",
+                        help="Add this solver to the batch when you click Run batch.",
+                    )
 
     n_in_batch = sum(1 for sn in solver_names if st.session_state.get(f"run-solvers-include-{sn}", False))
     run_batch = st.button(
@@ -1106,6 +1109,7 @@ def _render_run_solvers_panel() -> None:
             with st.spinner(f"Starting {sn}…"):
                 ok = _post_run_solvers(specs, batch_name_input)
             if ok:
+                st.session_state["run_solvers_tab_radio"] = sn
                 st.rerun()
 
         view = st.radio(
@@ -1244,14 +1248,15 @@ def _render_run_solvers_panel() -> None:
             else:
                 _display_last_run_compact(entry, run_id_key_prefix=f"run-solvers-lr-{sn}")
 
-    tab_labels = [
-        f"🔵 {sn}" if sn in active_by_solver else sn
-        for sn in solver_names
-    ]
-    solver_tabs = st.tabs(tab_labels)
-    for tab, sn in zip(solver_tabs, solver_names):
-        with tab:
-            render_solver_card(sn, active_by_solver.get(sn, []))
+    selected_sn = st.radio(
+        "Solver",
+        options=solver_names,
+        format_func=lambda sn: f"🔵 {sn}" if sn in active_by_solver else sn,
+        horizontal=True,
+        key="run_solvers_tab_radio",
+        label_visibility="collapsed",
+    )
+    render_solver_card(selected_sn, active_by_solver.get(selected_sn, []))
 
     any_paste = any((st.session_state.get(f"run-solvers-mon-id-{sn}") or "").strip() for sn in solver_names)
     if any_paste:
