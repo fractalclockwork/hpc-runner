@@ -8,6 +8,7 @@ import subprocess
 import threading
 import time
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +21,13 @@ from .parser import extract_metrics, validate_metrics
 from .slurm_elapsed import refine_run_result_runtime_from_slurm
 
 logger = structlog.get_logger()
+
+# Bounded buffer for background-run live stdout (API + UI poll); avoids unbounded memory.
+_LIVE_LOG_DEQUE_MAXLEN = 8000
+
+
+def _live_log_deque_factory() -> deque[str]:
+    return deque(maxlen=_LIVE_LOG_DEQUE_MAXLEN)
 
 
 def probe_processor() -> str:
@@ -54,7 +62,7 @@ class RunResult:
 
 @dataclass
 class InvocationControl:
-    """Used for background runs: cooperative cancel and streaming SLURM job id capture."""
+    """Used for background runs: cooperative cancel, SLURM job id capture, and live stdout tail."""
 
     cancel_event: threading.Event = field(default_factory=threading.Event)
     current_proc: subprocess.Popen | None = None
@@ -62,6 +70,24 @@ class InvocationControl:
     submit_container: str | None = None
     jobs_total: int = 0
     jobs_completed: int = 0
+    _live_log_lines: deque[str] = field(default_factory=_live_log_deque_factory)
+    _live_log_lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def append_live_log_line(self, line: str) -> None:
+        with self._live_log_lock:
+            self._live_log_lines.append(line)
+
+    def snapshot_live_stdout(self, *, max_chars: int = 512_000) -> str:
+        """Thread-safe join of captured lines; tail-truncates if over max_chars (for JSON responses)."""
+        with self._live_log_lock:
+            text = "".join(self._live_log_lines)
+        if len(text) <= max_chars:
+            return text
+        return "[…truncated, showing last portion]\n" + text[-max_chars:]
+
+    def clear_live_stdout(self) -> None:
+        with self._live_log_lock:
+            self._live_log_lines.clear()
 
 
 def _parse_scheduler_metadata(text: str) -> tuple[str, list[str], str]:
@@ -137,6 +163,7 @@ def _run_subprocess_for_job(
         try:
             for line in proc.stdout:
                 chunks.append(line)
+                invoke_ctl.append_live_log_line(line)
                 if m := re.search(r"HARNESS_SLURM_JOB_ID=(\d+)", line):
                     jid = m.group(1)
                     if jid not in invoke_ctl.slurm_job_ids:
@@ -472,6 +499,8 @@ def run_jobs(
                     )
                 )
                 continue
+            if invoke_ctl is not None:
+                invoke_ctl.append_live_log_line(f"\n=== {job.name} ({solver.name}@{system.name}) ===\n")
             results.append(
                 run_job(
                     job,

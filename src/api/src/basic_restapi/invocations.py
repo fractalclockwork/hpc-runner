@@ -150,6 +150,7 @@ def invocation_to_dict(rec: InvocationRecord) -> dict[str, Any]:
             "local": _local_snapshot(ctl),
             "scheduler_job_ids": list(ctl.slurm_job_ids),
         },
+        "live_stdout": ctl.snapshot_live_stdout(),
     }
 
 
@@ -215,6 +216,8 @@ def start_background_run(
             logger.exception("invocation.failed", invocation_id=inv_id, error=str(e))
             r0.status = "failed"
             r0.error = str(e)
+        finally:
+            r0.control.clear_live_stdout()
 
     threading.Thread(target=worker, daemon=True).start()
     return inv_id

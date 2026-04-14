@@ -241,6 +241,8 @@ def test_api_invocations_list_get_enriched_and_slurm_404(client):
         assert detail.get("solver_name") == ""
         assert detail.get("job_names") == []
         assert detail.get("execution", {}).get("backend") == "slurm"
+        assert "live_stdout" in detail
+        assert detail["live_stdout"] == ""
 
         r_active = client.get("/api/invocations", params={"active_only": True})
         assert r_active.status_code == 200

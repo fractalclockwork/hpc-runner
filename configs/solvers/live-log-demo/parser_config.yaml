@@ -1,0 +1,4 @@
+patterns:
+  - name: solver_finished
+    regex: '(Solver finished successfully)'
+    type: str
