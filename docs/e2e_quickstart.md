@@ -9,20 +9,14 @@ This guide gets you from a fresh clone to running the Playwright E2E tests again
 
 ## One-time setup
 
-1. **Sync the workspace** (creates `.venv` and installs dependencies):
+1. **Sync the workspace** (Python deps only):
 
    ```bash
-   uv sync --all-extras --dev
+   make sync
    ```
-   Or: `make sync`
+   Or: `uv sync --all-extras --dev`
 
-2. **Install Playwright browsers** (required before the first E2E run):
-
-   ```bash
-   uv run playwright install chromium
-   ```
-
-   Without this step, `make test-e2e` will fail with an error like "Executable doesn't exist" for Chromium.
+2. **Playwright Chromium** is **not** part of `uv sync`. **`make test-e2e`** runs **`uv run playwright install chromium`** before pytest (idempotent — quick when already installed). For browser only: **`make playwright-chromium`**.
 
 3. You do **not** need to start Streamlit or the API manually for the default `make test-e2e`. The test suite starts Streamlit in the background via `src/ui/tests/e2e/conftest.py`.
 
@@ -36,7 +30,7 @@ make test-e2e
 
 (`make e2e` is a backward-compatible alias for `make test-e2e`.)
 
-This runs `uv run pytest src/ui/tests/e2e -v --browser chromium`. Streamlit is launched automatically on port 8501. You can override the port or URL with `STREAMLIT_PORT` and `STREAMLIT_URL` if needed.
+This runs **`playwright install chromium`** then `uv run pytest src/ui/tests/e2e -v --browser chromium`. Streamlit is launched automatically on port 8501. You can override the port or URL with `STREAMLIT_PORT` and `STREAMLIT_URL` if needed.
 
 ## Optional: other ways to run
 
@@ -48,7 +42,7 @@ This runs `uv run pytest src/ui/tests/e2e -v --browser chromium`. Streamlit is l
 
 | Issue | What to do |
 |-------|------------|
-| "Executable doesn't exist" for Chromium | Run `uv run playwright install chromium`. |
+| "Executable doesn't exist" for Chromium | Run `make playwright-chromium` or `uv run playwright install chromium` (or use `make test-e2e`, which runs install first). |
 | Streamlit fails to start in time | Ensure port 8501 is free, or set `STREAMLIT_PORT` to another port. |
 | Tests need the API (Run Jobs, Home metrics, etc.) | The app expects the API at `http://localhost:8000`. Start it with `make api` if you run those flows. |
 
@@ -56,6 +50,6 @@ For more on the app and config, see [architecture.md](architecture.md) and [user
 
 ## SLURM + LAMMPS (optional)
 
-This is separate from Playwright UI tests. Inputs live under `docker/lammps/` in the repo; **do not modify** the `sci_slurm` symlink directory—copy files into `docker/lammps/` as needed. See **[slurm_lammps_e2e.md](slurm_lammps_e2e.md)** for `RUN_SLURM_E2E`, `DOCKER_SLURM_CONTAINER`, and the gated API test.
+This is separate from Playwright UI tests. Inputs live under `docker/lammps/` in the repo; **do not modify** the `sci_slurm` symlink directory—copy files into `docker/lammps/` as needed. See **[slurm_lammps_e2e.md](slurm_lammps_e2e.md)** for the [sci-slurm](https://github.com/fractalclockwork/sci-slurm) stack, **`SLURM_COMPOSE_DIR`** / **`make slurm-up`**, `RUN_SLURM_E2E`, `DOCKER_SLURM_CONTAINER`, **`make restart-services-slurm`**, and the gated API test.
 
-With SLURM/LAMMPS available: `export DOCKER_SLURM_CONTAINER=...` if using Docker, then **`make test-slurm`** (it sets `RUN_SLURM_E2E=1` for you).
+With SLURM/LAMMPS available: start the cluster (e.g. `export SLURM_COMPOSE_DIR=/path/to/sci-slurm && make slurm-up`), set `export DOCKER_SLURM_CONTAINER=...` to your worker (often `sci_slurm-gpu-worker-1`), then **`make test-slurm`** (it sets `RUN_SLURM_E2E=1` for you).

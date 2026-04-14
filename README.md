@@ -6,6 +6,75 @@ Notable changes by release period: [CHANGELOG.md](CHANGELOG.md).
 
 **Full architecture (diagrams, sequences, API reference):** [docs/architecture.md](docs/architecture.md)
 
+## Quickstart
+
+All commands from the **repository root**. Install **[uv](https://docs.astral.sh/uv/)** first.
+
+1. **Install dependencies**
+
+   ```bash
+   make sync
+   ```
+
+   Same as `uv sync --all-extras --dev` (workspace: harness, API, UI).
+
+2. **Verify with tests**
+
+   ```bash
+   make test
+   ```
+
+3. **Validate configs**
+
+   ```bash
+   uv run hpc-runner configs --list
+   ```
+
+4. **Optional — API + Streamlit** (start **API** before **UI**; the dashboard calls the REST API)
+
+   **Background (default for “run both”)** — same **`uvicorn`** and **`streamlit`** commands as the Makefile’s `api` / `ui` targets, but detached with logs under the repo root:
+
+   | Target | What it does |
+   |--------|----------------|
+   | `make start-services` | Starts **FastAPI** on port **8000** and **Streamlit** on **8501** with `nohup`. Writes logs to **`.api.log`** and **`.ui.log`**, and shell PIDs to **`.api.pid`** and **`.ui.pid`**. Streamlit runs headless (`--server.headless true`). |
+   | `make stop-services` | Finds whatever is listening on **8000** and **8501** (via `lsof`) and sends **kill**. Safe to run when nothing is running; use this if you started services in the background or if a stray process still holds a port. |
+   | `make restart-services` | Runs **`stop-services`**, then **`start-services`**. |
+
+   ```bash
+   make start-services    # API + UI in background
+   tail -f .api.log     # optional: watch API log
+   make stop-services   # free ports 8000 and 8501
+   ```
+
+   **Foreground** — use when you want **live logs in the terminal**, **Ctrl+C** to stop one process, or to run **only** the API or **only** the UI (e.g. the other service runs elsewhere):
+
+   ```bash
+   make api    # http://localhost:8000  (Swagger at /docs)
+   make ui     # http://localhost:8501
+   ```
+
+   For SLURM/LAMMPS env (loads `slurm-lammps.env` when present), use **`make start-services-slurm`** / **`make restart-services-slurm`** instead — see **SLURM + LAMMPS** below.
+
+5. **Optional — Playwright UI E2E**
+
+   ```bash
+   make test-e2e
+   ```
+
+   Ensures Playwright’s **Chromium** is present, then runs tests. Details: [docs/e2e_quickstart.md](docs/e2e_quickstart.md).
+
+6. **Optional — CLI runs** (`configs` here is the default **config directory** path; replace with another root or add flags as needed)
+
+   ```bash
+   uv run hpc-runner configs                    # run all solvers under ./configs
+   uv run hpc-runner configs --solver echo-solver
+   uv run hpc-runner /path/to/configs --solvers-dir /path/to/configs/solvers
+   ```
+
+   The first line is the usual “actually execute the harness” step. The last line matters when your YAML tree is not `./configs` or when solvers live outside the default `<config_dir>/solvers` layout. More flags: **Development workflow** and **CLI** below.
+
+More solver authoring and SLURM: **Development workflow** and **SLURM + LAMMPS** below.
+
 ## Project overview
 
 The platform is a **solver-first** harness: you maintain **resources**, **systems**, and **solver packages** under YAML on disk. There is **no** `configs/jobs/` tree—runnables are expanded at load and run time from each solver’s `allowed_systems` and `default_system`. The harness names each run **`{solver}@{system}`** for display, storage, and APIs. Solver entrypoints run as **black-box subprocesses**; they may call SLURM, MPI, or Docker internally—the core harness does not embed schedulers.
@@ -139,41 +208,6 @@ Core unit test modules:
 | `test_storage.py` | DB init, store_run, queries, baselines, history |
 | `test_runner.py` | End-to-end run, metric extraction from solver output |
 | `test_add_solver.py` | `--add` solver creation and naming |
-
-## Quick Start
-
-```bash
-# Sync dependencies
-uv sync --all-extras --dev
-
-# Run unit tests
-make test
-
-# List available solvers
-uv run hpc-runner configs --list
-
-# Run all solvers
-uv run hpc-runner configs
-
-# Run with custom config dir
-uv run hpc-runner /path/to/configs --solvers-dir /path/to/configs/solvers
-
-# Start REST API (programmatic access; root redirects to /docs)
-make api
-# Open http://localhost:8000 → interactive API docs at /docs
-
-# Or start Streamlit dashboard (interactive UI)
-make ui
-# Open http://localhost:8501
-```
-
-Stop or restart API and UI (ports 8000 and 8501):
-
-```bash
-make stop-services    # Stop API and UI
-make start-services   # Start API and UI in background (logs: .api.log, .ui.log)
-make restart-services # Stop then start API and UI in background
-```
 
 ### SLURM + LAMMPS
 
