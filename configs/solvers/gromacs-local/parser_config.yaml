@@ -6,7 +6,7 @@ patterns:
     regex: 'runtime_seconds:\s*([\d.]+)'
     type: float
   - name: potential_energy_kj_mol
-    regex: 'potential_energy_kj_mol:\s*(-?[\d.e+-]+)'
+    regex: 'Potential\n.*?([-\d.e+]+)\s*$'
     type: float
   - name: n_atoms
     regex: '\s*(\d+) atoms'

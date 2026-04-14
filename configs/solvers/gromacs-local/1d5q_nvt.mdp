@@ -2,7 +2,7 @@ title                   = OPLS Lysozyme NVT equilibration
 define                  = -DPOSRES  ; position restrain the protein
 ; Run parameters
 integrator              = md        ; leap-frog integrator
-nsteps                  = 50000     ; 2 * 50000 = 100 ps
+nsteps                  = 25000     ; 2 * 25000 = 50 ps
 dt                      = 0.002     ; 2 fs
 ; Output control
 nstxout                 = 2500      ; save coordinates every 5.0 ps
