@@ -1,0 +1,13 @@
+patterns:
+  - name: Total mass
+    regex: 'Total mass \s*([\d.e+-]+)'
+    type: float
+  - name: runtime_seconds
+    regex: 'runtime_seconds:\s*([\d.]+)'
+    type: float
+  - name: potential_energy_kj_mol
+    regex: 'Potential\n.*?([-\d.e+]+)\s*$'
+    type: float
+  - name: n_atoms
+    regex: '\s*(\d+) atoms'
+    type: int
