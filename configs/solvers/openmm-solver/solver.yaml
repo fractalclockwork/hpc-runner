@@ -1,6 +1,15 @@
 name: openmm-solver
 version: "1.0.0"
 entrypoint: run.sh
+# Defaults for simulate.py and run.sh (sbatch); system env overrides per deployment.
+env:
+  INPUT_PDB: inputs/alanine_dipeptide.pdb
+  N_STEPS: "2000"
+  SOLVATE: "false"
+  SLURM_PARTITION: gpu
+  SLURM_GPUS: "1"
+  SLURM_NTASKS: "8"
+  SLURM_TIME: "01:00:00"
 allowed_systems: [dev-system, hpc-cluster-01]
 default_system: dev-system
 parser_config: parser_config.yaml

@@ -132,11 +132,64 @@ def test_api_delete_runs_empty_ids_returns_422(client):
     assert r.status_code == 422
 
 
+def test_api_run_solvers_session_label_equivalent_to_batch_name(client):
+    """POST with session_label only passes the same sub_batch string as batch_name-only."""
+    captured: list[str] = []
+
+    def fake_start(jl, sol, sys, res, bn, db, *, solver_name: str = "", job_names=None):
+        captured.append(bn)
+        return f"id-{solver_name or 'none'}"
+
+    with patch("basic_restapi.fastapi_app.invocations.start_background_run", side_effect=fake_start):
+        r_sl = client.post(
+            "/api/run_solvers",
+            json={
+                "solvers": [{"name": "echo-solver", "system": "dev-system"}],
+                "background": True,
+                "session_label": "my-session",
+                "batch_name": "",
+            },
+        )
+        r_bn = client.post(
+            "/api/run_solvers",
+            json={
+                "solvers": [{"name": "echo-solver", "system": "dev-system"}],
+                "background": True,
+                "batch_name": "my-session",
+                "session_label": "",
+            },
+        )
+    assert r_sl.status_code == 202
+    assert r_bn.status_code == 202
+    assert captured[0] == captured[1] == "my-session:echo-solver"
+
+
+def test_api_run_solvers_session_label_wins_when_both_set(client):
+    captured: list[str] = []
+
+    def fake_start(jl, sol, sys, res, bn, db, *, solver_name: str = "", job_names=None):
+        captured.append(bn)
+        return "id"
+
+    with patch("basic_restapi.fastapi_app.invocations.start_background_run", side_effect=fake_start):
+        r = client.post(
+            "/api/run_solvers",
+            json={
+                "solvers": [{"name": "echo-solver", "system": "dev-system"}],
+                "background": True,
+                "session_label": "preferred",
+                "batch_name": "ignored",
+            },
+        )
+    assert r.status_code == 202
+    assert captured == ["preferred:echo-solver"]
+
+
 def test_api_run_solvers_background_one_invocation_per_solver(client):
     """background starts one invocation per solver."""
     calls: list[tuple[str, list[str]]] = []
 
-    def fake_start(jl, sol, sys, bn, db, *, solver_name: str = "", job_names=None):
+    def fake_start(jl, sol, sys, res, bn, db, *, solver_name: str = "", job_names=None):
         calls.append((solver_name or "", [j.name for j in jl]))
         return f"id-{solver_name or 'none'}"
 
@@ -180,6 +233,7 @@ def test_api_invocations_list_get_enriched_and_slurm_404(client):
         detail = client.get("/api/invocations/deadbeef").json()
         assert detail["status"] == "running"
         assert detail["batch_name"] == "batch-a"
+        assert detail["session_label"] == "batch-a"
         assert detail["scheduler_job_ids"] == ["999"]
         assert detail["submit_container"] == "host"
         assert detail["jobs_total"] == 3

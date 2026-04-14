@@ -1,4 +1,4 @@
-"""E2E tests for Long-Term Trends page — runtime and MLUPS trend charts."""
+"""E2E tests for Long-Term Trends page — metric trend chart (numeric metrics from runs)."""
 
 import pytest
 from playwright.sync_api import expect
@@ -22,7 +22,12 @@ def _go_to_trends(page, streamlit_url: str) -> None:
 
 def _has_run_data(page) -> bool:
     """Return True if the page loaded trend sections (i.e. DB has run data)."""
-    return page.get_by_test_id("section-runtime-trend").count() > 0
+    return page.get_by_test_id("section-metric-trend").count() > 0
+
+
+def _open_metric_trends_tab(page) -> None:
+    """Long-Term Trends defaults to Heatmap; metric chart lives on the second tab."""
+    page.get_by_role("tab", name="Metric trends").click()
 
 
 # ---------------------------------------------------------------------------
@@ -57,82 +62,47 @@ def test_long_term_trends_empty_state(page, streamlit_url, streamlit_process):
 
 
 # ---------------------------------------------------------------------------
-# Runtime trend section
+# Metric trend section (numeric metrics from parser output)
 # ---------------------------------------------------------------------------
 
-def test_runtime_trend_section_present(page, streamlit_url, streamlit_process):
-    """Runtime trend section marker; chart title (Plotly) or empty-state when data exists."""
+def test_metric_trend_section_present(page, streamlit_url, streamlit_process):
+    """Metric trend section marker; Plotly chart or empty-state when data exists."""
     _go_to_trends(page, streamlit_url)
     if not _has_run_data(page):
-        pytest.skip("No run data in DB — runtime trend section not rendered")
-    expect(page.get_by_test_id("section-runtime-trend")).to_be_attached()
+        pytest.skip("No run data in DB — metric trend section not rendered")
+    _open_metric_trends_tab(page)
+    expect(page.get_by_test_id("section-metric-trend")).to_be_attached()
     # Plotly titles live in SVG tspans that Playwright treats as not visible — assert chart widget or empty-state text
     chart_first = page.locator('[data-testid="stPlotlyChart"]').first
-    no_runs = page.get_by_text("No run data available yet")
-    no_runtime = page.get_by_text("No runtime data recorded")
+    no_numeric = page.get_by_text("No numeric metrics in stored runs")
+    no_values = page.get_by_text("No values recorded for")
     unexpected = page.get_by_text("Unexpected data format")
-    expect(chart_first.or_(no_runs).or_(no_runtime).or_(unexpected)).to_be_visible(timeout=10000)
+    expect(chart_first.or_(no_numeric).or_(no_values).or_(unexpected)).to_be_visible(timeout=10000)
 
 
-def test_runtime_trend_chart_or_empty_message(page, streamlit_url, streamlit_process):
-    """Runtime section shows either a Plotly chart or an empty-state info message."""
+def test_metric_trend_chart_or_empty_message(page, streamlit_url, streamlit_process):
+    """Metric trends tab shows either a Plotly chart or an expected empty-state message."""
     _go_to_trends(page, streamlit_url)
     if not _has_run_data(page):
-        pytest.skip("No run data in DB — runtime trend section not rendered")
-    # Wait for Streamlit to render chart or empty-state message
+        pytest.skip("No run data in DB — metric trend section not rendered")
+    _open_metric_trends_tab(page)
     chart_first = page.locator('[data-testid="stPlotlyChart"]').first
-    no_runtime_first = page.get_by_text("No run data available yet").first
-    no_filter_first = page.get_by_text("No runtime data recorded").first
+    no_numeric_first = page.get_by_text("No numeric metrics in stored runs").first
+    no_values_first = page.get_by_text("No values recorded for").first
     unexpected_first = page.get_by_text("Unexpected data format").first
-    expect(chart_first.or_(no_runtime_first).or_(no_filter_first).or_(unexpected_first)).to_be_visible(timeout=10000)
-    # Then assert at least one of the expected outcomes
+    expect(chart_first.or_(no_numeric_first).or_(no_values_first).or_(unexpected_first)).to_be_visible(
+        timeout=10000
+    )
     charts = page.locator('[data-testid="stPlotlyChart"]')
-    no_runtime_msg = page.get_by_text("No run data available yet")
-    no_filter_msg = page.get_by_text("No runtime data recorded")
+    no_numeric_msg = page.get_by_text("No numeric metrics in stored runs")
+    no_values_msg = page.get_by_text("No values recorded for")
     unexpected_fmt = page.get_by_text("Unexpected data format")
     assert (
         charts.count() > 0
-        or no_runtime_msg.count() > 0
-        or no_filter_msg.count() > 0
+        or no_numeric_msg.count() > 0
+        or no_values_msg.count() > 0
         or unexpected_fmt.count() > 0
-    ), "Expected a chart or an empty-state message in the runtime trend section"
-
-
-# ---------------------------------------------------------------------------
-# MLUPS trend section
-# ---------------------------------------------------------------------------
-
-def test_mlups_trend_section_present(page, streamlit_url, streamlit_process):
-    """MLUPS trend section marker; chart title (Plotly) or empty-state when runtime data exists."""
-    _go_to_trends(page, streamlit_url)
-    if not _has_run_data(page):
-        pytest.skip("No run data in DB — MLUPS trend section not rendered")
-    expect(page.get_by_test_id("section-mlups-trend")).to_be_attached()
-    chart_first = page.locator('[data-testid="stPlotlyChart"]').first
-    no_mlups = page.get_by_text("No MLUPS data available")
-    no_vals = page.get_by_text("No MLUPS values recorded")
-    expect(chart_first.or_(no_mlups).or_(no_vals)).to_be_visible(timeout=10000)
-
-
-def test_mlups_trend_chart_or_empty_message(page, streamlit_url, streamlit_process):
-    """MLUPS section shows either a Plotly chart or an expected empty-state message."""
-    _go_to_trends(page, streamlit_url)
-    if not _has_run_data(page):
-        pytest.skip("No run data in DB — MLUPS trend section not rendered")
-    # Wait for Streamlit to render chart or empty-state message
-    chart_first = page.locator('[data-testid="stPlotlyChart"]').first
-    no_mlups_first = page.get_by_text("No MLUPS data available").first
-    no_mlups_rec_first = page.get_by_text("No MLUPS values recorded").first
-    expect(chart_first.or_(no_mlups_first).or_(no_mlups_rec_first)).to_be_visible(timeout=10000)
-    # Then assert at least one of the expected outcomes
-    charts = page.locator('[data-testid="stPlotlyChart"]')
-    no_mlups_msg = page.get_by_text("No MLUPS data available")
-    no_mlups_recorded = page.get_by_text("No MLUPS values recorded")
-    assert (
-        charts.count() > 0
-        or no_mlups_msg.count() > 0
-        or no_mlups_recorded.count() > 0
-    ), "Expected a chart or an empty-state message in the MLUPS trend section"
+    ), "Expected a chart or an empty-state message in the metric trends section"
 
 
 # ---------------------------------------------------------------------------

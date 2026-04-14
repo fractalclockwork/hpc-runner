@@ -14,6 +14,7 @@ def test_sidebar_nav_visible(page, streamlit_url, streamlit_process):
     # Streamlit radio renders options as clickable labels in the sidebar
     sb = page.locator('section[data-testid="stSidebar"]')
     expect(sb.get_by_text("Solvers", exact=True)).to_be_visible()
+    expect(sb.get_by_text("Run Matrix", exact=True)).to_be_visible()
     expect(sb.get_by_text("Run History", exact=True)).to_be_visible()
     expect(sb.get_by_text("Configs", exact=True)).to_be_visible()
     sb.get_by_text("Solvers", exact=True).click()

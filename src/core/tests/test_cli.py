@@ -191,3 +191,115 @@ def test_cli_list_runs_shows_validation_error_count(capsys, tmp_path):
     assert exit_code == 0
     captured = capsys.readouterr().out
     assert "validation error" in captured
+
+
+def test_cli_system_override(capsys, tmp_path):
+    """--system (without --add) runs selected solvers on the named system."""
+    (tmp_path / "resources").mkdir()
+    (tmp_path / "systems").mkdir()
+    solvers_dir = tmp_path / "solvers"
+    solvers_dir.mkdir()
+
+    (tmp_path / "resources" / "r.yaml").write_text(
+        yaml.safe_dump({"resources": [{"name": "r1"}]})
+    )
+    (tmp_path / "systems" / "s.yaml").write_text(
+        yaml.safe_dump({
+            "systems": [
+                {"name": "s1", "resources": ["r1"]},
+                {"name": "s2", "resources": ["r1"]},
+            ]
+        })
+    )
+    (solvers_dir / "sol1").mkdir()
+    (solvers_dir / "sol1" / "solver.yaml").write_text(
+        yaml.safe_dump({
+            "name": "sol1",
+            "entrypoint": "run.sh",
+            "allowed_systems": ["s1", "s2"],
+            "default_system": "s1",
+        })
+    )
+    (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
+
+    exit_code = main([
+        str(tmp_path), "--solver", "sol1", "--system", "s2", "--no-store",
+    ])
+    assert exit_code == 0
+    out = json.loads(capsys.readouterr().out)
+    assert len(out) == 1
+    assert out[0]["system_name"] == "s2"
+    assert out[0]["job_name"] == "sol1@s2"
+
+
+def test_cli_all_allowed_systems_expands(capsys, tmp_path):
+    """--all-allowed-systems runs one job per allowed system per selected solver."""
+    (tmp_path / "resources").mkdir()
+    (tmp_path / "systems").mkdir()
+    solvers_dir = tmp_path / "solvers"
+    solvers_dir.mkdir()
+
+    (tmp_path / "resources" / "r.yaml").write_text(
+        yaml.safe_dump({"resources": [{"name": "r1"}]})
+    )
+    (tmp_path / "systems" / "s.yaml").write_text(
+        yaml.safe_dump({
+            "systems": [
+                {"name": "s1", "resources": ["r1"]},
+                {"name": "s2", "resources": ["r1"]},
+            ]
+        })
+    )
+    for name in ("a", "b"):
+        (solvers_dir / name).mkdir()
+        (solvers_dir / name / "solver.yaml").write_text(
+            yaml.safe_dump({
+                "name": name,
+                "entrypoint": "run.sh",
+                "allowed_systems": ["s1", "s2"],
+                "default_system": "s1",
+            })
+        )
+        (solvers_dir / name / "run.sh").write_text("#!/bin/bash\necho ok\n")
+
+    exit_code = main([
+        str(tmp_path),
+        "--solver", "a",
+        "--solver", "b",
+        "--all-allowed-systems",
+        "--no-store",
+    ])
+    assert exit_code == 0
+    out = json.loads(capsys.readouterr().out)
+    assert len(out) == 4
+    names = {(r["solver_name"], r["system_name"]) for r in out}
+    assert names == {("a", "s1"), ("a", "s2"), ("b", "s1"), ("b", "s2")}
+
+
+def test_cli_system_and_all_allowed_exclusive(capsys, tmp_path):
+    """Cannot combine --system and --all-allowed-systems."""
+    (tmp_path / "resources").mkdir()
+    (tmp_path / "systems").mkdir()
+    solvers_dir = tmp_path / "solvers"
+    solvers_dir.mkdir()
+    (tmp_path / "resources" / "r.yaml").write_text(
+        yaml.safe_dump({"resources": [{"name": "r1"}]})
+    )
+    (tmp_path / "systems" / "s.yaml").write_text(
+        yaml.safe_dump({"systems": [{"name": "s1", "resources": ["r1"]}]})
+    )
+    (solvers_dir / "sol1").mkdir()
+    (solvers_dir / "sol1" / "solver.yaml").write_text(
+        yaml.safe_dump({"name": "sol1", "entrypoint": "run.sh", "allowed_systems": ["s1"]})
+    )
+    (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
+
+    exit_code = main([
+        str(tmp_path),
+        "--solver", "sol1",
+        "--system", "s1",
+        "--all-allowed-systems",
+        "--no-store",
+    ])
+    assert exit_code == 1
+    assert "Cannot use both" in capsys.readouterr().err

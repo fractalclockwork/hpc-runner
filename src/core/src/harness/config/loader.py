@@ -11,6 +11,19 @@ class ConfigError(Exception):
     """Raised when configuration is invalid or cross-references are broken."""
 
 
+def _string_env(raw: object, *, context: str) -> dict[str, str]:
+    """Coerce a YAML env mapping to dict[str, str] for subprocess env."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{context}: env must be a mapping, got {type(raw).__name__}")
+    out: dict[str, str] = {}
+    for k, v in raw.items():
+        key = str(k)
+        out[key] = "" if v is None else str(v)
+    return out
+
+
 def _glob_yaml(glob_dir: Path, _pattern_base: str = "") -> list[Path]:
     """Return paths matching *.yaml and *.yml, avoiding duplicates when both exist."""
     seen: set[str] = set()
@@ -53,7 +66,8 @@ def load_resources(config_dir: Path) -> dict[str, Resource]:
                     cpus=item.get("cpus"),
                     gpus=item.get("gpus"),
                     memory_gb=item.get("memory_gb"),
-                    extra={k: v for k, v in item.items() if k not in ("name", "cpus", "gpus", "memory_gb")},
+                    env=_string_env(item.get("env"), context=f"Resource '{item['name']}' in {f}"),
+                    extra={k: v for k, v in item.items() if k not in ("name", "cpus", "gpus", "memory_gb", "env")},
                 )
                 resources[r.name] = r
     return resources
@@ -74,7 +88,7 @@ def load_systems(config_dir: Path) -> dict[str, System]:
                 s = System(
                     name=item["name"],
                     resources=item.get("resources", []),
-                    env=item.get("env", {}),
+                    env=_string_env(item.get("env"), context=f"System '{item['name']}' in {f}"),
                     constraints=item.get("constraints", []),
                     extra={k: v for k, v in item.items() if k not in ("name", "resources", "env", "constraints")},
                 )
@@ -122,8 +136,9 @@ def load_solvers(config_dir: Path, solvers_root: Path | None = None) -> dict[str
                 cwd = cwd_val
             else:
                 cwd = str(folder)
+            sol_name = data.get("name", folder.name)
             s = Solver(
-                name=data.get("name", folder.name),
+                name=sol_name,
                 version=data.get("version", "0.0.0"),
                 entrypoint=str(folder / ep),
                 cwd=cwd,
@@ -135,10 +150,11 @@ def load_solvers(config_dir: Path, solvers_root: Path | None = None) -> dict[str
                 parser_config=str(folder / data["parser_config"]) if data.get("parser_config") else None,
                 metrics=metrics,
                 log_names=data.get("log_names", []),
+                env=_string_env(data.get("env"), context=f"Solver '{sol_name}' in {f}"),
                 extra={k: v for k, v in data.items() if k not in (
                     "name", "version", "entrypoint", "cwd", "allowed_systems",
                     "default_system", "success_criteria", "timeout_seconds", "baseline",
-                    "parser_config", "metrics", "log_names"
+                    "parser_config", "metrics", "log_names", "env"
                 )},
             )
             solvers[s.name] = s

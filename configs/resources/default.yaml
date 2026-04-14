@@ -3,9 +3,11 @@ resources:
     cpus: 4
     memory_gb: 8
   - name: hpc-node
-    cpus: 64
+    cpus: 24
     gpus: 4
-    memory_gb: 256
+    memory_gb: 196
+    env:
+      MODULEPATH: /opt/modules
   # Documented capacity for SLURM+LAMMPS jobs (harness does not allocate CPUs from this)
   - name: slurm-lammps
     cpus: 8

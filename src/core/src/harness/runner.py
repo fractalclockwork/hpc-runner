@@ -15,7 +15,7 @@ from typing import Any
 
 import structlog
 
-from .config import Solver, System, Job
+from .config import Job, Resource, Solver, System
 from .parser import extract_metrics, validate_metrics
 from .slurm_elapsed import refine_run_result_runtime_from_slurm
 
@@ -175,11 +175,22 @@ def _run_subprocess_for_job(
     return subprocess.CompletedProcess(cmd, rc, out, "")
 
 
-def _build_env(system: System, base_env: dict[str, str] | None = None) -> dict[str, str]:
-    """Merge system env with base environment."""
+def _build_env(
+    system: System,
+    solver: Solver,
+    resources: dict[str, Resource] | None,
+    base_env: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Merge env for the solver process: os.environ, then each resource, solver, system (later wins)."""
     env = dict(os.environ)
     if base_env:
         env.update(base_env)
+    res_map = resources or {}
+    for rname in system.resources:
+        r = res_map.get(rname)
+        if r is not None:
+            env.update(r.env)
+    env.update(solver.env)
     env.update(system.env)
     return env
 
@@ -189,6 +200,7 @@ def run_job(
     solver: Solver,
     system: System,
     *,
+    resources: dict[str, Resource] | None = None,
     capture_output: bool = True,
     job_batch_uuid: str = "",
     job_batch_date: str | None = None,
@@ -211,7 +223,7 @@ def run_job(
 
     entrypoint_path = Path(solver.entrypoint).resolve()
     cwd = Path(solver.cwd).resolve() if solver.cwd else entrypoint_path.parent
-    env = _build_env(system)
+    env = _build_env(system, solver, resources)
 
     cmd: list[str] = []
     if entrypoint_path.suffix == ".py":
@@ -373,6 +385,7 @@ def run_jobs(
     jobs: list[Job],
     solvers: dict[str, Solver],
     systems: dict[str, System],
+    resources: dict[str, Resource] | None = None,
     batch_name: str = "",
     invoke_ctl: InvocationControl | None = None,
 ) -> list[RunResult]:
@@ -464,6 +477,7 @@ def run_jobs(
                     job,
                     solver,
                     system,
+                    resources=resources,
                     job_batch_uuid=batch_uuid,
                     job_batch_date=now,
                     job_batch_name=batch_name,

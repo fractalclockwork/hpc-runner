@@ -19,7 +19,7 @@ def test_load_resources(tmp_path):
     (tmp_path / "resources" / "default.yaml").write_text(yaml.safe_dump({
         "resources": [
             {"name": "dev", "cpus": 4, "memory_gb": 8},
-            {"name": "hpc", "cpus": 64, "gpus": 4, "memory_gb": 256},
+            {"name": "hpc", "cpus": 64, "gpus": 4, "memory_gb": 256, "env": {"MODULEPATH": "/opt/modules"}},
         ]
     }))
     resources = load_resources(tmp_path)
@@ -27,6 +27,7 @@ def test_load_resources(tmp_path):
     assert resources["dev"].cpus == 4
     assert resources["dev"].memory_gb == 8
     assert resources["hpc"].gpus == 4
+    assert resources["hpc"].env == {"MODULEPATH": "/opt/modules"}
 
 
 def test_load_systems(tmp_path):
@@ -41,6 +42,24 @@ def test_load_systems(tmp_path):
     assert len(systems) == 1
     assert systems["dev-system"].resources == ["dev"]
     assert systems["dev-system"].env == {"FOO": "bar"}
+
+
+def test_load_systems_merges_multiple_files(tmp_path):
+    """Entries from multiple YAML files in systems/ are merged by name."""
+    (tmp_path / "resources").mkdir()
+    (tmp_path / "resources" / "r.yaml").write_text(
+        yaml.safe_dump({"resources": [{"name": "r1"}, {"name": "r2"}]})
+    )
+    (tmp_path / "systems").mkdir()
+    (tmp_path / "systems" / "a.yaml").write_text(
+        yaml.safe_dump({"systems": [{"name": "sys-a", "resources": ["r1"], "env": {"X": "1"}}]})
+    )
+    (tmp_path / "systems" / "b.yaml").write_text(
+        yaml.safe_dump({"systems": [{"name": "sys-b", "resources": ["r2"], "env": {}}]})
+    )
+    systems = load_systems(tmp_path)
+    assert set(systems.keys()) == {"sys-a", "sys-b"}
+    assert systems["sys-a"].env == {"X": "1"}
 
 
 def test_load_solvers_skips_template(tmp_path):

@@ -12,6 +12,7 @@ class Resource:
     cpus: int | None = None
     gpus: int | None = None
     memory_gb: float | None = None
+    env: dict[str, str] = field(default_factory=dict)
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -50,6 +51,7 @@ class Solver:
     parser_config: str | None = None  # Path to YAML parser config
     metrics: list[MetricSpec] = field(default_factory=list)
     log_names: list[str] = field(default_factory=list)
+    env: dict[str, str] = field(default_factory=dict)
     extra: dict[str, Any] = field(default_factory=dict)
 
 

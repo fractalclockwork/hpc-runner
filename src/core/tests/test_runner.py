@@ -37,7 +37,7 @@ def test_run_minimal(tmp_path):
     resources, systems, solvers = load_all(tmp_path, None)
     assert "echo-solver" in solvers
     jl = build_jobs_from_solver_specs(solvers, systems, [{"name": "echo-solver", "system": None}])
-    results = run_jobs(jl, solvers, systems)
+    results = run_jobs(jl, solvers, systems, resources=resources)
     assert len(results) == 1
     assert results[0].passed
     assert "hi-from-test" in results[0].stdout
@@ -72,7 +72,7 @@ def test_run_baseline_job_propagates_baseline_flag(tmp_path):
     jl = build_jobs_from_solver_specs(solvers, systems, [{"name": "echo-solver", "system": None}])
     assert jl[0].baseline is True
 
-    results = run_jobs(jl, solvers, systems)
+    results = run_jobs(jl, solvers, systems, resources=resources)
     assert len(results) == 1
     assert results[0].baseline is True
 
@@ -114,7 +114,7 @@ sys.exit(0)
 
     resources, systems, solvers = load_all(tmp_path, None)
     jl = build_jobs_from_solver_specs(solvers, systems, [{"name": "metrics-solver", "system": None}])
-    results = run_jobs(jl, solvers, systems)
+    results = run_jobs(jl, solvers, systems, resources=resources)
     assert len(results) == 1
     assert results[0].passed
     assert results[0].metrics["mlups"] == 3200000.0
@@ -167,7 +167,7 @@ def test_run_with_metric_validation_failure(tmp_path, caplog):
 
     import logging
     with caplog.at_level(logging.WARNING):
-        results = run_jobs(jl, solvers, systems)
+        results = run_jobs(jl, solvers, systems, resources=resources)
 
     assert len(results) == 1
     result = results[0]
@@ -229,7 +229,7 @@ def test_run_with_metric_validation_success(tmp_path, caplog):
 
     import logging
     with caplog.at_level(logging.WARNING):
-        results = run_jobs(jl, solvers, systems)
+        results = run_jobs(jl, solvers, systems, resources=resources)
 
     assert len(results) == 1
     result = results[0]
@@ -296,7 +296,7 @@ def test_run_with_missing_required_metric(tmp_path, caplog):
 
     import logging
     with caplog.at_level(logging.WARNING):
-        results = run_jobs(jl, solvers, systems)
+        results = run_jobs(jl, solvers, systems, resources=resources)
 
     assert len(results) == 1
     result = results[0]
@@ -331,10 +331,10 @@ def test_run_jobs_missing_solver_returns_result_with_stderr(tmp_path):
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    _, systems, solvers = load_all(tmp_path, None, validate=False)
+    resources, systems, solvers = load_all(tmp_path, None, validate=False)
     job = Job(name="t1", solver="unknown-solver", system="s1")
 
-    results = run_jobs([job], solvers, systems)
+    results = run_jobs([job], solvers, systems, resources=resources)
     assert len(results) == 1
     assert not results[0].passed
     assert results[0].returncode == -1
@@ -361,10 +361,10 @@ def test_run_jobs_missing_system_returns_result_with_stderr(tmp_path):
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    _, systems, solvers = load_all(tmp_path, None, validate=False)
+    resources, systems, solvers = load_all(tmp_path, None, validate=False)
     job = Job(name="t1", solver="sol1", system="unknown-system")
 
-    results = run_jobs([job], solvers, systems)
+    results = run_jobs([job], solvers, systems, resources=resources)
     assert len(results) == 1
     assert not results[0].passed
     assert results[0].returncode == -1
@@ -393,7 +393,7 @@ def test_run_job_timeout_stderr_message(tmp_path):
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\nsleep 999\n")
 
-    _, systems, solvers = load_all(tmp_path, solvers_dir)
+    resources, systems, solvers = load_all(tmp_path, solvers_dir)
     jl = build_jobs_from_solver_specs(solvers, systems, [{"name": "sol1", "system": None}])
     from harness.runner import run_job
 
@@ -401,7 +401,7 @@ def test_run_job_timeout_stderr_message(tmp_path):
         mock_run.side_effect = subprocess.TimeoutExpired(
             "sleep 999", 3600, None, None
         )
-        result = run_job(jl[0], solvers["sol1"], systems["s1"])
+        result = run_job(jl[0], solvers["sol1"], systems["s1"], resources=resources)
 
     assert not result.passed
     assert "timed out" in result.stderr
@@ -426,7 +426,7 @@ def test_run_jobs_cancel_before_start_skips_all_with_same_batch(tmp_path):
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    _, systems, solvers = load_all(tmp_path, solvers_dir)
+    resources, systems, solvers = load_all(tmp_path, solvers_dir)
     ctl = InvocationControl()
     ctl.cancel_event.set()
     job_list = [
@@ -434,7 +434,7 @@ def test_run_jobs_cancel_before_start_skips_all_with_same_batch(tmp_path):
         Job(name="j2", solver="sol1", system="s1"),
     ]
     with patch("harness.runner.run_job") as mock_rj:
-        results = run_jobs(job_list, solvers, systems, invoke_ctl=ctl)
+        results = run_jobs(job_list, solvers, systems, resources=resources, invoke_ctl=ctl)
         mock_rj.assert_not_called()
     assert len(results) == 2
     for r in results:
@@ -462,7 +462,7 @@ def test_run_jobs_cancel_after_first_job_skips_second(tmp_path):
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    _, systems, solvers = load_all(tmp_path, solvers_dir)
+    resources, systems, solvers = load_all(tmp_path, solvers_dir)
     ctl = InvocationControl()
 
     def fake_run_job(j, sol, sys, **kwargs):
@@ -492,7 +492,7 @@ def test_run_jobs_cancel_after_first_job_skips_second(tmp_path):
         Job(name="j2", solver="sol1", system="s1"),
     ]
     with patch("harness.runner.run_job", side_effect=fake_run_job):
-        results = run_jobs(job_list, solvers, systems, invoke_ctl=ctl)
+        results = run_jobs(job_list, solvers, systems, resources=resources, invoke_ctl=ctl)
     assert len(results) == 2
     assert results[0].passed
     assert results[0].job_name == "j1"
@@ -519,14 +519,55 @@ def test_run_job_exception_stderr_message(tmp_path):
     )
     (solvers_dir / "sol1" / "run.sh").write_text("#!/bin/bash\necho ok\n")
 
-    _, systems, solvers = load_all(tmp_path, solvers_dir)
+    resources, systems, solvers = load_all(tmp_path, solvers_dir)
     jl = build_jobs_from_solver_specs(solvers, systems, [{"name": "sol1", "system": None}])
     from harness.runner import run_job
 
     with patch("harness.runner.subprocess.run") as mock_run:
         mock_run.side_effect = OSError("Exec format error")
-        result = run_job(jl[0], solvers["sol1"], systems["s1"])
+        result = run_job(jl[0], solvers["sol1"], systems["s1"], resources=resources)
 
     assert not result.passed
     assert "Execution failed" in result.stderr
     assert "Exec format error" in result.stderr
+
+
+def test_env_merge_resource_solver_system(tmp_path):
+    """Subprocess env: resource, then solver, then system (later wins on duplicate keys)."""
+    (tmp_path / "resources").mkdir()
+    (tmp_path / "systems").mkdir()
+    solvers_dir = tmp_path / "solvers"
+    solvers_dir.mkdir()
+
+    (tmp_path / "resources" / "r.yaml").write_text(
+        yaml.safe_dump({"resources": [{"name": "r1", "env": {"A": "res", "RONLY": "r"}}]})
+    )
+    (tmp_path / "systems" / "s.yaml").write_text(
+        yaml.safe_dump({
+            "systems": [{"name": "s1", "resources": ["r1"], "env": {"A": "sys", "SONLY": "s"}}],
+        })
+    )
+    solver_dir = solvers_dir / "env-solver"
+    solver_dir.mkdir()
+    (solver_dir / "solver.yaml").write_text(
+        yaml.safe_dump({
+            "name": "env-solver",
+            "entrypoint": "run.sh",
+            "allowed_systems": ["s1"],
+            "env": {"A": "sol", "SONLY": "from-solver", "TONLY": "t"},
+        })
+    )
+    (solver_dir / "run.sh").write_text(
+        "#!/bin/bash\n"
+        'printf "A=%s RONLY=%s SONLY=%s TONLY=%s\\n" "$A" "$RONLY" "$SONLY" "$TONLY"\n'
+    )
+
+    resources, systems, solvers = load_all(tmp_path, solvers_dir)
+    jl = build_jobs_from_solver_specs(solvers, systems, [{"name": "env-solver", "system": None}])
+    results = run_jobs(jl, solvers, systems, resources=resources)
+    assert len(results) == 1
+    assert results[0].passed
+    assert "A=sys" in results[0].stdout
+    assert "RONLY=r" in results[0].stdout
+    assert "SONLY=s" in results[0].stdout
+    assert "TONLY=t" in results[0].stdout

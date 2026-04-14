@@ -21,15 +21,15 @@ from config_editor import (  # noqa: E402
     ConfigFile,
 )
 from metrics_dashboard import (  # noqa: E402
-    get_runtime_trend_data,
-    get_mlups_trend_data,
+    build_metric_trend_frame,
     get_baseline_values_for_metric,
-    get_solver_baseline_metrics,
     get_baseline_comparison,
+    get_solver_baseline_metrics,
+    get_trend_runs_data,
+    list_numeric_metric_names,
 )
 from charts import (
-    render_runtime_trend,
-    render_mlups_trend,
+    render_numeric_metric_trend,
     single_solver_heatmap,
     multi_solver_heatmap,
     render_manual_baseline_overrides,
@@ -40,6 +40,11 @@ from charts import (
 from harness import get_db_path
 
 from api_config import API_URL  # noqa: E402
+from matrix_grid_style import (  # noqa: E402
+    DEFAULT_MATRIX_GRID_CONTROL_STYLE,
+    MATRIX_INNER_BAND,
+    matrix_grid_control_css,
+)
 
 DB_PATH = get_db_path()
 
@@ -151,7 +156,7 @@ st.markdown(
 # ---------------------------------------------------------------------------
 # Sidebar navigation
 # ---------------------------------------------------------------------------
-PAGES = ["Home", "Solvers", "Run History", "Individual Trends", "Long-Term Trends", "Configs"]
+PAGES = ["Home", "Solvers", "Run Matrix", "Run History", "Individual Trends", "Long-Term Trends", "Configs"]
 
 st.sidebar.markdown(
     '<span data-testid="nav-sidebar" style="display:none" aria-hidden="true"></span>',
@@ -206,7 +211,9 @@ def page_home() -> None:
         """
     )
 
-    st.markdown("Use the sidebar to navigate to **Solvers**, **Run History**, and **Trends**.")
+    st.markdown(
+        "Use the sidebar to navigate to **Solvers**, **Run Matrix**, **Run History**, and **Trends**."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +225,285 @@ def page_solvers() -> None:
     st.header("Solvers", help = "Every solver is listed below. Use **Batch run** to start several at once, or use each section’s **Run** for a single solver. Runs are always **queued in the background** (invocation ids); **Active runs** auto-refreshes live **execution_status**. **Quick status** / **Scheduler output** are for pasted ids or raw SLURM output; **Last run** shows stored results.")
     _testid("page-run-solvers")
     _render_run_solvers_panel()
+
+
+def _matrix_cell_key(solver_name: str, system_name: str) -> str:
+    """Stable session_state key for Run Matrix checkboxes."""
+    return f"matrix-cell-{solver_name}-{system_name}".replace(" ", "_")
+
+
+def _matrix_job_key(solver_name: str, system_name: str) -> str:
+    """Harness job identity: solver@system."""
+    return f"{solver_name}@{system_name}"
+
+
+def _matrix_active_by_job_key(active_rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Map solver@system -> first matching active invocation (queued/running from API)."""
+    out: dict[str, dict[str, Any]] = {}
+    for rec in active_rows:
+        labels = rec.get("run_labels") or rec.get("job_names") or []
+        for label in labels:
+            if isinstance(label, str) and "@" in label:
+                if label not in out:
+                    out[label] = rec
+    return out
+
+
+def _matrix_toggle_row_selection(
+    solver_name: str,
+    allowed_systems: set[str],
+    system_names: list[str],
+) -> None:
+    """If every allowed cell in the row is checked, clear the row; otherwise select all allowed."""
+    keys = [(solver_name, sysn) for sysn in system_names if sysn in allowed_systems]
+    if not keys:
+        return
+    all_on = all(st.session_state.get(_matrix_cell_key(sn, sy), False) for sn, sy in keys)
+    new_val = not all_on
+    for sn, sy in keys:
+        st.session_state[_matrix_cell_key(sn, sy)] = new_val
+
+
+def _matrix_toggle_column_selection(
+    system_name: str,
+    solver_names: list[str],
+    solver_by_name: dict[str, Any],
+) -> None:
+    """If every allowed cell in the column is checked, clear the column; otherwise select all allowed."""
+    keys: list[tuple[str, str]] = []
+    for sn in solver_names:
+        allowed = set(solver_by_name[sn].get("allowed_systems") or [])
+        if system_name in allowed:
+            keys.append((sn, system_name))
+    if not keys:
+        return
+    all_on = all(st.session_state.get(_matrix_cell_key(sn, sy), False) for sn, sy in keys)
+    new_val = not all_on
+    for sn, sy in keys:
+        st.session_state[_matrix_cell_key(sn, sy)] = new_val
+
+
+def _matrix_cell_help(solver_name: str, system_name: str, inv: dict[str, Any] | None) -> str:
+    """Tooltip for matrix checkbox: idle vs active invocation summary."""
+    if not inv:
+        return f"Run {solver_name} on {system_name}"
+    status = (inv.get("status") or "").strip() or "unknown"
+    iid = (inv.get("invocation_id") or "")[:12]
+    ex = inv.get("execution") or {}
+    backend = (ex.get("backend") or "local") if isinstance(ex, dict) else "local"
+    lines = [
+        f"Active: {status}",
+        f"invocation: {iid}…" if iid else "invocation: (pending)",
+        f"backend: {backend}",
+    ]
+    jt = inv.get("jobs_total")
+    if jt is not None:
+        jc = inv.get("jobs_completed")
+        lines.append(f"progress: {jc}/{jt}")
+    sj = inv.get("scheduler_job_ids") or []
+    if sj:
+        short = ", ".join(str(x) for x in sj[:4])
+        if len(sj) > 4:
+            short += "…"
+        lines.append(f"scheduler ids: {short}")
+    sess = (inv.get("session_label") or inv.get("batch_name") or "").strip()
+    if sess:
+        lines.append(f"session: {sess}")
+    return "\n".join(lines)
+
+
+def page_run_matrix() -> None:
+    """Solver × system grid: select cells and start one background run per cell (solver@system)."""
+    _testid("page-run-matrix")
+    st.header(
+        "Run Matrix",
+        help="Pick solver/system pairs. Each checked cell starts one background run (same as API: one job per solver@system).",
+    )
+    st.caption(
+        "Use **Session label** to tag this group; stored as `job_batch_name` in the database "
+        "(API `session_label` or legacy `batch_name`)."
+    )
+
+    solvers: list[dict[str, Any]] = []
+    systems: list[dict[str, Any]] = []
+    try:
+        r1 = requests.get(API_URL + "/api/systems", timeout=15)
+        r1.raise_for_status()
+        systems = r1.json()
+        r2 = requests.get(API_URL + "/api/solvers", timeout=15)
+        r2.raise_for_status()
+        solvers = r2.json()
+    except requests.exceptions.RequestException as e:
+        st.error(
+            "Cannot reach the HPC Regression API. Start it with `make api` from the project root, "
+            "or set `HPC_API_URL` if the API runs elsewhere."
+        )
+        st.caption(str(e))
+        return
+
+    if not solvers or not systems:
+        st.warning("Need at least one solver and one system in config.")
+        return
+
+    system_names = sorted(s["name"] for s in systems)
+    solver_by_name = {s["name"]: s for s in solvers}
+    solver_names = sorted(solver_by_name.keys())
+
+    sess_col, _ = st.columns([3, 1])
+    with sess_col:
+        st.text_input(
+            "Session label (optional)",
+            value="",
+            key="run-matrix-session-label",
+            help="Stored as job_batch_name; send as API session_label (batch_name is an alias).",
+            placeholder="e.g. nightly-smoke",
+        )
+
+    st.subheader("Select runs")
+
+    # Matrix grid CSS: see matrix_grid_style (inject outside @st.fragment so rules apply).
+    st.markdown(matrix_grid_control_css(DEFAULT_MATRIX_GRID_CONTROL_STYLE), unsafe_allow_html=True)
+
+    @st.fragment(run_every=timedelta(seconds=4))
+    def _run_matrix_grid_fragment() -> None:
+        active_rows = _fetch_active_invocations_safe()
+        active_map = _matrix_active_by_job_key(active_rows)
+        _testid("run-matrix-grid")
+
+        # Tight grid: narrow solver column + uniform system columns (first column weight pulls systems left)
+        col_weights = [1.0] + [0.68] * len(system_names)
+        # Two header rows: (1) system names only, (2) column ↕ only — same [0.28,0.72] + MATRIX_INNER_BAND
+        # as body rows so Streamlit column widths match checkboxes/dashes (see matrix_grid_style).
+        head_names = st.columns(col_weights)
+        with head_names[0]:
+            sp, lab = st.columns([0.42, 1.85])
+            with sp:
+                st.markdown("")
+            with lab:
+                st.caption("Solver")
+        for i, sysn in enumerate(system_names):
+            with head_names[i + 1]:
+                h_dot, h_chk = st.columns([0.28, 0.72])
+                with h_dot:
+                    st.markdown("")
+                with h_chk:
+                    st.markdown(
+                        f"<div style='text-align:center;font-size:0.9rem'><b>{sysn}</b></div>",
+                        unsafe_allow_html=True,
+                    )
+        head_toggles = st.columns(col_weights)
+        with head_toggles[0]:
+            cbtn, cname = st.columns([0.42, 1.85])
+            with cbtn:
+                _, row_head_spacer, _ = st.columns(MATRIX_INNER_BAND)
+                with row_head_spacer:
+                    st.markdown("")
+            with cname:
+                st.markdown("")
+        for i, sysn in enumerate(system_names):
+            with head_toggles[i + 1]:
+                h_dot, h_chk = st.columns([0.28, 0.72])
+                with h_dot:
+                    st.markdown("")
+                with h_chk:
+                    _, col_btn, _ = st.columns(MATRIX_INNER_BAND)
+                    with col_btn:
+                        if st.button(
+                            "↕",
+                            key=f"matrix-col-toggle-{sysn}",
+                            help=f"Toggle column {sysn}: select all allowed cells or clear",
+                            width=DEFAULT_MATRIX_GRID_CONTROL_STYLE.toggle_width_px,
+                        ):
+                            _matrix_toggle_column_selection(sysn, solver_names, solver_by_name)
+                            st.rerun()
+
+        for sn in solver_names:
+            allowed = set(solver_by_name[sn].get("allowed_systems") or [])
+            row = st.columns(col_weights)
+            with row[0]:
+                cbtn, cname = st.columns([0.42, 1.85])
+                with cbtn:
+                    _, row_btn, _ = st.columns(MATRIX_INNER_BAND)
+                    with row_btn:
+                        if st.button(
+                            "↔",
+                            key=f"matrix-row-toggle-{sn}",
+                            help="Toggle row: select all allowed systems for this solver or clear",
+                            width=DEFAULT_MATRIX_GRID_CONTROL_STYLE.toggle_width_px,
+                        ):
+                            _matrix_toggle_row_selection(sn, allowed, system_names)
+                            st.rerun()
+                with cname:
+                    st.markdown(f"`{sn}`")
+            for i, sysn in enumerate(system_names):
+                with row[i + 1]:
+                    if sysn not in allowed:
+                        d_left, d_right = st.columns([0.28, 0.72])
+                        with d_left:
+                            st.markdown("")
+                        with d_right:
+                            _, dash_mid, _ = st.columns(MATRIX_INNER_BAND)
+                            with dash_mid:
+                                st.markdown(
+                                    '<div class="matrix-dash-cell">—</div>',
+                                    unsafe_allow_html=True,
+                                )
+                    else:
+                        jk = _matrix_job_key(sn, sysn)
+                        inv = active_map.get(jk)
+                        help_txt = _matrix_cell_help(sn, sysn, inv)
+                        dot, chk = st.columns([0.28, 0.72])
+                        with dot:
+                            st.markdown("")
+                        with chk:
+                            pad_l, chk_mid, pad_r = st.columns(MATRIX_INNER_BAND)
+                            with pad_l:
+                                st.markdown("")
+                            with chk_mid:
+                                st.checkbox(
+                                    "run",
+                                    key=_matrix_cell_key(sn, sysn),
+                                    label_visibility="collapsed",
+                                    help=help_txt,
+                                )
+                            with pad_r:
+                                if inv:
+                                    st.markdown(
+                                        '<span class="matrix-active-dot" title="Active run">●</span>',
+                                        unsafe_allow_html=True,
+                                    )
+                                else:
+                                    st.markdown("")
+
+        specs: list[dict[str, Any]] = []
+        for sn in solver_names:
+            allowed = set(solver_by_name[sn].get("allowed_systems") or [])
+            for sysn in system_names:
+                if sysn in allowed and st.session_state.get(_matrix_cell_key(sn, sysn), False):
+                    specs.append({"name": sn, "system": sysn})
+
+        n_sel = len(specs)
+        session_sl = (st.session_state.get("run-matrix-session-label") or "").strip()
+        run_go = st.button(
+            f"Run selected ({n_sel})",
+            type="primary",
+            key="run-matrix-go",
+            disabled=n_sel == 0,
+        )
+        if run_go and specs:
+            with st.spinner(f"Starting {len(specs)} background run(s)…"):
+                ok = _post_run_solvers(
+                    specs,
+                    session_sl,
+                    success_note=(
+                        f"Started {len(specs)} background run(s) (one per solver@system). "
+                        "See **Solvers → Active runs** for live status."
+                    ),
+                )
+            if ok:
+                st.rerun()
+
+    _run_matrix_grid_fragment()
 
 
 # ---------------------------------------------------------------------------
@@ -339,32 +625,16 @@ def page_run_history() -> None:
         st.error(f"API unavailable: {e}")
         return
 
-    try:
-        job_batch_uuids = requests.get(API_URL + "/api/get_job_batch_uuids").json()
-    except requests.exceptions.RequestException:
-        print("Failed to get batch job uuids")
-        return
+    def _sort_key_ts(r: dict[str, Any]) -> str:
+        return (r.get("timestamp") or "")[:32]
 
-    # Use a graph mapping uuids to index of result in filtered to make a batch job
-    # view
-    batch_index_graph: dict[str, list[int]] = {}
+    filtered_sorted = sorted(filtered, key=_sort_key_ts, reverse=True)
 
-    job_batch_uuids.append("")
-    batch_count = 0
-    for job in job_batch_uuids:
-        for i, r in enumerate(filtered):
-            if job == r['job_batch_uuid']:
-                batch_count  += 1
-                if job not in batch_index_graph:
-                    batch_index_graph[job] = [i]
-                else:
-                    batch_index_graph[job].append(i)
-
-    st.write(f"Showing {len(batch_index_graph)} batch(s) with {len(filtered)} run(s)")
+    st.write(f"Showing {len(filtered_sorted)} run(s) (newest first). Each row is one **solver@system** job.")
 
     id_to_label = {
         int(r["id"]): f"{r['id']}: {r['job_name']} @ {r.get('timestamp', '')[:19]}"
-        for r in filtered
+        for r in filtered_sorted
         if r.get("id") is not None
     }
     delete_options = sorted(id_to_label.keys(), reverse=True)
@@ -402,19 +672,20 @@ def page_run_history() -> None:
                 st.session_state.pending_delete_ids = None
                 st.rerun()
 
-    for batch_uuid in batch_index_graph.keys():
-        batch_name = filtered[batch_index_graph[batch_uuid][0]]["job_batch_name"]
-        batch_date = filtered[batch_index_graph[batch_uuid][0]]["job_batch_date"]
-        i = batch_index_graph[batch_uuid]
-        if batch_name != "":
-            label = f"Batch ID: {batch_uuid} Batch Name: {batch_name} Batch Run Initiated On: {batch_date}"
-        else:
-            label = f"Batch ID: {batch_uuid} Batch Run Initiated On: {batch_date}"
-        with st.expander(label, expanded=True):
-            for i in batch_index_graph[batch_uuid]:
-                render_job_expander(filtered[i])
+    for r in filtered_sorted:
+        ts = (r.get("timestamp") or "")[:19]
+        rid = r.get("id")
+        jn = r.get("job_name") or ""
+        outer_title = f"{jn} · {ts} · Run id {rid}"
+        render_job_expander(r, expander_label=outer_title, show_session_meta=True)
 
-def render_job_expander(r: dict[str: Any]) -> None:
+
+def render_job_expander(
+    r: dict[str, Any],
+    *,
+    expander_label: str | None = None,
+    show_session_meta: bool = False,
+) -> None:
 
     passed = "Passed" if r.get("passed") else "Failed"
     if r.get("passed"):
@@ -435,10 +706,25 @@ def render_job_expander(r: dict[str: Any]) -> None:
             icon = "❌"
     is_baseline = r.get("is_baseline", False)
     run_id = r.get("id")
+    inner_lbl = (
+        f"{icon} {expander_label}"
+        if expander_label
+        else f"{icon} {r['job_name']} — {passed}({r.get('timestamp', '')})"
+    )
     # Row: expander (tab) on left, baseline control on the right; hover shows right side clearer
     col_expander, col_baseline = st.columns([5, 1])
     with col_expander:
-        with st.expander(f"{icon} {r['job_name']} — {passed}({r.get('timestamp', '')})"):
+        with st.expander(inner_lbl):
+            if show_session_meta:
+                bn = (r.get("job_batch_name") or "").strip()
+                bu = (r.get("job_batch_uuid") or "").strip()
+                if bn or bu:
+                    meta = []
+                    if bn:
+                        meta.append(f"Session label: `{bn}`")
+                    if bu:
+                        meta.append(f"Batch uuid: `{bu}`")
+                    st.caption(" · ".join(meta))
             st.write(f"**Solver:** {r['solver_name']} | **System:** {r['system_name']} | **Returncode:** {r.get('returncode')} | **Runtime:** {r.get('runtime_seconds')}s")
             if r.get("stdout"):
                 st.subheader("stdout")
@@ -530,15 +816,28 @@ def _run_solver_spec_for_name(solver_by_name: dict[str, Any], sn: str) -> dict[s
     return {"name": sn, "system": None}
 
 
+def _mon_job_key_suffix(job_name: str) -> str:
+    """Sanitize solver@system for use in st.session_state keys."""
+    return (
+        job_name.replace("@", "-at-")
+        .replace("/", "-")
+        .replace(" ", "_")
+    )
+
+
 def _register_background_invocations(invs: list[dict[str, Any]]) -> None:
-    """Remember invocation ids per solver and sync global monitor field."""
+    """Remember invocation ids per solver and per job_name (solver@system); sync global monitor field."""
     by_solver = st.session_state.setdefault("run_solvers_last_invocation_by_solver", {})
     for inv in invs:
         sn = inv.get("solver_name")
         iid = inv.get("invocation_id", "")
+        labels = inv.get("run_labels") or []
+        job_name = labels[0] if labels else None
         if sn and iid:
             by_solver[sn] = iid
             st.session_state[f"run-solvers-mon-id-{sn}"] = iid
+        if job_name and iid:
+            st.session_state[f"run-solvers-mon-job-{_mon_job_key_suffix(job_name)}"] = iid
     inv_top = ""
     if invs:
         inv_top = invs[0].get("invocation_id", "")
@@ -548,14 +847,19 @@ def _register_background_invocations(invs: list[dict[str, Any]]) -> None:
         st.session_state._pending_run_solvers_monitor_invocation_id = inv_top
 
 
-def _post_run_solvers(specs: list[dict[str, Any]], batch_name_input: str) -> bool:
+def _post_run_solvers(
+    specs: list[dict[str, Any]],
+    session_label_input: str,
+    *,
+    success_note: str | None = None,
+) -> bool:
     """
     POST run_solvers with background=True (queued invocations). Returns True after session updates on 202.
     """
     payload: dict[str, Any] = {"solvers": specs, "background": True}
-    bn = (batch_name_input or "").strip()
-    if bn:
-        payload["batch_name"] = bn
+    sl = (session_label_input or "").strip()
+    if sl:
+        payload["session_label"] = sl
     endpoint = API_URL + "/api/run_solvers"
     try:
         response = requests.post(endpoint, json=payload, timeout=60)
@@ -568,7 +872,9 @@ def _post_run_solvers(specs: list[dict[str, Any]], batch_name_input: str) -> boo
         _register_background_invocations(invs)
         inv_top = data.get("invocation_id") or (invs[0].get("invocation_id", "") if invs else "")
         n = len(invs)
-        if n > 1:
+        if success_note:
+            st.success(success_note)
+        elif n > 1:
             st.success(f"Started {n} background invocations (one per solver). See **Active runs** above.")
         else:
             st.success(f"Background invocation started: `{inv_top}`")
@@ -780,7 +1086,7 @@ def _run_solvers_active_runs_live_fragment() -> None:
         iid = rec.get("invocation_id", "")
         solver = rec.get("solver_name") or "(unknown)"
         jids = ", ".join(rec.get("scheduler_job_ids") or []) or None
-        bname = rec.get("batch_name") or None
+        bname = (rec.get("session_label") or rec.get("batch_name") or None)
         jc = rec.get("jobs_completed") or 0
         jt = rec.get("jobs_total") or 0
         ex = rec.get("execution") or {}
@@ -794,7 +1100,7 @@ def _run_solvers_active_runs_live_fragment() -> None:
         with col_title:
             meta_parts = [f"`{backend}`"]
             if bname:
-                meta_parts.append(f"batch: *{bname}*")
+                meta_parts.append(f"session: *{bname}*")
             if jids:
                 meta_parts.append(f"scheduler ids: `{jids}`")
             st.markdown(
@@ -985,12 +1291,12 @@ def _render_run_solvers_panel() -> None:
     st.subheader("Batch run", help = "Check the solvers to run together, then **Run batch**. Below: each solver has **Run**, then **Invocation** or **Last run**.")
     b_row1 = st.columns([4, 1, 1])
     with b_row1[0]:
-        batch_name_input = st.text_input(
-            "Batch name (optional)",
+        session_label_input = st.text_input(
+            "Session label (optional)",
             value="",
             key="run-solvers-batch-name",
-            help="Optional label stored with this run batch (same as API field batch_name).",
-            placeholder="Enter an optional batch name here"
+            help="Optional label stored with runs (API session_label; batch_name is a legacy alias).",
+            placeholder="e.g. nightly-smoke",
         )
     with b_row1[1]:
         st.button(
@@ -1035,7 +1341,7 @@ def _render_run_solvers_panel() -> None:
     if run_batch:
         batch_specs = [_run_solver_spec_for_name(solver_by_name, sn) for sn in solver_names if st.session_state.get(f"run-solvers-include-{sn}", False)]
         with st.spinner(f"Starting {len(batch_specs)} solver(s)…"):
-            ok = _post_run_solvers(batch_specs, batch_name_input)
+            ok = _post_run_solvers(batch_specs, session_label_input)
         if ok:
             st.rerun()
 
@@ -1090,7 +1396,7 @@ def _render_run_solvers_panel() -> None:
                 "Run",
                 key=f"run-solvers-one-{sn}",
                 type="primary",
-                help="Queue this solver in the background (batch name from above); watch **Active runs**.",
+                help="Queue this solver in the background (session label from above); watch **Active runs**.",
             )
         with name_right:
             st.subheader(sn)
@@ -1107,7 +1413,7 @@ def _render_run_solvers_panel() -> None:
         if run_one:
             specs = [_run_solver_spec_for_name(solver_by_name, sn)]
             with st.spinner(f"Starting {sn}…"):
-                ok = _post_run_solvers(specs, batch_name_input)
+                ok = _post_run_solvers(specs, session_label_input)
             if ok:
                 # Defer: cannot set run_solvers_tab_radio after st.radio (same key) is drawn this run.
                 st.session_state["_pending_run_solvers_tab_radio"] = sn
@@ -1405,7 +1711,7 @@ def page_long_term_trends() -> None:
 
     st.header("Long-Term Trends", help = "Performance of solvers over time. Use the sidebar to filter by solver, system, and date range.")
 
-    df_all = get_runtime_trend_data(str(DB_PATH))
+    df_all = get_trend_runs_data(str(DB_PATH))
 
     if df_all.empty:
         st.info("No run data available yet. Run solvers from the **Solvers** page or the CLI to collect data.")
@@ -1465,7 +1771,7 @@ def page_long_term_trends() -> None:
     )
     df_filtered = df_all[mask]
 
-    tab_heatmap, tab_runtime, tab_mlups = st.tabs(["Heatmap", "Runtime Trend", "MLUPS Trend"])
+    tab_heatmap, tab_metric_trends = st.tabs(["Heatmap", "Metric trends"])
 
     with tab_heatmap:
         # --- Heatmap -----------------------------------------------------------
@@ -1636,29 +1942,30 @@ def page_long_term_trends() -> None:
                     df_filtered[["timestamp", "solver_name", "system_name", "job_name", "runtime_seconds", "passed"]],
                     width='stretch',
             )
-    with tab_runtime:
-        # --- Runtime trend chart -----------------------------------------------
-        _testid("section-runtime-trend")
-        # st.subheader("Runtime (wall-clock) Trend")
-        render_runtime_trend(df_filtered, st.session_state)
-
-    with tab_mlups:
-        # --- MLUPS trend chart -------------------------------------------------
-        _testid("section-mlups-trend")
-        # st.subheader("Throughput Trend (MLUPS)")
-        df_mlups_all = get_mlups_trend_data(str(DB_PATH))
-        if not df_mlups_all.empty:
-            mlups_mask = (
-                df_mlups_all["solver_name"].isin(selected_solvers)
-                & df_mlups_all["system_name"].isin(selected_systems)
-                & (df_mlups_all["timestamp"].dt.date >= start_date)
-                & (df_mlups_all["timestamp"].dt.date <= end_date)
+    with tab_metric_trends:
+        _testid("section-metric-trend")
+        numeric_names = list_numeric_metric_names(df_filtered)
+        if not numeric_names:
+            st.info(
+                "No numeric metrics in stored runs for the current filters. "
+                "Charts only include int/float values from collected solver output "
+                "(see each solver's parser_config)."
             )
-            df_mlups_filtered = df_mlups_all[mlups_mask]
         else:
-            df_mlups_filtered = df_mlups_all
-        render_mlups_trend(df_mlups_filtered, st.session_state)
-
+            default_metric = (
+                "runtime_seconds"
+                if "runtime_seconds" in numeric_names
+                else numeric_names[0]
+            )
+            selected_metric = st.selectbox(
+                "Metric",
+                options=numeric_names,
+                index=numeric_names.index(default_metric),
+                key="trend-metric-select",
+                help="Options are derived from metrics present in runs (parser output).",
+            )
+            df_metric = build_metric_trend_frame(df_filtered, selected_metric)
+            render_numeric_metric_trend(df_metric, selected_metric, st.session_state)
 
 
 # ---------------------------------------------------------------------------
@@ -2009,6 +2316,8 @@ if st.session_state.page == "Home":
     page_home()
 elif st.session_state.page == "Solvers":
     page_solvers()
+elif st.session_state.page == "Run Matrix":
+    page_run_matrix()
 elif st.session_state.page == "Individual Trends":
     page_individual_trends()
 elif st.session_state.page == "Run History":

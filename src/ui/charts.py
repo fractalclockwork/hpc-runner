@@ -186,47 +186,50 @@ def render_multi_solver_runs_vs_baseline(
         if rows:
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
-def render_runtime_trend(df: pd.DataFrame, session_state) -> None:
-    """Render a Plotly line chart of runtime_seconds over time, one line per series.
+def render_numeric_metric_trend(df: pd.DataFrame, metric_name: str, session_state) -> None:
+    """Render a Plotly line chart of a numeric metric over time, one line per series.
 
-    Expects df to have columns: timestamp, runtime_seconds, series
-    (where series = solver_name + " / " + system_name).
-    Handles empty/null states inline.
+    Expects df with columns: timestamp, value, series (solver / system).
     """
     if df is None or df.empty:
-        st.info("No run data available yet. Run jobs via Run Jobs or the CLI to collect data.")
+        st.info(
+            f"No values recorded for **{metric_name}** with the current filters. "
+            "Only numeric metrics from collected runs are shown here."
+        )
         return
 
-    if "timestamp" not in df.columns or "runtime_seconds" not in df.columns:
+    if "timestamp" not in df.columns or "value" not in df.columns:
         st.warning("Unexpected data format — missing required columns.")
         return
 
-    if df["runtime_seconds"].isna().all():
-        st.info("No runtime data recorded for the selected filters.")
+    if df["value"].isna().all():
+        st.info(f"No numeric values for **{metric_name}** with the current filters.")
         return
 
     fig = px.line(
         df,
         x="timestamp",
-        y="runtime_seconds",
+        y="value",
         color="series",
         markers=True,
         labels={
             "timestamp": "Date",
-            "runtime_seconds": "Runtime (seconds)",
+            "value": metric_name,
             "series": "Solver / System",
         },
-        title="Runtime Trend — Wall-Clock Time per Run",
+        title=f"{metric_name} — trend over time",
     )
 
     fig.update_traces(
-        hovertemplate="<b>%{fullData.name}</b><br>Date: %{x}<br>Runtime: %{y:.3f}s<extra></extra>"
+        hovertemplate="<b>%{fullData.name}</b><br>Date: %{x}<br>"
+        + metric_name
+        + ": %{y:.6g}<extra></extra>"
     )
     fig.update_layout(
         legend_title_text="Solver / System",
         hovermode="closest",
         xaxis_title="Date",
-        yaxis_title="Runtime (seconds)",
+        yaxis_title=metric_name,
         clickmode="event+select",
     )
 
@@ -239,56 +242,6 @@ def render_runtime_trend(df: pd.DataFrame, session_state) -> None:
         st.session_state.page_change_requested = True
         st.rerun()
 
-
-def render_mlups_trend(df: pd.DataFrame, session_state) -> None:
-    """Render a Plotly line chart of mlups over time, one line per series.
-
-    Expects df to have columns: timestamp, mlups, series
-    (where series = solver_name + " / " + system_name).
-    Handles empty/null states inline.
-    """
-    if df is None or df.empty:
-        st.info("No MLUPS data available for the selected filters. Only runs from solvers that report 'mlups' will appear here.")
-        return
-
-    if df["mlups"].isna().all():
-        st.info("No MLUPS values recorded for the selected filters.")
-        return
-
-    fig = px.line(
-        df,
-        x="timestamp",
-        y="mlups",
-        color="series",
-        markers=True,
-        labels={
-            "timestamp": "Date",
-            "mlups": "Throughput (MLUPS)",
-            "series": "Solver / System",
-        },
-        title="Throughput Trend — MLUPS per Run",
-    )
-
-    fig.update_traces(
-        hovertemplate="<b>%{fullData.name}</b><br>Date: %{x}<br>MLUPS: %{y:.3f}<extra></extra>"
-    )
-    fig.update_layout(
-        legend_title_text="Solver / System",
-        hovermode="closest",
-        xaxis_title="Date",
-        yaxis_title="Throughput (MLUPS)",
-        clickmode="event+select",
-    )
-
-
-    event = st.plotly_chart(fig, use_container_width=True, on_select="rerun")
-    if event.selection.points:
-        point = event.selection.points[0]
-        session_state['clicked_point'] = point
-        print(f"point is {session_state['clicked_point']}")
-        session_state.page = "Run History"
-        st.session_state.page_change_requested = True
-        st.rerun()
 
 def single_solver_heatmap(filtered, solver_name: str = ""):
     column_names = [key for key in json.loads(filtered[0]['metrics_json'])]

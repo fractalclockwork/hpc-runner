@@ -231,7 +231,11 @@ def get_all_metrics_series(db_path: str | Path, limit: int = 500) -> list[tuple[
         try:
             m = json.loads(mj or "{}")
             for k, v in m.items():
-                if isinstance(v, (int, float)) and (solver_name, k) not in seen:
+                if (
+                    not isinstance(v, bool)
+                    and isinstance(v, (int, float))
+                    and (solver_name, k) not in seen
+                ):
                     seen.add((solver_name, k))
                     result.append((solver_name, k))
         except json.JSONDecodeError:
@@ -258,7 +262,9 @@ def get_metrics_history(
     for ts, mj in rows:
         try:
             m = json.loads(mj or "{}")
-            if metric_name in m and isinstance(m[metric_name], (int, float)):
+            if metric_name in m and not isinstance(m[metric_name], bool) and isinstance(
+                m[metric_name], (int, float)
+            ):
                 result.append((ts, float(m[metric_name])))
         except json.JSONDecodeError:
             pass

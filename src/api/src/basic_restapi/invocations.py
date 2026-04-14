@@ -17,7 +17,7 @@ from harness import (
     run_jobs,
     store_run,
 )
-from harness.config import Job, Solver, System
+from harness.config import Job, Resource, Solver, System
 
 from .slurm_tools import query_slurm_job_state
 
@@ -130,10 +130,12 @@ def invocation_to_dict(rec: InvocationRecord) -> dict[str, Any]:
     """JSON-serializable view (includes live control snapshot while running)."""
     ctl = rec.control
     labels = list(rec.job_names)
+    bn = rec.batch_name or ""
     return {
         "invocation_id": rec.id,
         "status": rec.status,
-        "batch_name": rec.batch_name or "",
+        "batch_name": bn,
+        "session_label": bn,
         "solver_name": rec.solver_name or "",
         "job_names": labels,
         "run_labels": labels,
@@ -164,6 +166,7 @@ def start_background_run(
     job_list: list[Job],
     solvers: dict[str, Solver],
     systems: dict[str, System],
+    resources: dict[str, Resource],
     batch_name: str,
     db_path: str,
     *,
@@ -190,7 +193,14 @@ def start_background_run(
         r0.status = "running"
         ctl = r0.control
         try:
-            results = run_jobs(job_list, solvers, systems, batch_name=batch_name, invoke_ctl=ctl)
+            results = run_jobs(
+                job_list,
+                solvers,
+                systems,
+                resources=resources,
+                batch_name=batch_name,
+                invoke_ctl=ctl,
+            )
             init_db(db_path)
             for res in results:
                 store_run(db_path, res)

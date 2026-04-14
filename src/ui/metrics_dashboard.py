@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -19,24 +20,37 @@ DB_PATH = get_db_path()
 _TREND_QUERY_TTL = 60  # seconds
 
 
-@st.cache_data(ttl=_TREND_QUERY_TTL)
-def get_runtime_trend_data(db_path: str) -> pd.DataFrame:
-    """Return a DataFrame of all runs with runtime_seconds, for trend charting.
+def _is_plottable_number(v: Any) -> bool:
+    """True for int/float values suitable for line charts (excludes bool)."""
+    if isinstance(v, bool):
+        return False
+    return isinstance(v, (int, float))
 
-    Columns: timestamp, solver_name, system_name, job_name, runtime_seconds, passed
-    Returns an empty DataFrame (with correct columns) if no data exists.
+
+@st.cache_data(ttl=_TREND_QUERY_TTL)
+def get_trend_runs_data(db_path: str) -> pd.DataFrame:
+    """Load runs for Long-Term Trends: timestamps, filters, parsed metrics dict.
+
+    Columns: timestamp, solver_name, system_name, job_name, passed, runtime_seconds, metrics
     """
     path = Path(db_path)
+    empty_cols = [
+        "timestamp",
+        "solver_name",
+        "system_name",
+        "job_name",
+        "passed",
+        "runtime_seconds",
+        "metrics",
+    ]
     if not path.exists():
-        return pd.DataFrame(
-            columns=["timestamp", "solver_name", "system_name", "job_name", "runtime_seconds", "passed"]
-        )
+        return pd.DataFrame(columns=empty_cols)
 
     with sqlite3.connect(path) as conn:
         df = pd.read_sql_query(
             """
             SELECT timestamp, solver_name, system_name, job_name,
-                   runtime_seconds, passed
+                   runtime_seconds, passed, COALESCE(metrics_json, '{}') AS metrics_json
             FROM runs
             ORDER BY timestamp ASC
             """,
@@ -44,61 +58,68 @@ def get_runtime_trend_data(db_path: str) -> pd.DataFrame:
         )
 
     if df.empty:
-        return df
+        return pd.DataFrame(columns=empty_cols)
 
-    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-    df["passed"] = df["passed"].astype(bool)
-    df["series"] = df["solver_name"] + " / " + df["system_name"]
-    return df
-
-
-@st.cache_data(ttl=_TREND_QUERY_TTL)
-def get_mlups_trend_data(db_path: str) -> pd.DataFrame:
-    """Return a DataFrame of runs that have an 'mlups' key in metrics_json.
-
-    Columns: timestamp, solver_name, system_name, job_name, passed, mlups, series
-    Returns an empty DataFrame (with correct columns) if no data exists.
-    """
-    path = Path(db_path)
-    empty = pd.DataFrame(
-        columns=["timestamp", "solver_name", "system_name", "job_name", "passed", "mlups", "series"]
-    )
-    if not path.exists():
-        return empty
-
-    with sqlite3.connect(path) as conn:
-        df = pd.read_sql_query(
-            """
-            SELECT timestamp, solver_name, system_name, job_name, passed, metrics_json
-            FROM runs
-            WHERE metrics_json IS NOT NULL
-            ORDER BY timestamp ASC
-            """,
-            conn,
-        )
-
-    if df.empty:
-        return empty
-
-    import json
-
-    def _extract_mlups(metrics_json: str) -> float | None:
+    def _parse_metrics(raw: str) -> dict[str, Any]:
         try:
-            val = json.loads(metrics_json).get("mlups")
-            return float(val) if val is not None else None
-        except (json.JSONDecodeError, TypeError, ValueError):
-            return None
+            m = json.loads(raw or "{}")
+            return m if isinstance(m, dict) else {}
+        except json.JSONDecodeError:
+            return {}
 
-    df["mlups"] = df["metrics_json"].apply(_extract_mlups)
-    df = df.dropna(subset=["mlups"]).drop(columns=["metrics_json"])
-
-    if df.empty:
-        return empty
-
+    df["metrics"] = df["metrics_json"].apply(_parse_metrics)
+    df = df.drop(columns=["metrics_json"])
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
     df["passed"] = df["passed"].astype(bool)
-    df["series"] = df["solver_name"] + " / " + df["system_name"]
     return df
+
+
+def list_numeric_metric_names(df: pd.DataFrame) -> list[str]:
+    """Union of metric keys that have plottable numeric values in any row."""
+    names: set[str] = set()
+    if df.empty or "metrics" not in df.columns:
+        return []
+    for m in df["metrics"]:
+        if not isinstance(m, dict):
+            continue
+        for k, v in m.items():
+            if _is_plottable_number(v):
+                names.add(k)
+    return sorted(names)
+
+
+def build_metric_trend_frame(df: pd.DataFrame, metric_name: str) -> pd.DataFrame:
+    """Rows with a numeric value for ``metric_name``; columns for line charting."""
+    if df.empty or "metrics" not in df.columns:
+        return pd.DataFrame(
+            columns=["timestamp", "solver_name", "system_name", "job_name", "passed", "value", "series"]
+        )
+    rows: list[dict[str, Any]] = []
+    for _, row in df.iterrows():
+        m = row["metrics"]
+        if not isinstance(m, dict) or metric_name not in m:
+            continue
+        v = m[metric_name]
+        if not _is_plottable_number(v):
+            continue
+        rows.append(
+            {
+                "timestamp": row["timestamp"],
+                "solver_name": row["solver_name"],
+                "system_name": row["system_name"],
+                "job_name": row["job_name"],
+                "passed": row["passed"],
+                "value": float(v),
+            }
+        )
+    if not rows:
+        return pd.DataFrame(
+            columns=["timestamp", "solver_name", "system_name", "job_name", "passed", "value", "series"]
+        )
+    out = pd.DataFrame(rows)
+    out["timestamp"] = pd.to_datetime(out["timestamp"], utc=True)
+    out["series"] = out["solver_name"].astype(str) + " / " + out["system_name"].astype(str)
+    return out
 
 
 def get_available_metrics() -> list[tuple[str, str]]:

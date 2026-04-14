@@ -1,0 +1,6 @@
+# SLURM + LAMMPS (see docs/slurm_lammps_e2e.md). Env vars are merged into solver subprocess.
+systems:
+  - name: sci-slurm-lammps
+    resources: [slurm-lammps]
+    # Set DOCKER_SLURM_CONTAINER / LAMMPS_BIN in the shell or here when needed (see docs/slurm_lammps_e2e.md)
+    env: {}

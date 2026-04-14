@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # OpenMM solver dispatcher.
-# Reads EXECUTION_MODE from the system environment (set via configs/systems/default.yaml).
+# Reads EXECUTION_MODE and MD inputs from merged env (configs/systems/*.yaml, solver.yaml env, resources).
 #   local  (default) -> run simulate.py directly; stdout flows to the runner
 #   slurm            -> submit slurm_job.sh via sbatch --wait, then re-print the
 #                       job output so the runner can capture metrics from stdout

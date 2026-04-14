@@ -35,3 +35,7 @@ version: "0.0.0"
 #   cwd: /path  - use explicit path as cwd
 #   cwd: false  - use entrypoint script's parent directory as cwd
 # cwd: true
+
+# Optional: env vars merged into the solver process (resource env, then solver env, then system env)
+# env:
+#   MY_VAR: default-value

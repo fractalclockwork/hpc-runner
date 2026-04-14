@@ -90,7 +90,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--system",
         metavar="NAME",
-        help="System name (required with --add); e.g. dev-system",
+        help="With --add: required (target system for the new solver). Otherwise: run selected solvers on this system (overrides default_system).",
+    )
+    parser.add_argument(
+        "--all-allowed-systems",
+        action="store_true",
+        help="Run each selected solver once per entry in its allowed_systems (cannot combine with --system)",
     )
     parser.add_argument(
         "--name",
@@ -111,6 +116,10 @@ def main(argv: list[str] | None = None) -> int:
     solvers_root = Path(args.solvers_dir).resolve() if args.solvers_dir else None
     if solvers_root is None:
         solvers_root = config_dir / "solvers"
+
+    if args.add and args.all_allowed_systems:
+        print("Cannot use --all-allowed-systems with --add", file=sys.stderr)
+        return 1
 
     # --add: create solver and job, then run
     if args.add:
@@ -147,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
         except ConfigError as e:
             print(str(e), file=sys.stderr)
             return 1
-        results = run_jobs(job_list, solvers, systems)
+        results = run_jobs(job_list, solvers, systems, resources=resources)
         if not args.no_store:
             init_db(args.db)
             for r in results:
@@ -214,14 +223,30 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
+    if args.system and args.all_allowed_systems:
+        print("Cannot use both --system and --all-allowed-systems", file=sys.stderr)
+        return 1
+
     try:
-        specs = [{"name": n, "system": None} for n in selected]
+        specs: list[dict] = []
+        if args.all_allowed_systems:
+            for name in selected:
+                solver = solvers[name]
+                if solver.allowed_systems:
+                    for sys_name in solver.allowed_systems:
+                        specs.append({"name": name, "system": sys_name})
+                else:
+                    specs.append({"name": name, "system": None})
+        elif args.system:
+            specs = [{"name": n, "system": args.system} for n in selected]
+        else:
+            specs = [{"name": n, "system": None} for n in selected]
         job_list = build_jobs_from_solver_specs(solvers, systems, specs)
     except ConfigError as e:
         print(str(e), file=sys.stderr)
         return 1
 
-    results = run_jobs(job_list, solvers, systems)
+    results = run_jobs(job_list, solvers, systems, resources=resources)
 
     if not args.no_store:
         init_db(args.db)

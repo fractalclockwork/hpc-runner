@@ -86,9 +86,26 @@ class SolverSpecBody(BaseModel):
 
 
 class RunSolversRequest(BaseModel):
+    """Body for POST /api/run_solvers.
+
+    `session_label` and `batch_name` both set the optional session string stored on runs.
+    If both are non-empty, `session_label` wins. Clients may send either field; `batch_name`
+    remains for backward compatibility.
+    """
+
     solvers: list[SolverSpecBody]
     batch_name: str = ""
+    session_label: str = ""
     background: bool = False
+
+
+def _effective_session_label(body: RunSolversRequest) -> str:
+    """Resolve label for run_jobs / invocations: prefer session_label when both are set."""
+    sl = (body.session_label or "").strip()
+    bn = (body.batch_name or "").strip()
+    if sl and bn:
+        return sl
+    return sl or bn
 
 
 class DeleteRunsRequest(BaseModel):
@@ -141,7 +158,7 @@ def api_systems():
 @app.post("/api/run_solvers")
 def api_run_solvers(body: RunSolversRequest | None = None):
     """Run one or more solvers (solver-first). Each background solver gets its own invocation (cancel per solver)."""
-    _, systems, solvers = _load_definitions()
+    resources, systems, solvers = _load_definitions()
     if not body or not body.solvers:
         return JSONResponse(
             status_code=400,
@@ -160,15 +177,16 @@ def api_run_solvers(body: RunSolversRequest | None = None):
             content={"error": str(e), "results": []},
         )
 
-    batch_name = body.batch_name if body.batch_name else ""
+    effective_label = _effective_session_label(body)
     if body.background:
         inv_rows: list[dict] = []
         for j in job_list:
-            sub_batch = f"{batch_name}:{j.solver}" if batch_name.strip() else j.solver
+            sub_batch = f"{effective_label}:{j.solver}" if effective_label.strip() else j.solver
             inv_id = invocations.start_background_run(
                 [j],
                 solvers,
                 systems,
+                resources,
                 sub_batch,
                 str(DB_PATH),
                 solver_name=j.solver,
@@ -189,7 +207,7 @@ def api_run_solvers(body: RunSolversRequest | None = None):
             content["invocation_id"] = inv_rows[0]["invocation_id"]
         return JSONResponse(status_code=202, content=content)
 
-    results = run_jobs(job_list, solvers, systems, batch_name=batch_name)
+    results = run_jobs(job_list, solvers, systems, resources=resources, batch_name=effective_label)
     init_db(DB_PATH)
     for r in results:
         store_run(DB_PATH, r)

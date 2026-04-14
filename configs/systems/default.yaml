@@ -1,25 +1,3 @@
-systems:
-  - name: dev-system
-    resources: [dev-local]
-    env:
-      EXECUTION_MODE: local
-      INPUT_PDB: inputs/alanine_dipeptide.pdb
-      N_STEPS: "2000"
-      SOLVATE: "false"
-  - name: hpc-cluster-01
-    resources: [hpc-node]
-    env:
-      MODULEPATH: /opt/modules
-      EXECUTION_MODE: slurm
-      INPUT_PDB: inputs/wd40.pdb
-      N_STEPS: "500000"
-      SOLVATE: "true"
-      SLURM_PARTITION: gpu
-      SLURM_GPUS: "1"
-      SLURM_NTASKS: "8"
-      SLURM_TIME: "01:00:00"
-  # SLURM + LAMMPS (see docs/slurm_lammps_e2e.md). Env vars are merged into solver subprocess.
-  - name: sci-slurm-lammps
-    resources: [slurm-lammps]
-    # Set DOCKER_SLURM_CONTAINER / LAMMPS_BIN in the shell or here when needed (see docs/slurm_lammps_e2e.md)
-    env: {}
+# Optional local-only or CI test systems. Do not duplicate names from other files in this directory.
+# Production systems live in per-system YAML files (e.g. dev-system.yaml).
+systems: []

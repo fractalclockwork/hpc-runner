@@ -23,6 +23,8 @@ resources:
     cpus: 64
     gpus: 4
     memory_gb: 256
+    env:
+      MODULEPATH: /opt/modules
 ```
 
 | Field       | Description                    |
@@ -31,22 +33,26 @@ resources:
 | `cpus`      | CPU count (optional)           |
 | `gpus`      | GPU count (optional)           |
 | `memory_gb` | Memory in GB (optional)        |
+| `env`       | Optional site-wide variables (e.g. module paths) merged before solver and system env |
 
 You can define multiple resources in one file or split across files. Each resource is referenced by its `name`.
 
 ### Systems
 
-Systems bundle one or more resources and add environment variables. Add them in `configs/systems/*.yaml` (`.yml` also supported):
+Systems bundle one or more resources and add environment variables. Add them in `configs/systems/*.yaml` (`.yml` also supported). The loader merges every YAML file in that directory into one registry of systems by `name`.
+
+**Convention:** Prefer **one file per production system** (for example `dev-system.yaml`, `hpc-cluster-01.yaml`) so each environment is easy to find and review. Use `configs/systems/default.yaml` for **optional** extra definitions used only for local or CI testing (for example scratch systems). Do **not** define the same `name` in two files unless you intend to override; the last file loaded wins, which is fragile.
 
 ```yaml
 systems:
   - name: dev-system
     resources: [dev-local]
-    env: {}
+    env:
+      EXECUTION_MODE: local
   - name: hpc-cluster-01
     resources: [hpc-node]
     env:
-      MODULEPATH: /opt/modules
+      EXECUTION_MODE: slurm
 ```
 
 | Field         | Description                              |
@@ -56,9 +62,11 @@ systems:
 | `env`         | Environment variables (key-value)        |
 | `constraints` | Optional list of constraints             |
 
-The `env` map is passed to solver scripts when they run. Use it for module paths, API keys, or other runtime configuration.
+**Merged environment for each job:** The runner builds the subprocess environment in this order (later entries override earlier ones for the same key): the process environment, then each **resource** `env` in `resources` order, then the **solver** `env` from `solver.yaml`, then the **system** `env`. Put site-wide knobs (for example `MODULEPATH`) on the **resource**; put solver defaults (for example MD input paths) on the **solver**; keep **system** `env` for deployment-specific overrides (for example `EXECUTION_MODE`, or a different `INPUT_PDB` on HPC than on dev).
 
 **Workflow:** Define a resource → reference it in a system → the system is ready for jobs.
+
+**Cross-system smoke tests:** Portable solvers (such as `echo-solver` and `python-solver`) should list every system you support in `allowed_systems`. Automated tests in `src/core/tests/test_solver_matrix.py` run those solvers against each production system. You can also run a matrix from the CLI with `uv run hpc-runner configs --solver echo-solver --solver python-solver --all-allowed-systems --no-store` (one job per solver per allowed system), or pin a single system with `--system dev-system`.
 
 ---
 
@@ -78,9 +86,11 @@ A solver is a self-contained package with a run script and metadata. See [solver
    name: my-solver
    entrypoint: run.sh
    allowed_systems: [dev-system, hpc-cluster-01]
+   # env:
+   #   MY_DEFAULT: value
    ```
 
-3. Implement `run.sh` (or `run.py`). The script must be executable. The platform passes system `env` variables and invokes it as a subprocess. Your script controls execution (local, SLURM, MPI, etc.).
+3. Implement `run.sh` (or `run.py`). The script must be executable. The platform merges resource, solver, and system `env` (see **Systems** above) and invokes the entrypoint as a subprocess. Your script controls execution (local, SLURM, MPI, etc.).
 
 4. Add a job that uses your solver (see [Defining Jobs](#4-defining-jobs)).
 
@@ -104,6 +114,7 @@ uv run hpc-runner --add "echo hello" --system dev-system --name hello-check --no
 
 - **Paths** in `solver.yaml` (e.g. `entrypoint`, `parser_config`) are relative to the solver directory.
 - **allowed_systems** must list system names that exist in `configs/systems/`. Jobs can only pair your solver with one of these systems.
+- **env** (optional): Default environment variables for this solver; system `env` can override keys per deployment.
 - **Entrypoint** must exist at the specified path. Use `run.sh` or `run.py`; the platform invokes them via `bash` or `python3`.
 - **cwd** (optional): Working directory for the solver. Default `true` = use solver dir; `false` = use entrypoint parent; or a string path.
 
@@ -256,7 +267,7 @@ Two interfaces are available:
 
 **REST API (FastAPI):** `make api` → http://localhost:8000 (root redirects to `/docs` for interactive API documentation). Use for programmatic access or automation.
 
-**Streamlit UI:** `make ui` → http://localhost:8501. Use for interactive running of jobs and viewing results in a browser. The UI talks to the harness **only via the REST API** (HTTP), not embedded Python calls—start **`make api`** first (or point **`HPC_API_URL`** at a reachable API), or pages such as **Run Jobs** and **Run History** cannot load jobs or runs.
+**Streamlit UI:** `make ui` → http://localhost:8501. Use for interactive running of jobs and viewing results in a browser. The UI talks to the harness **only via the REST API** (HTTP), not embedded Python calls—start **`make api`** first (or point **`HPC_API_URL`** at a reachable API), or pages such as **Solvers**, **Run Matrix**, and **Run History** cannot load jobs or runs. **Solvers** and **Run Matrix** use a **Session label** field; the API sends it as **`session_label`** (see REST API section below).
 
 Both allow you to:
 
@@ -287,18 +298,20 @@ Like the Slurm batch templates, the script prints **`HARNESS_SOLVER_WALL_SECONDS
 
 ### REST API
 
+**Session label:** The optional tag for a launch is **`session_label`** on `POST /api/run_solvers` (legacy **`batch_name`** is equivalent). If both are non-empty, **`session_label`** is used. The value is persisted as **`job_batch_name`** in the database. **`job_batch_uuid`** still groups runs from a single launch for correlation; it is not removed or renamed.
+
 For automation:
 
 | Endpoint                    | Method | Description                          |
 |----------------------------|--------|--------------------------------------|
 | `/api/solvers`             | GET    | List solvers (`default_system`, `allowed_systems`) |
-| `/api/run_solvers`         | POST   | Run solvers; body `solvers`, optional `batch_name`, `background` — 202 returns one invocation per solver when background |
+| `/api/run_solvers`         | POST   | Run solvers; body `solvers` (each `name` + optional `system`), optional `session_label` or `batch_name`, `background` — 202 returns one invocation per **job** (`solver@system`) when background |
 | `/api/runs`                | GET    | List runs (?solver=, ?processor=, ?limit=) |
 | `/api/runs`                | DELETE | Body `{"ids": [1,2]}` — remove stored runs (baseline rows allowed) |
 | `/api/runs/<id>`           | GET    | Run detail                           |
 | `/api/runs/<id>/slurm_status` | GET | Live `squeue`/`sacct` when `RUN_SLURM_E2E=1` and run has SLURM metadata |
 | `/api/invocations`         | GET    | List invocations; `?active_only=true` for queued/running only |
-| `/api/invocations/<id>`    | GET    | Status, `batch_name`, live `scheduler_job_ids`, `jobs_total` / `jobs_completed`, and `results` when done |
+| `/api/invocations/<id>`    | GET    | Status, `batch_name` and mirrored `session_label`, live `scheduler_job_ids`, `jobs_total` / `jobs_completed`, and `results` when done |
 | `/api/invocations/<id>/slurm_status` | GET | Live `squeue`/`sacct` for SLURM ids captured on this invocation (`RUN_SLURM_E2E=1`) |
 | `/api/invocations/<id>/cancel` | POST | Cancel background run (subprocess + best-effort `scancel`; see env vars below) |
 | `/api/solver_summaries`   | GET    | Per-solver pass counts and last run info |
@@ -331,8 +344,9 @@ CLI output is JSON. Results are stored in `data/harness.db` unless you use `--no
 The Streamlit UI provides:
 
 - **Home:** Welcome text and a **solver monitoring** table (aggregates from stored runs); **Individual Trends** — select solver and metric, line chart
-- **Run History:** Batches of runs; filter by solver or processor; expand for stdout, stderr, metrics; **select runs and delete** from the database (with confirm); for SLURM-backed runs, optional **Refresh SLURM status** (needs API env in [slurm_lammps_e2e.md](slurm_lammps_e2e.md))
-- **Run Jobs:** Select jobs; **background** run with per-solver or single-batch orchestration; **Active runs** lists invocations from the API (in-memory registry); requires API up
+- **Solvers:** Batch or per-solver runs, **Active runs** (invocation monitoring), last run and pasted invocation ids
+- **Run Matrix:** Solver × system grid (checkboxes per allowed pair); optional **Session label** (stored as `job_batch_name`, API `session_label` / `batch_name`); starts one background run per selected cell — each stored row’s **`job_name`** is `solver@system`
+- **Run History:** Chronological list of runs (newest first); filter by solver or processor; each row is one run keyed by **`job_name`** (`solver@system`) and database **Run id**; optional session label / batch uuid in the expander; **select runs and delete** from the database (with confirm); for SLURM-backed runs, optional **Refresh SLURM status** (needs API env in [slurm_lammps_e2e.md](slurm_lammps_e2e.md))
 - **Long-Term Trends:** Heatmaps and trend charts over time, with optional baseline-relative views
 
 Set **`HPC_API_URL`** if the Streamlit process must call an API that is not `http://localhost:8000` (e.g. Docker networking).

@@ -64,7 +64,7 @@ flowchart TB
 | System | `src/core/src/harness/config/schemas.py` | Resource bundle, env vars, constraints |
 | Solver | `src/core/src/harness/config/schemas.py` | Entrypoint, parser_config, allowed_systems |
 | Job | `src/core/src/harness/config/schemas.py` | Runtime pairing (solver+system); expanded from solver-first config—not a separate `configs/jobs/` file |
-| RunResult | `src/core/src/harness/runner.py` | job_name, returncode, metrics, passed, processor, validation_errors, batch fields, optional `scheduler_backend`, `scheduler_job_ids`, `submit_container` (from SLURM smoke scripts) |
+| RunResult | `src/core/src/harness/runner.py` | job_name (`solver@system`), returncode, metrics, passed, processor, validation_errors, optional session label in `job_batch_name`, correlation id in `job_batch_uuid`, optional `scheduler_backend`, `scheduler_job_ids`, `submit_container` (from SLURM smoke scripts) |
 | InvocationControl | `src/core/src/harness/runner.py` | Background runs: cancel event, subprocess handle, streamed SLURM job ids |
 
 ## 4. Config Structure
@@ -191,7 +191,7 @@ flowchart TB
 | `/api/health` | GET | Health check |
 | `/api/solvers` | GET | List solvers |
 | `/api/systems` | GET | List systems |
-| `/api/run_solvers` | POST | Run solvers (`solvers`, `batch_name`, `background`) — one invocation per solver when background — 202 |
+| `/api/run_solvers` | POST | Run solvers (`solvers`, `session_label` or `batch_name`, `background`) — one invocation per solver when background — 202 |
 | `/api/runs` | GET | List runs (?solver=, ?processor=, ?limit=, ?offset=) |
 | `/api/runs` | DELETE | Body `{ "ids": [1,2,3] }` — delete stored runs |
 | `/api/runs/<id>` | GET | Run detail |

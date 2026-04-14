@@ -1,0 +1,8 @@
+systems:
+  - name: hpc-cluster-01
+    resources: [hpc-node]
+    env:
+      EXECUTION_MODE: slurm
+      INPUT_PDB: inputs/wd40.pdb
+      N_STEPS: "500000"
+      SOLVATE: "true"

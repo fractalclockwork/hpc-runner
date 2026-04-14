@@ -4,6 +4,7 @@ entrypoint: run.sh
 allowed_systems:
 - dev-system
 - hpc-cluster-01
+- sci-slurm-lammps
 parser_config: parser_config.yaml
 metrics:
 - name: solver_finished
