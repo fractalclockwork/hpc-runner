@@ -1,0 +1,11 @@
+name: live-log-demo
+version: 1.0.0
+entrypoint: run.sh
+allowed_systems:
+  - dev-system
+default_system: dev-system
+parser_config: parser_config.yaml
+metrics:
+  - name: solver_finished
+    required: true
+log_names: []

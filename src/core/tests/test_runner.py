@@ -9,6 +9,16 @@ from harness.config import Job, build_jobs_from_solver_specs
 from harness.runner import InvocationControl, RunResult
 
 
+def test_invocation_control_live_stdout_append_snapshot_clear() -> None:
+    ctl = InvocationControl()
+    assert ctl.snapshot_live_stdout() == ""
+    ctl.append_live_log_line("a")
+    ctl.append_live_log_line("b\n")
+    assert ctl.snapshot_live_stdout() == "ab\n"
+    ctl.clear_live_stdout()
+    assert ctl.snapshot_live_stdout() == ""
+
+
 def test_run_minimal(tmp_path):
     """Run jobs using the Resource->System->Solver->Job config structure."""
     # Create minimal config structure
@@ -43,6 +53,44 @@ def test_run_minimal(tmp_path):
     assert "hi-from-test" in results[0].stdout
     assert results[0].processor is not None
     assert len(results[0].processor) > 0
+
+
+def test_run_jobs_invoke_ctl_live_stdout_mirrors_subprocess(tmp_path):
+    """Background-style invoke_ctl path captures stdout into InvocationControl for live APIs."""
+    (tmp_path / "resources").mkdir()
+    (tmp_path / "systems").mkdir()
+    solvers_dir = tmp_path / "solvers"
+    solvers_dir.mkdir()
+
+    (tmp_path / "resources" / "default.yaml").write_text(
+        yaml.safe_dump({"resources": [{"name": "dev", "cpus": 4}]})
+    )
+    (tmp_path / "systems" / "default.yaml").write_text(
+        yaml.safe_dump({"systems": [{"name": "dev-system", "resources": ["dev"]}]})
+    )
+
+    solver_dir = solvers_dir / "echo-solver"
+    solver_dir.mkdir()
+    (solver_dir / "solver.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "name": "echo-solver",
+                "entrypoint": "run.sh",
+                "allowed_systems": ["dev-system"],
+            }
+        )
+    )
+    (solver_dir / "run.sh").write_text("#!/bin/bash\necho hi-from-test\n")
+
+    _, systems, solvers = load_all(tmp_path, None)
+    jl = build_jobs_from_solver_specs(solvers, systems, [{"name": "echo-solver", "system": None}])
+    ctl = InvocationControl()
+    results = run_jobs(jl, solvers, systems, invoke_ctl=ctl)
+    assert len(results) == 1
+    assert results[0].passed
+    live = ctl.snapshot_live_stdout()
+    assert "hi-from-test" in live
+    assert "===" in live
 
 
 def test_run_baseline_job_propagates_baseline_flag(tmp_path):

@@ -655,6 +655,10 @@ def _render_invocation_status_summary(payload: dict[str, Any]) -> None:
     )
     if err:
         st.warning(str(err))
+    live = (payload.get("live_stdout") or "").strip()
+    if live:
+        st.caption("Live stdout (local subprocess still running or finishing)")
+        st.code(payload.get("live_stdout") or "", language="text")
 
 
 def _render_invocation_execution_payload(payload: dict[str, Any]) -> None:
@@ -827,6 +831,16 @@ def _run_solvers_active_runs_live_fragment() -> None:
                 f"<div style='text-align:right;padding-top:0.25rem'><b>{jc}/{jt}</b> jobs</div>",
                 unsafe_allow_html=True,
             )
+
+        live_out = rec.get("live_stdout") or ""
+        with st.expander("Live solver output", expanded=bool(live_out.strip())):
+            if live_out.strip():
+                st.code(live_out, language="text")
+            else:
+                st.caption(
+                    "No subprocess stdout yet, or work moved off-host (e.g. SLURM). "
+                    "This list refreshes ~every 4s while the invocation is active."
+                )
 
         # ── Scheduler output button + collapsible execution details ──
         if has_sched_row:
@@ -1050,7 +1064,15 @@ def _render_run_solvers_panel() -> None:
 
     h_active, h_refresh = st.columns([5, 1])
     with h_active:
-        st.subheader("Active runs", help = "Each background solver has its own invocation (cancel independently). **Active runs** polls `GET /execution_status` about every 4s while something is active, and triggers a full page refresh when the active set changes so cards stay in sync. **Scheduler output** appears only when SLURM job ids exist (raw `GET /slurm_status`).")
+        st.subheader(
+            "Active runs",
+            help=(
+                "Each background solver has its own invocation (cancel independently). "
+                "This section polls `GET /api/invocations?active_only=true` ~every 4s and refreshes the page when the active set changes. "
+                "**Live solver output** streams subprocess stdout captured by the API while the local solver process is running (same data as in `live_stdout` on the invocation JSON). "
+                "**Scheduler output** appears only when SLURM job ids exist (raw `GET /slurm_status`)."
+            ),
+        )
     with h_refresh:
         if st.button("Refresh", key="run-solvers-refresh-active", help="Reload the active invocations list"):
             st.rerun()
