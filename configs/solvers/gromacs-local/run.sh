@@ -5,7 +5,7 @@ set -euo pipefail
 if which gmx &>/dev/null; then
     echo "gmx found"
 else
-    echo "gmx not found. you can use the alias command to set gmx if its installed on the target system or avaialbale as a docker image (i.e. alias gmx='alias gmx='docker run --rm --gpus all -v $(pwd):/workspace -w /workspace gromacs/gromacs gmx''"
+    echo "gmx not found. You can use the alias command to set gmx if it's installed on the target system or available as a docker image (i.e. alias gmx='alias gmx='docker run --rm --gpus all -v $(pwd):/workspace -w /workspace gromacs/gromacs gmx''"
     return 0
 fi
 
@@ -68,4 +68,4 @@ gmx grompp -f "${SIM_MDP_PATH}" -c npt.gro -t npt.cpt -p topol.top -o md.tpr -ma
 gmx mdrun -v -deffnm md ${MDRUN_CORE_OPTIONS}
 
 # Get the energy out from the simulation data
-cat "${DATA_DIR}/sim.md"
+cat "${DATA_DIR}/md.log"
