@@ -1,6 +1,6 @@
 # Technical Review — Video Walkthrough Plan
 
-Presenter script for **Deliverable 2** (recorded Technical Review, 10–15 minutes). Aligns with [technical_review__outline.md](technical_review__outline.md) §3 (including speaker roster §3.1.1), uses [demo_plan.md](demo_plan.md) **Part 0** as the validation backbone, and requires a live **`slurm-sleep-60`** start / monitor / **Stop** demo when SLURM is available. Maps to **Deliverable 1** (Technical Architecture README): each top-level folder you show should correspond to a README directory-map entry.
+Presenter script for **Deliverable 2** (recorded Technical Review, 10–15 minutes). Aligns with [technical_review__outline.md](technical_review__outline.md) §3 (including speaker roster §3.1.1), uses [demo_plan.md](demo_plan.md) **Part 0** as the validation backbone, and requires a live **`sleep-60-slurm`** start / monitor / **Stop** demo when SLURM is available. Maps to **Deliverable 1** (Technical Architecture README): each top-level folder you show should correspond to a README directory-map entry.
 
 **Assumptions:** Run all commands from the repository root. Dependencies installed with `uv sync --all-extras --dev`. Default URLs: Streamlit **http://localhost:8501**, API **http://localhost:8000** (`GET /` returns a **302** to **`/docs`** — Swagger). The Streamlit app expects the API to be reachable (see [api_config.py](../src/ui/api_config.py)); start **`make api`** before **`make ui`** for a full demo.
 
@@ -12,8 +12,8 @@ Presenter script for **Deliverable 2** (recorded Technical Review, 10–15 minut
 - [ ] `make test` passes (core unit tests)
 - [ ] Optional: `make test-e2e` if you will mention Playwright UI automation ([e2e_quickstart.md](e2e_quickstart.md))
 - [ ] Before **Segment C**: `make api` and `make ui` running (or `make start-services`), or plan to start them on camera
-- [ ] **SLURM demo (`slurm-sleep-60`):** Stack and env per [slurm_lammps_e2e.md](slurm_lammps_e2e.md) (e.g. `RUN_SLURM_E2E=1`, `make start-services-slurm`, `slurm-lammps.env` if used). Solver uses system **`sci-slurm-lammps`** ([`configs/solvers/slurm-sleep-60/solver.yaml`](../configs/solvers/slurm-sleep-60/solver.yaml))
-- [ ] Decide whether `data/harness.db` already has runs or you will seed with a quick local solver; reserve **`slurm-sleep-60`** for the live start / monitor / **Stop** sequence
+- [ ] **SLURM demo (`sleep-60-slurm`):** Stack and env per [slurm_lammps_e2e.md](slurm_lammps_e2e.md) (e.g. `RUN_SLURM_E2E=1`, `make start-services-slurm`, `slurm-lammps.env` if used). Solver uses system **`sci-slurm-lammps`** ([`configs/solvers/sleep-60-slurm/solver.yaml`](../configs/solvers/sleep-60-slurm/solver.yaml))
+- [ ] Decide whether `data/harness.db` already has runs or you will seed with a quick local solver; reserve **`sleep-60-slurm`** for the live start / monitor / **Stop** sequence
 - [ ] Zoom: UC Berkeley Zoom Cloud, password-protected, link shareable with Sponsor and Instructor ([technical_review__outline.md](technical_review__outline.md) §3.1)
 - [ ] **Every team member speaks** at least once (course requirement)
 
@@ -25,7 +25,7 @@ Presenter script for **Deliverable 2** (recorded Technical Review, 10–15 minut
 |-------|------|---------|-------------------|
 | **A** | 0:00–3:00 | §3.2.1 Lay of the land | Repo structure: where code, configs, tests, docs, and UI live; how the Architecture README directory map mirrors the tree. |
 | **B** | 3:00–10:00 | §3.2.2 Deep dive | One primary subsystem (recommended: **Runner + Parser + storage**); brief secondary thread (API or UI data flow). |
-| **C** | 10:00–13:00 | §3.2.3 Validation proof | CLI smoke → **`slurm-sleep-60`** (start, monitor, **Stop**) → UI → API → **`make test`**. |
+| **C** | 10:00–13:00 | §3.2.3 Validation proof | CLI smoke → **`sleep-60-slurm`** (start, monitor, **Stop**) → UI → API → **`make test`**. |
 | **D** (optional) | +1–2 min | §4 integration | Platform progress and current capabilities; [CHANGELOG.md](../CHANGELOG.md) for detail (no flash‑demo framing). |
 
 **Flex:** If short on time, trim **Home** in the UI, skip **Long-Term Trends** detail, or shorten the deep-dive secondary thread.
@@ -95,14 +95,14 @@ Presenter script for **Deliverable 2** (recorded Technical Review, 10–15 minut
 
 ## Segment C — Validation proof (10:00–13:00)
 
-**Primary voices:** **Kayleen** (tests + SLURM proof narrative), **Shree** (Streamlit driving **`slurm-sleep-60`**), **Brent** (terminal / API / env as needed). Reorder slightly if the SLURM stack needs a spoken setup line from Brent first.
+**Primary voices:** **Kayleen** (tests + SLURM proof narrative), **Shree** (Streamlit driving **`sleep-60-slurm`**), **Brent** (terminal / API / env as needed). Reorder slightly if the SLURM stack needs a spoken setup line from Brent first.
 
-Follow [demo_plan.md](demo_plan.md) **Part 0** in spirit; **this team’s** SLURM story is **`slurm-sleep-60`** (start → monitor → **Stop** before the 60s job completes).
+Follow [demo_plan.md](demo_plan.md) **Part 0** in spirit; **this team’s** SLURM story is **`sleep-60-slurm`** (start → monitor → **Stop** before the 60s job completes).
 
 | Step | Action | Command or UI |
 |------|--------|----------------|
-| 1 | Load configs | `uv run hpc-runner configs --list` (confirm **`slurm-sleep-60`** listed) |
-| 2 | **SLURM demo (required)** | With SLURM env up ([slurm_lammps_e2e.md](slurm_lammps_e2e.md)): on **Solvers**, run **`slurm-sleep-60`** with system **`sci-slurm-lammps`**. Watch **Active runs** / **execution_status**; optional **Scheduler output** or `GET /api/invocations/.../execution_status` and `.../slurm_status`. Then **Stop** (cancel) to show **`scancel`** path. Narrate: submit, observe, cancel. |
+| 1 | Load configs | `uv run hpc-runner configs --list` (confirm **`sleep-60-slurm`** listed) |
+| 2 | **SLURM demo (required)** | With SLURM env up ([slurm_lammps_e2e.md](slurm_lammps_e2e.md)): on **Solvers**, run **`sleep-60-slurm`** with system **`sci-slurm-lammps`**. Watch **Active runs** / **execution_status**; optional **Scheduler output** or `GET /api/invocations/.../execution_status` and `.../slurm_status`. Then **Stop** (cancel) to show **`scancel`** path. Narrate: submit, observe, cancel. |
 | 3 | (Optional quick) | Local smoke: `uv run hpc-runner configs --solver echo-solver` if you need a fast non-SLURM row in **Run History** |
 | 4 | Parse / persist | Automatic; default `data/harness.db` |
 | 5 | UI | **Run History** (expand stdout/stderr for the SLURM run); trends if time |
@@ -120,7 +120,7 @@ Pages are defined in [app.py](../src/ui/app.py) (`PAGES`): **Home**, **Solvers**
 | Order | Page | What to demonstrate |
 |-------|------|---------------------|
 | 1 (optional) | **Home** | Brief orientation (~15s) |
-| 2 | **Solvers** | Overview; **Batch run** or per-solver **Run**; background invocations. For the review, prioritize **`slurm-sleep-60`** + **`sci-slurm-lammps`**: submit, watch **Active runs** / **execution_status**, then **Stop** before completion. **Quick status** / **Scheduler output** for pasted ids or raw SLURM output; **Last run** for stored results ([app.py](../src/ui/app.py) `page_solvers`). Stack: [slurm_lammps_e2e.md](slurm_lammps_e2e.md) |
+| 2 | **Solvers** | Overview; **Batch run** or per-solver **Run**; background invocations. For the review, prioritize **`sleep-60-slurm`** + **`sci-slurm-lammps`**: submit, watch **Active runs** / **execution_status**, then **Stop** before completion. **Quick status** / **Scheduler output** for pasted ids or raw SLURM output; **Last run** for stored results ([app.py](../src/ui/app.py) `page_solvers`). Stack: [slurm_lammps_e2e.md](slurm_lammps_e2e.md) |
 | 3 | **Run History** | Filters; batch grouping; expand row for stdout/stderr/metrics; **Set baseline** if time |
 | 4 | **Individual Trends** | Solver/metric chart; optional baseline line |
 | 5 | **Long-Term Trends** | Heatmaps / multi-solver views (short if time-constrained) |
@@ -175,10 +175,10 @@ make stop-services
 # uv run playwright install chromium   # once
 make test-e2e
 
-# SLURM demo (slurm-sleep-60) — see docs/slurm_lammps_e2e.md
+# SLURM demo (sleep-60-slurm) — see docs/slurm_lammps_e2e.md
 # export RUN_SLURM_E2E=1
 # make start-services-slurm   # or your compose + env (DOCKER_SLURM_* as needed)
-# Then UI/API: run solver slurm-sleep-60 @ sci-slurm-lammps → monitor → Stop
+# Then UI/API: run solver sleep-60-slurm @ sci-slurm-lammps → monitor → Stop
 ```
 
 ---
@@ -197,8 +197,8 @@ Canonical assignment matches [technical_review__outline.md](technical_review__ou
 
 | Speaker | Expertise | Segments | Responsibility |
 |---------|-----------|----------|----------------|
-| **Brent** | DevOps and Documentation | A (co), C (co) | Repo tree, `docs/`, README directory map, `Makefile` / `uv` / services; SLURM env and **`make start-services-slurm`** setup for **`slurm-sleep-60`** |
-| **Kayleen** | Testing and Validation | C (co-lead) | **`make test`** (and optional **`make test-e2e`**); narrate **start → monitor → Stop** for **`slurm-sleep-60`** as validation proof |
+| **Brent** | DevOps and Documentation | A (co), C (co) | Repo tree, `docs/`, README directory map, `Makefile` / `uv` / services; SLURM env and **`make start-services-slurm`** setup for **`sleep-60-slurm`** |
+| **Kayleen** | Testing and Validation | C (co-lead) | **`make test`** (and optional **`make test-e2e`**); narrate **start → monitor → Stop** for **`sleep-60-slurm`** as validation proof |
 | **Shree Patel** | UI and Project Management | A (co), C (co) | Sponsor framing and scope; drive Streamlit **Solvers** / **Run History** for SLURM demo; timekeeping |
 | **Shawn** | Design and Architecture | B, D (optional) | Deep dive (runner/parser/storage + secondary API or UI thread); optional Segment D recap vs [CHANGELOG.md](../CHANGELOG.md) |
 

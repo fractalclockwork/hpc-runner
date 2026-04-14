@@ -127,7 +127,7 @@ Open http://localhost:8501. Walk through each page:
 
 **Tip:** Run solvers from **Solvers** or the CLI before **Individual Trends** / **Long-Term Trends** so metric history exists.
 
-**Optional SLURM/LAMMPS demo:** With `RUN_SLURM_E2E=1` and the stack from `make start-services-slurm` (see [slurm_lammps_e2e.md](slurm_lammps_e2e.md)), the UI notes SLURM mode and you can exercise real scheduler paths; sleep solvers (**`local-sleep-60`**, **`slurm-sleep-60`**) help test cancel and live status.
+**Optional SLURM/LAMMPS demo:** With `RUN_SLURM_E2E=1` and the stack from `make start-services-slurm` (see [slurm_lammps_e2e.md](slurm_lammps_e2e.md)), the UI notes SLURM mode and you can exercise real scheduler paths; sleep solvers (**`sleep-60-local`**, **`sleep-60-slurm`**) help test cancel and live status.
 
 ### 1.4 REST API (for automation)
 

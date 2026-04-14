@@ -12,3 +12,7 @@ resources:
   - name: slurm-lammps
     cpus: 8
     memory_gb: 16
+  # GROMACS via Docker (gromacs-solver run.sh uses GROMACS_DOCKER_IMAGE; harness does not allocate)
+  - name: gromacs-docker
+    cpus: 8
+    memory_gb: 16

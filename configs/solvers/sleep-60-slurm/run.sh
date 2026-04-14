@@ -4,7 +4,7 @@
 set -euo pipefail
 
 if [[ "${RUN_SLURM_E2E:-}" != "1" ]]; then
-  echo "SKIP: set RUN_SLURM_E2E=1 for slurm-sleep-60 (see docs/slurm_lammps_e2e.md)"
+  echo "SKIP: set RUN_SLURM_E2E=1 for sleep-60-slurm (see docs/slurm_lammps_e2e.md)"
   exit 0
 fi
 
@@ -49,7 +49,7 @@ if [[ -n "${DOCKER_SLURM_CONTAINER:-}" ]]; then
   sed "s|__SLEEP_SECONDS__|${SECONDS_SLEEP}|g" "${SBATCH_TEMPLATE}" > "${WORK_HOST}/sbatch_sleep60.sh"
 
   if [[ "${DOCKER_USE_SBATCH}" == "1" ]]; then
-    JOBDIR="/tmp/slurm-sleep-harness-$(date +%s)-$$"
+    JOBDIR="/tmp/sleep-60-slurm-harness-$(date +%s)-$$"
     docker exec "${SUBMIT}" bash -lc "mkdir -p '${JOBDIR}'"
     docker cp "${WORK_HOST}/sbatch_sleep60.sh" "${SUBMIT}:${JOBDIR}/sbatch_sleep60.sh"
     docker exec "${SUBMIT}" bash -lc "chmod +x '${JOBDIR}/sbatch_sleep60.sh'"
@@ -83,7 +83,7 @@ if [[ -n "${DOCKER_SLURM_CONTAINER:-}" ]]; then
     exit "${ec}"
   fi
 
-  echo "ERROR: slurm-sleep-60 requires sbatch (set SLURM_SLEEP_USE_SBATCH=1 or LAMMPS_USE_SBATCH=1)" >&2
+  echo "ERROR: sleep-60-slurm requires sbatch (set SLURM_SLEEP_USE_SBATCH=1 or LAMMPS_USE_SBATCH=1)" >&2
   exit 1
 fi
 

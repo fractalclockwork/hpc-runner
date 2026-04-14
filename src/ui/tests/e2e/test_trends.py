@@ -21,13 +21,27 @@ def _go_to_trends(page, streamlit_url: str) -> None:
 
 
 def _has_run_data(page) -> bool:
-    """Return True if the page loaded trend sections (i.e. DB has run data)."""
-    return page.get_by_test_id("section-metric-trend").count() > 0
+    """Return True if the Long-Term Trends page has run data (filters + tabs are shown).
+
+    Do not rely on ``section-metric-trend`` alone: that marker lives inside the **Metric trends**
+    tab and may not be in the DOM until the tab is opened, which made skips flaky.
+    """
+    return page.get_by_role("tab", name="Metric trends").count() > 0
 
 
 def _open_metric_trends_tab(page) -> None:
     """Long-Term Trends defaults to Heatmap; metric chart lives on the second tab."""
     page.get_by_role("tab", name="Metric trends").click()
+
+
+def _metric_trend_chart_locator(page):
+    """Plotly chart in the active tab only.
+
+    The Heatmap tab may still render ``stPlotlyChart`` nodes in the DOM while hidden;
+    ``:first`` matches that hidden chart. Restrict to visible charts so we assert the
+    Metric trends tab content.
+    """
+    return page.locator('[data-testid="stPlotlyChart"]:visible').first
 
 
 # ---------------------------------------------------------------------------
@@ -73,11 +87,11 @@ def test_metric_trend_section_present(page, streamlit_url, streamlit_process):
     _open_metric_trends_tab(page)
     expect(page.get_by_test_id("section-metric-trend")).to_be_attached()
     # Plotly titles live in SVG tspans that Playwright treats as not visible — assert chart widget or empty-state text
-    chart_first = page.locator('[data-testid="stPlotlyChart"]').first
+    chart_visible = _metric_trend_chart_locator(page)
     no_numeric = page.get_by_text("No numeric metrics in stored runs")
     no_values = page.get_by_text("No values recorded for")
     unexpected = page.get_by_text("Unexpected data format")
-    expect(chart_first.or_(no_numeric).or_(no_values).or_(unexpected)).to_be_visible(timeout=10000)
+    expect(chart_visible.or_(no_numeric).or_(no_values).or_(unexpected)).to_be_visible(timeout=10000)
 
 
 def test_metric_trend_chart_or_empty_message(page, streamlit_url, streamlit_process):
@@ -86,19 +100,19 @@ def test_metric_trend_chart_or_empty_message(page, streamlit_url, streamlit_proc
     if not _has_run_data(page):
         pytest.skip("No run data in DB — metric trend section not rendered")
     _open_metric_trends_tab(page)
-    chart_first = page.locator('[data-testid="stPlotlyChart"]').first
+    chart_visible = _metric_trend_chart_locator(page)
     no_numeric_first = page.get_by_text("No numeric metrics in stored runs").first
     no_values_first = page.get_by_text("No values recorded for").first
     unexpected_first = page.get_by_text("Unexpected data format").first
-    expect(chart_first.or_(no_numeric_first).or_(no_values_first).or_(unexpected_first)).to_be_visible(
+    expect(chart_visible.or_(no_numeric_first).or_(no_values_first).or_(unexpected_first)).to_be_visible(
         timeout=10000
     )
-    charts = page.locator('[data-testid="stPlotlyChart"]')
+    charts_visible = page.locator('[data-testid="stPlotlyChart"]:visible')
     no_numeric_msg = page.get_by_text("No numeric metrics in stored runs")
     no_values_msg = page.get_by_text("No values recorded for")
     unexpected_fmt = page.get_by_text("Unexpected data format")
     assert (
-        charts.count() > 0
+        charts_visible.count() > 0
         or no_numeric_msg.count() > 0
         or no_values_msg.count() > 0
         or unexpected_fmt.count() > 0

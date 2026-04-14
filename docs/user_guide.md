@@ -276,12 +276,12 @@ Both allow you to:
 - Inspect run details (stdout, stderr, metrics)
 - View performance trends (metric history over time)
 
-### Local sleep solver (`local-sleep-60`)
+### Local sleep solver (`sleep-60-local`)
 
-The **`local-sleep-60`** solver runs only on **`dev-system`** and sleeps **60 seconds** by default (override with **`LOCAL_SLEEP_SECONDS`**). Use it to exercise **Run Solvers**, **invocation monitoring**, and **Stop** for **local** subprocess runs (`GET /api/invocations/.../execution_status`, pid/alive) without SLURM.
+The **`sleep-60-local`** solver runs only on **`dev-system`** and sleeps **60 seconds** by default (override with **`LOCAL_SLEEP_SECONDS`**). Use it to exercise **Run Solvers**, **invocation monitoring**, and **Stop** for **local** subprocess runs (`GET /api/invocations/.../execution_status`, pid/alive) without SLURM.
 
 ```bash
-uv run hpc-runner configs --solver local-sleep-60
+uv run hpc-runner configs --solver sleep-60-local
 ```
 
 For cancel testing, use **`background: true`** so the API returns immediately while the solver keeps running:
@@ -289,7 +289,7 @@ For cancel testing, use **`background: true`** so the API returns immediately wh
 ```bash
 curl -s -X POST http://localhost:8000/api/run_solvers \
   -H 'Content-Type: application/json' \
-  -d '{"solvers":[{"name":"local-sleep-60","system":"dev-system"}],"background":true}'
+  -d '{"solvers":[{"name":"sleep-60-local","system":"dev-system"}],"background":true}'
 ```
 
 Then poll **`GET /api/invocations`** and call **`POST /api/invocations/<id>/cancel`** while the run is active.

@@ -1,5 +1,6 @@
 """Streamlit UI — minimal scaffolding for the HPC Regression Platform."""
 
+import html
 import os
 import sys
 from datetime import timedelta
@@ -441,7 +442,10 @@ def page_run_matrix() -> None:
                             _matrix_toggle_row_selection(sn, allowed, system_names)
                             st.rerun()
                 with cname:
-                    st.markdown(f"`{sn}`")
+                    st.markdown(
+                        f'<span class="matrix-solver-name"><code>{html.escape(sn)}</code></span>',
+                        unsafe_allow_html=True,
+                    )
             for i, sysn in enumerate(system_names):
                 with row[i + 1]:
                     if sysn not in allowed:
@@ -449,12 +453,16 @@ def page_run_matrix() -> None:
                         with d_left:
                             st.markdown("")
                         with d_right:
-                            _, dash_mid, _ = st.columns(MATRIX_INNER_BAND)
+                            pad_l, dash_mid, pad_r = st.columns(MATRIX_INNER_BAND)
+                            with pad_l:
+                                st.markdown("")
                             with dash_mid:
                                 st.markdown(
                                     '<div class="matrix-dash-cell">—</div>',
                                     unsafe_allow_html=True,
                                 )
+                            with pad_r:
+                                st.markdown("")
                     else:
                         jk = _matrix_job_key(sn, sysn)
                         inv = active_map.get(jk)
@@ -1987,7 +1995,7 @@ def page_long_term_trends() -> None:
                     metric_dictionary = {
                         "python-solver": (0.0, 1.05),
                         "echo-solver": (0.0, 0.01),
-                        "cpuinfo-test": (0.0, 0.01),
+                        "cpuinfo-solver": (0.0, 0.01),
                     }
                 else:
                     metric_dictionary = {}

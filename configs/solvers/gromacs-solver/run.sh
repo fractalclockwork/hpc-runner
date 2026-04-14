@@ -2,11 +2,28 @@
 
 set -euo pipefail
 
-if which gmx &>/dev/null; then
-    echo "gmx found"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+DATA_DIR="${REPO_ROOT}/configs/solvers/gromacs-solver/data"
+mkdir -p "${DATA_DIR}" "${REPO_ROOT}/data"
+
+if command -v gmx &>/dev/null; then
+    echo "gmx found on PATH"
+elif [ -n "${GROMACS_DOCKER_IMAGE:-}" ]; then
+    echo "Using gmx via Docker (${GROMACS_DOCKER_IMAGE})"
+    # Bind-mount the repo at the same path so absolute paths in this script work inside the container.
+    gmx() {
+        # shellcheck disable=SC2086
+        # -i forwards stdin (needed for genion and other tools reading from a pipe).
+        docker run --rm -i \
+            -v "${REPO_ROOT}:${REPO_ROOT}" \
+            -w "${DATA_DIR}" \
+            ${GROMACS_DOCKER_EXTRA_ARGS:-} \
+            "${GROMACS_DOCKER_IMAGE}" gmx "$@"
+    }
 else
-    echo "gmx not found. You can use the alias command to set gmx if it's installed on the target system or available as a docker image (i.e. alias gmx='alias gmx='docker run --rm --gpus all -v $(pwd):/workspace -w /workspace gromacs/gromacs gmx''"
-    return 0
+    echo "gmx not found. Install GROMACS, or set GROMACS_DOCKER_IMAGE (see configs/systems/gromacs-docker.yaml)." >&2
+    exit 1
 fi
 
 # GROMACS links to cuda and cuda toolkit at compile and runtime,
@@ -31,17 +48,18 @@ if [ "$USE_GPU" -eq 1 ]; then
 
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-DATA_DIR="${REPO_ROOT}/configs/solvers/gromacs-local/data"
 DATA_PATH="${DATA_DIR}/1d5q.pdb"
 OUTPUT_PATH="${REPO_ROOT}/data/1d5q.gro"
-FIRST_1D5Q_MDP_PATH="$REPO_ROOT"/configs/solvers/gromacs-local/1d5q.mdp
-ENERGY_MIN_MDP_PATH="${REPO_ROOT}/configs/solvers/gromacs-local/1d5q_energy_minimization.mdp"
-NVT_MDP_PATH="${REPO_ROOT}/configs/solvers/gromacs-local/1d5q_nvt.mdp"
-NPT_MDP_PATH="${REPO_ROOT}/configs/solvers/gromacs-local/1d5q_npt.mdp"
-SIM_MDP_PATH="${REPO_ROOT}/configs/solvers/gromacs-local/1d5q_sim.mdp"
+FIRST_1D5Q_MDP_PATH="$REPO_ROOT"/configs/solvers/gromacs-solver/1d5q.mdp
+ENERGY_MIN_MDP_PATH="${REPO_ROOT}/configs/solvers/gromacs-solver/1d5q_energy_minimization.mdp"
+NVT_MDP_PATH="${REPO_ROOT}/configs/solvers/gromacs-solver/1d5q_nvt.mdp"
+NPT_MDP_PATH="${REPO_ROOT}/configs/solvers/gromacs-solver/1d5q_npt.mdp"
+SIM_MDP_PATH="${REPO_ROOT}/configs/solvers/gromacs-solver/1d5q_sim.mdp"
 
+if [ ! -f "${DATA_PATH}" ]; then
+    echo "Missing input PDB: ${DATA_PATH}. Add 1d5q.pdb (e.g. from https://files.rcsb.org/download/1D5Q.pdb)." >&2
+    exit 1
+fi
 
 cd "${DATA_DIR}"
 

@@ -84,7 +84,7 @@ After a successful **`sbatch`**, `run.sh` prints **machine-readable lines** (to 
 - `HARNESS_SLURM_JOB_ID=<numeric id>`
 - `HARNESS_SUBMIT_CONTAINER=<docker container name or host>`
 
-Batch scripts in this repo (e.g. [`docker/slurm_sleep/sbatch_sleep60.sh`](docker/slurm_sleep/sbatch_sleep60.sh), [`docker/lammps/sbatch_lammps.sh`](docker/lammps/sbatch_lammps.sh)) emit **`HARNESS_SOLVER_WALL_SECONDS=<seconds>`** from **inside** the `sbatch` job (GNU `date +%s.%N` / `EPOCHREALTIME` around the workload, printed to `slurm-%j.out`). Local solver entrypoints can use the **same** line (e.g. [`configs/solvers/local-sleep-60/run.sh`](../configs/solvers/local-sleep-60/run.sh) on **`dev-system`**) so **`runtime_seconds`** uses identical high-resolution wall time around the workload, not only the harness subprocess envelope.
+Batch scripts in this repo (e.g. [`docker/slurm_sleep/sbatch_sleep60.sh`](docker/slurm_sleep/sbatch_sleep60.sh), [`docker/lammps/sbatch_lammps.sh`](docker/lammps/sbatch_lammps.sh)) emit **`HARNESS_SOLVER_WALL_SECONDS=<seconds>`** from **inside** the `sbatch` job (GNU `date +%s.%N` / `EPOCHREALTIME` around the workload, printed to `slurm-%j.out`). Local solver entrypoints can use the **same** line (e.g. [`configs/solvers/sleep-60-local/run.sh`](../configs/solvers/sleep-60-local/run.sh) on **`dev-system`**) so **`runtime_seconds`** uses identical high-resolution wall time around the workload, not only the harness subprocess envelope.
 
 The runner parses the `HARNESS_*` lines above into each stored run (`scheduler_backend`, `scheduler_job_ids`, `submit_container`). After the solver subprocess exits, if **`HARNESS_SOLVER_WALL_SECONDS`** is present in captured stdout/stderr, it sets **`runtime_seconds`** / metrics. Otherwise the harness queries **`sacct`** in the same submit container (or on the host when `HARNESS_SUBMIT_CONTAINER=host`), in this order: **`Start`/`End`**, then **`Elapsed`**, then **`ElapsedRaw`**. That fallback is **best-effort** accounting and may differ by about **±1s** from an in-script **`sleep`** on some sites.
 
@@ -131,17 +131,17 @@ If you still have a **`sci_slurm`** symlink for convenience, treat it as **read-
 | `configs/solvers/lammps-slurm/run.sh` | Entrypoint: sbatch (default) or direct `lmp` |
 | `docker/slurm_sleep/sbatch_sleep60.sh` | `#SBATCH` template for the sleep test job |
 | `docker/slurm_sleep/work/` | Gitignored staging (`SLURM_SLEEP_WORK_HOST`) |
-| `configs/solvers/slurm-sleep-60/run.sh` | Entrypoint: `sbatch` a job that sleeps **60s** (override with **`SLURM_SLEEP_SECONDS`**) |
+| `configs/solvers/sleep-60-slurm/run.sh` | Entrypoint: `sbatch` a job that sleeps **60s** (override with **`SLURM_SLEEP_SECONDS`**) |
 
-### Monitoring / cancel test: `slurm-sleep-60`
+### Monitoring / cancel test: `sleep-60-slurm`
 
-Use solver **`slurm-sleep-60`** with system **`sci-slurm-lammps`** when you need a **long-enough SLURM batch job** to exercise invocation monitoring or **`POST /api/invocations/{id}/cancel`** / **`scancel`**. It uses the same Docker **`sbatch`** flow as **`lammps-slurm`** and emits the same **`HARNESS_*`** lines.
+Use solver **`sleep-60-slurm`** with system **`sci-slurm-lammps`** when you need a **long-enough SLURM batch job** to exercise invocation monitoring or **`POST /api/invocations/{id}/cancel`** / **`scancel`**. It uses the same Docker **`sbatch`** flow as **`lammps-slurm`** and emits the same **`HARNESS_*`** lines.
 
 ```bash
 # Example (background: true so you can poll/cancel while the batch sleeps)
 curl -s -X POST http://localhost:8000/api/run_solvers \
   -H 'Content-Type: application/json' \
-  -d '{"solvers":[{"name":"slurm-sleep-60","system":"sci-slurm-lammps"}],"background":true}'
+  -d '{"solvers":[{"name":"sleep-60-slurm","system":"sci-slurm-lammps"}],"background":true}'
 ```
 
 ## Skipped run (default CI / local)

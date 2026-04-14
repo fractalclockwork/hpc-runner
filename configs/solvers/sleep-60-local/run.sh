@@ -19,10 +19,10 @@ _harness_monotonic_now() {
   date +%s
 }
 
-echo "local-sleep-60: starting sleep for ${SECS}s"
+echo "sleep-60-local: starting sleep for ${SECS}s"
 t0=$(_harness_monotonic_now)
 sleep "${SECS}"
 t1=$(_harness_monotonic_now)
 echo "HARNESS_SOLVER_WALL_SECONDS=$(awk -v a="${t0}" -v b="${t1}" 'BEGIN{print b-a}')"
-echo "local-sleep-60: finished"
+echo "sleep-60-local: finished"
 exit 0

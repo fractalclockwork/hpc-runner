@@ -5,7 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --time=00:10:00
 
-# Long-running no-op for monitoring / cancel tests (see slurm-sleep-60 solver).
+# Long-running no-op for monitoring / cancel tests (see sleep-60-slurm solver).
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"
 

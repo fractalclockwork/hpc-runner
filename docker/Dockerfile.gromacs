@@ -1,0 +1,9 @@
+# GROMACS for local / harness runs (CPU). Pin the tag to match configs/systems/gromacs-docker.yaml.
+# GPU: replace the FROM line with a CUDA-tagged image from https://hub.docker.com/r/gromacs/gromacs
+#   e.g. FROM gromacs/gromacs:gmx-2022.2-cuda-11.6.0-avx2
+FROM gromacs/gromacs:2022.2
+
+WORKDIR /workspace
+
+# Default is informational; the harness invokes `gmx` via `docker run` from run.sh.
+CMD ["gmx", "--version"]

@@ -9,7 +9,7 @@
 ;	
 ;	Executable:   /cloud/external_programs/gromacs-2026.1/build/bin/gmx
 ;	Data prefix:  /cloud/external_programs/gromacs-2026.1 (source tree)
-;	Working dir:  /home/shawn/Programming/coursework/capstone/DOW-1-26/configs/solvers/gromacs-local
+;	Working dir:  /home/shawn/Programming/coursework/capstone/DOW-1-26/configs/solvers/gromacs-solver
 ;	Command line:
 ;	  gmx grompp -f 1d5q.mdp -c /home/shawn/Programming/coursework/capstone/DOW-1-26/data/1d5q.gro -p topol.top -o /home/shawn/Programming/coursework/capstone/DOW-1-26/data/1d5q.tpr
 

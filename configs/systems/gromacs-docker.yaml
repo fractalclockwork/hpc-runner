@@ -1,0 +1,12 @@
+# Run GROMACS through Docker (see docker/Dockerfile.gromacs and docker/docker-compose.gromacs.yml).
+# Build: docker compose -f docker/docker-compose.gromacs.yml build
+#
+# run.sh mounts the repo at the same path inside the container so absolute paths stay valid.
+# Optional: GROMACS_DOCKER_EXTRA_ARGS="--gpus all" when using a CUDA image and GPU build.
+
+systems:
+  - name: gromacs-docker
+    resources: [gromacs-docker]
+    env:
+      EXECUTION_MODE: local
+      GROMACS_DOCKER_IMAGE: dow-gromacs:2022.2

@@ -1,0 +1,16 @@
+# Build and smoke-test the GROMACS image:
+#   docker compose -f docker/docker-compose.gromacs.yml build
+#   docker compose -f docker/docker-compose.gromacs.yml run --rm gromacs gmx --version
+#
+# gromacs-solver uses this image via GROMACS_DOCKER_IMAGE + docker run from run.sh
+# (same host path mounted into the container for absolute paths).
+
+services:
+  gromacs:
+    build:
+      context: .
+      dockerfile: Dockerfile.gromacs
+    image: dow-gromacs:2022.2
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace

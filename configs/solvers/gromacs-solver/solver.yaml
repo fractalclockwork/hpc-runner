@@ -1,8 +1,8 @@
-name: gromacs-local
+name: gromacs-solver
 version: "1.0.0"
 entrypoint: run.sh
-allowed_systems: [dev-system, hpc-cluster-01]
-default_system: dev-system
+allowed_systems: [gromacs-docker]
+default_system: gromacs-docker
 parser_config: parser_config.yaml
 metrics:
   - name: Total mass

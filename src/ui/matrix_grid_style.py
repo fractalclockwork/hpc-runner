@@ -26,6 +26,11 @@ Streamlit matrix grid: layout + CSS helpers for compact toggles aligned with che
 7. **Active run**: HTML class ``matrix-active-dot`` on a ``●`` in the **right** slot of
    ``MATRIX_INNER_BAND`` (same row as the checkbox, to the right of it). Optional
    ``active_dot_shift_*`` nudges the glyph (negative X pulls toward the checkbox).
+
+8. **Row alignment**: Use the **same** ``pad_l | mid | pad_r`` ``st.columns(MATRIX_INNER_BAND)``
+   for dash rows as for checkbox rows (only ``mid`` has content for dashes). Use
+   ``cell_row_min_height_px`` so dash em-dash and checkboxes share one vertical band with the
+   solver name (``matrix-solver-name``).
 """
 
 from __future__ import annotations
@@ -49,6 +54,7 @@ class MatrixGridControlStyle:
     glyph_shift_x_px: int
     active_dot_shift_x_px: int
     active_dot_shift_y_px: int
+    cell_row_min_height_px: int
 
 
 DEFAULT_MATRIX_GRID_CONTROL_STYLE = MatrixGridControlStyle(
@@ -61,6 +67,7 @@ DEFAULT_MATRIX_GRID_CONTROL_STYLE = MatrixGridControlStyle(
     glyph_shift_x_px=2,
     active_dot_shift_x_px=-10,
     active_dot_shift_y_px=2,
+    cell_row_min_height_px=38,
 )
 
 
@@ -89,6 +96,7 @@ def matrix_grid_control_css(
     cell_sel = _st_key_contains(cell_key_prefix)
     h = s.toggle_height_px
     ad = active_dot_class
+    rh = s.cell_row_min_height_px
 
     return f"""
         <style>
@@ -103,6 +111,11 @@ def matrix_grid_control_css(
         }}
         {col_sel} [data-testid="stButton"] {{
             transform: translateX(-{s.col_toggle_shift_x_px}px) !important;
+        }}
+        {row_sel} {{
+            display: flex !important;
+            align-items: center !important;
+            min-height: {rh}px !important;
         }}
         {row_sel} [data-testid="stButton"] {{
             transform: translate(-{s.row_toggle_shift_x_px}px, {s.row_toggle_shift_y_px}px) !important;
@@ -138,22 +151,36 @@ def matrix_grid_control_css(
             min-width: 0 !important;
             transform: translateX(-{s.glyph_shift_x_px}px) !important;
         }}
+        {cell_sel} {{
+            display: flex !important;
+            align-items: center !important;
+            min-height: {rh}px !important;
+        }}
         {cell_sel} [data-testid="stCheckbox"] {{
             margin-left: 0 !important;
             margin-right: auto !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
             width: fit-content !important;
             max-width: 100% !important;
             padding-left: {s.cell_shift_x_px}px !important;
+            align-self: center !important;
         }}
         .{dash_cell_class} {{
             margin: 0 !important;
             padding: 0 !important;
             padding-left: {s.cell_shift_x_px}px !important;
             text-align: left !important;
-            line-height: {h}px !important;
-            height: {h}px !important;
+            min-height: {rh}px !important;
             display: flex !important;
             align-items: center !important;
+            box-sizing: border-box !important;
+        }}
+        .matrix-solver-name {{
+            display: inline-flex !important;
+            align-items: center !important;
+            min-height: {rh}px !important;
+            box-sizing: border-box !important;
         }}
         .{ad} {{
             color: #16a34a !important;

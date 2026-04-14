@@ -216,8 +216,8 @@ def test_parse_harness_solver_wall_seconds(out, err, expected):
 
 def test_refine_prefers_harness_solver_wall_skips_sacct():
     r = RunResult(
-        job_name="slurm-sleep-60@sys",
-        solver_name="slurm-sleep-60",
+        job_name="sleep-60-slurm@sys",
+        solver_name="sleep-60-slurm",
         system_name="sys",
         returncode=0,
         stdout=(
@@ -244,14 +244,14 @@ def test_refine_prefers_harness_solver_wall_skips_sacct():
 def test_refine_applies_harness_wall_for_local_without_slurm_ids():
     """dev-system subprocess solvers can emit HARNESS_SOLVER_WALL_SECONDS like Slurm batch scripts."""
     r = RunResult(
-        job_name="local-sleep-60@dev-system",
-        solver_name="local-sleep-60",
+        job_name="sleep-60-local@dev-system",
+        solver_name="sleep-60-local",
         system_name="dev-system",
         returncode=0,
         stdout=(
-            "local-sleep-60: starting sleep for 1s\n"
+            "sleep-60-local: starting sleep for 1s\n"
             "HARNESS_SOLVER_WALL_SECONDS=1.002\n"
-            "local-sleep-60: finished\n"
+            "sleep-60-local: finished\n"
         ),
         stderr="",
         runtime_seconds=1.5,
