@@ -776,6 +776,51 @@ def _fetch_active_invocations_safe() -> list[dict[str, Any]]:
 
 
 @st.fragment(run_every=timedelta(seconds=4))
+def _global_run_notifier_fragment() -> None:
+    """Polls active invocations on every page; fires toast notifications when runs finish."""
+    rows = _fetch_active_invocations_safe()
+    sig = _active_invocation_sig(rows)
+    prev = st.session_state.get("_notifier_sig")
+    prev_info: dict[str, dict] = st.session_state.get("_notifier_inv_info", {})
+
+    curr_info: dict[str, dict] = {
+        r["invocation_id"]: {
+            "solver_name": (r.get("solver_name") or "(unknown)"),
+            "batch_name": (r.get("batch_name") or "").strip(),
+        }
+        for r in rows
+    }
+
+    if prev is not None and prev != sig:
+        finished_ids = set(prev) - set(sig)
+        if finished_ids:
+            still_active_batches = {
+                info["batch_name"]
+                for info in curr_info.values()
+                if info["batch_name"]
+            }
+            pending: list[str] = st.session_state.setdefault("_pending_toasts", [])
+            batches_finished: dict[str, list[str]] = {}
+            for iid in finished_ids:
+                info = prev_info.get(iid, {})
+                bname = info.get("batch_name") or ""
+                sname = info.get("solver_name") or "(unknown)"
+                if bname:
+                    batches_finished.setdefault(bname, []).append(sname)
+                else:
+                    pending.append(f"\u2705 **{sname}** finished \u2014 view results in Run History.")
+            for bname in batches_finished:
+                if bname not in still_active_batches:
+                    pending.append(f"\u2705 Batch **{bname}** finished \u2014 view results in Run History.")
+        st.session_state["_notifier_inv_info"] = curr_info
+        st.session_state["_notifier_sig"] = sig
+        st.rerun()
+
+    st.session_state["_notifier_inv_info"] = curr_info
+    st.session_state["_notifier_sig"] = sig
+
+
+@st.fragment(run_every=timedelta(seconds=4))
 def _run_solvers_active_runs_live_fragment() -> None:
     rows = _fetch_active_invocations_safe()
     sig = _active_invocation_sig(rows)
@@ -2032,6 +2077,15 @@ def multi_solver_heatmap(
 # ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
+
+# Global run-completion notifier — runs on every page so users are notified
+# regardless of which page they are currently viewing.
+_global_run_notifier_fragment()
+
+# Drain any toast messages queued by the notifier fragment
+_pending_toasts: list[str] = st.session_state.pop("_pending_toasts", [])
+for _toast_msg in _pending_toasts:
+    st.toast(_toast_msg)
 
 if st.session_state.page == "Home":
     page_home()
