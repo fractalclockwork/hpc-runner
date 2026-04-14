@@ -75,6 +75,13 @@ if "page_change_requested" not in st.session_state:
 if "page_radio" not in st.session_state:
     st.session_state.page_radio = st.session_state.page
 
+# Persistent filter defaults (survive page navigation, reset on browser reload)
+st.session_state.setdefault("history-solver", "(all)")
+st.session_state.setdefault("history-processor", "(all)")
+st.session_state.setdefault("heatmap-mode", "All metrics for one solver/system")
+st.session_state.setdefault("heatmap-color-mode", "Default (spec / min-max)")
+st.session_state.setdefault("heatmap-color-mode-single", "Default (min-max)")
+
 # ---------------------------------------------------------------------------
 # Global theme overrides (dark sidebar, card styles)
 # ---------------------------------------------------------------------------
@@ -240,6 +247,9 @@ def page_individual_trends() -> None:
         return
 
     options = [f"{dictionary['solver']} / {dictionary['metric']}" for dictionary in available]
+    st.session_state.setdefault("home-metric-select", options[0])
+    if st.session_state["home-metric-select"] not in options:
+        st.session_state["home-metric-select"] = options[0]
     selected = st.selectbox(
         "Select solver and metric to view",
         options=options,
@@ -322,11 +332,17 @@ def page_run_history() -> None:
     solvers = sorted({r["solver_name"] for r in runs_all})
     processors = sorted({r.get("processor") or "unknown" for r in runs_all})
 
+    _solver_opts = ["(all)"] + solvers
+    _processor_opts = ["(all)"] + processors
+    if st.session_state.get("history-solver") not in _solver_opts:
+        st.session_state["history-solver"] = "(all)"
+    if st.session_state.get("history-processor") not in _processor_opts:
+        st.session_state["history-processor"] = "(all)"
     col1, col2 = st.columns(2)
     with col1:
-        solver_filter = st.selectbox("Filter by solver", ["(all)"] + solvers, key="history-solver")
+        solver_filter = st.selectbox("Filter by solver", _solver_opts, key="history-solver")
     with col2:
-        processor_filter = st.selectbox("Filter by processor", ["(all)"] + processors, key="history-processor")
+        processor_filter = st.selectbox("Filter by processor", _processor_opts, key="history-processor")
 
     solver_arg = solver_filter if solver_filter != "(all)" else None
     processor_arg = processor_filter if processor_filter != "(all)" else None
@@ -1346,12 +1362,18 @@ def page_configs() -> None:
     for cf in config_files:
         by_category.setdefault(cf.category, []).append(cf)
 
+    _cat_opts = sorted(by_category.keys())
+    st.session_state.setdefault("config-category", _cat_opts[0])
+    if st.session_state["config-category"] not in _cat_opts:
+        st.session_state["config-category"] = _cat_opts[0]
     category = st.selectbox(
         "Category",
-        options=sorted(by_category.keys()),
+        options=_cat_opts,
         key="config-category",
     )
     files_in_cat = by_category[category]
+    if st.session_state.get("config-file") not in files_in_cat:
+        st.session_state["config-file"] = files_in_cat[0] if files_in_cat else None
     selected = st.selectbox(
         "File",
         options=files_in_cat,
@@ -1502,12 +1524,16 @@ def page_long_term_trends() -> None:
             solver_pick = selected_solvers[0] if selected_solvers else None
             system_pick = selected_systems[0] if selected_systems else None
             if len(selected_solvers) > 1:
+                if st.session_state.get("heatmap-all-metrics-solver-pick") not in selected_solvers:
+                    st.session_state["heatmap-all-metrics-solver-pick"] = selected_solvers[0]
                 solver_pick = st.selectbox(
                     "Solver (for all-metrics heatmap)",
                     options=selected_solvers,
                     key="heatmap-all-metrics-solver-pick",
                 )
             if len(selected_systems) > 1:
+                if st.session_state.get("heatmap-all-metrics-system-pick") not in selected_systems:
+                    st.session_state["heatmap-all-metrics-system-pick"] = selected_systems[0]
                 system_pick = st.selectbox(
                     "System (for all-metrics heatmap)",
                     options=selected_systems,
@@ -1569,6 +1595,8 @@ def page_long_term_trends() -> None:
             if not available_metrics_hm:
                 st.info("No dynamic metrics available for the selected filters.")
             else:
+                if st.session_state.get("heatmap-metric-select") not in available_metrics_hm:
+                    st.session_state["heatmap-metric-select"] = available_metrics_hm[0]
                 selected_hm_metric = st.selectbox(
                     "Metric",
                     options=available_metrics_hm,
