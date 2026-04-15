@@ -36,19 +36,17 @@ fi
 
 # Use these env variables to set GPU vs CPU and core counts
 USE_GPU=0
-N_CORES=8
-# Gromacs (as of 2026.1) uses a string with the indices of the GPUs you are using,
-# i.e. if you have 3 GPUs should be set to 012. Can also select particular GPUs
-# if wanted
-GPU_IDS=0
-N_GPUS=1
+# Sets the number of OpenMP threads
+N_OMP_THREADS=8
+# Can set the GPU_ID to a different GPU on the node, defaults to 0th index gpu compatible with CUDA
+GPU_ID=0
 
 # Will default to CPU option commands, overwriting with GPU option commands if set
-MDRUN_CORE_OPTIONS="-ntomp ${N_CORES}"
+MDRUN_CORE_OPTIONS="-ntomp ${N_OMP_THREADS}"
 
 if [ "$USE_GPU" -eq 1 ]; then
     echo "Enabling GPU use as options"
-    MDRUN_CORE_OPTIONS="-ntmpi ${N_GPUS} -ntomp ${N_CORES} -gpu_id ${GPU_IDS}"
+    MDRUN_CORE_OPTIONS="-ntomp ${N_OMP_THREADS} -gpu_id ${GPU_ID}"
 
 fi
 
