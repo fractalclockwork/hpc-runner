@@ -207,6 +207,10 @@ flowchart TB
 | `/api/metrics/<solver>/<metric>` | GET | Metric history |
 | `/api/available_metrics` | GET | Solver/metric pairs |
 | `/api/get_job_batch_uuids` | GET | Batch UUIDs (ordered by latest activity per batch) |
+| `/api/matrix_presets` | GET | List Run Matrix saved selections (`label`, `cells`, `updated_at`) |
+| `/api/matrix_presets/<label>` | GET | One preset (label normalized case-insensitively); 404 if missing |
+| `/api/matrix_presets/<label>` | PUT | Body `{ "cells": [ { "name", "system" }, ... ] }` — upsert |
+| `/api/matrix_presets/<label>` | DELETE | Remove preset; 404 if missing |
 
 ## 7. Dashboard Views
 
@@ -224,6 +228,8 @@ The UI uses **`HPC_API_URL`** (via [`api_config.py`](../src/ui/api_config.py)) t
 ## 8. Storage Schema
 
 Table **`runs`**: id, job_name, solver_name, system_name, returncode, passed, runtime_seconds, timestamp, stdout, stderr, metrics_json, processor, validation_errors, is_baseline, job_batch_uuid, job_batch_date, job_batch_name, scheduler_backend, scheduler_job_ids (JSON), submit_container.
+
+Table **`run_matrix_presets`**: `label` (PRIMARY KEY, normalized lowercase), `cells_json` (JSON array of `{ "name", "system" }` pairs), `updated_at` (ISO-8601). Used by the Run Matrix UI via `/api/matrix_presets` to persist checkbox selections per session label.
 
 ## 9. Deployment
 

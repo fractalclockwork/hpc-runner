@@ -1,4 +1,4 @@
-"""SLURM + LAMMPS integration test — gated by RUN_SLURM_E2E=1 (see docs/slurm_lammps_e2e.md)."""
+"""SLURM + LAMMPS integration test — gated by RUN_SLURM_E2E=1 (see docs/TESTING_SLURM.md)."""
 
 import os
 
@@ -17,7 +17,7 @@ def client():
 def test_api_run_solvers_lammps_slurm_smoke(client: TestClient) -> None:
     """POST /api/run_solvers for lammps-slurm when SLURM is configured."""
     if os.environ.get("RUN_SLURM_E2E") != "1":
-        pytest.skip("Set RUN_SLURM_E2E=1 and DOCKER_SLURM_CONTAINER or host SLURM (see docs/slurm_lammps_e2e.md)")
+        pytest.skip("Set RUN_SLURM_E2E=1 and DOCKER_SLURM_CONTAINER or host SLURM (see docs/TESTING_SLURM.md)")
 
     response = client.post(
         "/api/run_solvers",

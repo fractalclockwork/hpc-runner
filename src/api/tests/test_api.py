@@ -239,6 +239,7 @@ def test_api_invocations_list_get_enriched_and_slurm_404(client):
         assert detail["jobs_total"] == 3
         assert detail["jobs_completed"] == 2
         assert detail.get("solver_name") == ""
+        assert detail.get("system_names") == []
         assert detail.get("job_names") == []
         assert detail.get("execution", {}).get("backend") == "slurm"
         assert "live_stdout" in detail
@@ -278,3 +279,28 @@ def test_api_solver_summaries(tmp_path):
         data = r.json()
         assert isinstance(data, list)
         assert any(x.get("solver_name") == "s-mon" for x in data)
+
+
+def test_api_matrix_presets_crud(tmp_path):
+    """GET/PUT/GET/DELETE /api/matrix_presets persist in DB."""
+    db = tmp_path / "matrix_presets.db"
+    init_db(db)
+    with patch("basic_restapi.fastapi_app.DB_PATH", db):
+        tc = TestClient(app)
+        assert tc.get("/api/matrix_presets").json() == []
+        put = tc.put(
+            "/api/matrix_presets/My-Smoke",
+            json={"cells": [{"name": "sol-a", "system": "sys-1"}]},
+        )
+        assert put.status_code == 200
+        data = put.json()
+        assert data["label"] == "my-smoke"
+        assert data["cells"] == [{"name": "sol-a", "system": "sys-1"}]
+        listed = tc.get("/api/matrix_presets").json()
+        assert len(listed) == 1
+        assert listed[0]["label"] == "my-smoke"
+        one = tc.get("/api/matrix_presets/My-Smoke").json()
+        assert one["cells"] == [{"name": "sol-a", "system": "sys-1"}]
+        assert tc.delete("/api/matrix_presets/my-smoke").status_code == 200
+        assert tc.get("/api/matrix_presets/my-smoke").status_code == 404
+        assert tc.delete("/api/matrix_presets/nonesuch").status_code == 404

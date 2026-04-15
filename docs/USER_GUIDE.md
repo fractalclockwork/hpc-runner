@@ -2,7 +2,7 @@
 
 This guide walks you through defining solvers, execution environments, jobs, and metrics for the HPC Regression Platform. It is intended for **solver authors** and **config authors**.
 
-**Prerequisites:** Run `uv sync --all-extras --dev` from the project root. Familiarity with YAML is helpful. For unfamiliar terms, see the [Glossary](glossary.md).
+**Prerequisites:** Run `uv sync --all-extras --dev` from the project root. Familiarity with YAML is helpful. For unfamiliar terms, see the [Glossary](GLOSSARY.md).
 
 ---
 
@@ -72,7 +72,7 @@ systems:
 
 ## 2. Defining Solvers
 
-A solver is a self-contained package with a run script and metadata. See [solver_template.md](solver_template.md) for the full specification.
+A solver is a self-contained package with a run script and metadata. See [USER_SOLVER_TEMPLATE.md](USER_SOLVER_TEMPLATE.md) for the full specification.
 
 ### Quick Start
 
@@ -94,7 +94,7 @@ A solver is a self-contained package with a run script and metadata. See [solver
 
 4. Add a job that uses your solver (see [Defining Jobs](#4-defining-jobs)).
 
-**SLURM + LAMMPS:** The bundled `lammps-slurm` solver uses `docker/lammps/` (`in.lammps`, `sbatch_lammps.sh`). With Docker it defaults to **`sbatch`**, waits for the job, and collects **`slurm-*.out` / `.err`**. See [slurm_lammps_e2e.md](slurm_lammps_e2e.md).
+**SLURM + LAMMPS:** The bundled `lammps-slurm` solver uses `docker/lammps/` (`in.lammps`, `sbatch_lammps.sh`). With Docker it defaults to **`sbatch`**, waits for the job, and collects **`slurm-*.out` / `.err`**. See [TESTING_SLURM.md](TESTING_SLURM.md).
 
 ### Adding a solver from a command
 
@@ -346,7 +346,7 @@ The Streamlit UI provides:
 - **Home:** Welcome text and a **solver monitoring** table (aggregates from stored runs); **Individual Trends** — select solver and metric, line chart
 - **Solvers:** Batch or per-solver runs, **Active runs** (invocation monitoring), last run and pasted invocation ids
 - **Run Matrix:** Solver × system grid (checkboxes per allowed pair); optional **Session label** (stored as `job_batch_name`, API `session_label` / `batch_name`); starts one background run per selected cell — each stored row’s **`job_name`** is `solver@system`
-- **Run History:** Chronological list of runs (newest first); filter by solver or processor; each row is one run keyed by **`job_name`** (`solver@system`) and database **Run id**; optional session label / batch uuid in the expander; **select runs and delete** from the database (with confirm); for SLURM-backed runs, optional **Refresh SLURM status** (needs API env in [slurm_lammps_e2e.md](slurm_lammps_e2e.md))
+- **Run History:** Chronological list of runs (newest first); filter by solver or processor; each row is one run keyed by **`job_name`** (`solver@system`) and database **Run id**; optional session label / batch uuid in the expander; **select runs and delete** from the database (with confirm); for SLURM-backed runs, optional **Refresh SLURM status** (needs API env in [TESTING_SLURM.md](TESTING_SLURM.md))
 - **Long-Term Trends:** Heatmaps and trend charts over time, with optional baseline-relative views
 
 Set **`HPC_API_URL`** if the Streamlit process must call an API that is not `http://localhost:8000` (e.g. Docker networking).
@@ -381,4 +381,4 @@ configs/
         └── parser_config.yaml # Optional
 ```
 
-**See also:** [Glossary](glossary.md) | [Solver Template](solver_template.md) | [Architecture](architecture.md)
+**See also:** [Glossary](GLOSSARY.md) | [Solver Template](USER_SOLVER_TEMPLATE.md) | [Architecture](ARCHITECTURE.md)

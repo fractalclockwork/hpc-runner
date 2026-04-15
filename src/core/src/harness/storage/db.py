@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,11 @@ def init_db(path: str | Path) -> None:
             CREATE INDEX IF NOT EXISTS idx_runs_solver ON runs(solver_name);
             CREATE INDEX IF NOT EXISTS idx_job_batch_uuid_solver ON runs(job_batch_uuid);
             CREATE INDEX IF NOT EXISTS idx_runs_timestamp ON runs(timestamp);
+            CREATE TABLE IF NOT EXISTS run_matrix_presets (
+                label TEXT PRIMARY KEY,
+                cells_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
         """
         )
         # Migration: add processor / validation_errors / is_baseline columns if missing (existing DBs)
@@ -427,3 +433,84 @@ def get_job_batch_uuids(db_path: str | Path, limit: int = 100) -> list[Any] | No
     if rows is None:
         return None
     return [row["job_batch_uuid"] for row in rows]
+
+
+def _normalize_matrix_preset_label(label: str) -> str:
+    return (label or "").strip().lower()
+
+
+def list_matrix_presets(db_path: str | Path) -> list[dict[str, Any]]:
+    """Return saved Run Matrix selections: each dict has label, cells (list of dicts), updated_at."""
+    init_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT label, cells_json, updated_at FROM run_matrix_presets ORDER BY label ASC"
+        ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        r = dict(row)
+        try:
+            r["cells"] = json.loads(r.pop("cells_json") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            r["cells"] = []
+        out.append(r)
+    return out
+
+
+def get_matrix_preset(db_path: str | Path, label: str) -> dict[str, Any] | None:
+    """Fetch one preset by label (normalized). Returns dict with label, cells, updated_at or None."""
+    key = _normalize_matrix_preset_label(label)
+    if not key:
+        return None
+    init_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT label, cells_json, updated_at FROM run_matrix_presets WHERE label = ?",
+            (key,),
+        ).fetchone()
+    if not row:
+        return None
+    r = dict(row)
+    try:
+        r["cells"] = json.loads(r.pop("cells_json") or "[]")
+    except (json.JSONDecodeError, TypeError):
+        r["cells"] = []
+    return r
+
+
+def upsert_matrix_preset(
+    db_path: str | Path, label: str, cells: list[dict[str, Any]]
+) -> None:
+    """Insert or replace a Run Matrix preset. Label is normalized; cells stored as JSON array."""
+    key = _normalize_matrix_preset_label(label)
+    if not key:
+        raise ValueError("preset label must be non-empty")
+    init_db(db_path)
+    now = datetime.now(timezone.utc).isoformat()
+    payload = json.dumps(cells, ensure_ascii=False)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO run_matrix_presets (label, cells_json, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(label) DO UPDATE SET
+                cells_json = excluded.cells_json,
+                updated_at = excluded.updated_at
+            """,
+            (key, payload, now),
+        )
+        conn.commit()
+
+
+def delete_matrix_preset(db_path: str | Path, label: str) -> int:
+    """Delete preset by normalized label. Returns rowcount (0 if missing)."""
+    key = _normalize_matrix_preset_label(label)
+    if not key:
+        return 0
+    init_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.execute("DELETE FROM run_matrix_presets WHERE label = ?", (key,))
+        conn.commit()
+        return cur.rowcount

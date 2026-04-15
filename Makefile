@@ -35,7 +35,7 @@ testv:
 test-cov:
 	uv run pytest src/core/tests -v --cov=src/core/src/harness --cov-report=term-missing
 
-# SLURM + LAMMPS API integration test (RUN_SLURM_E2E=1; default DOCKER_SLURM_CONTAINER matches sci_slurm compose worker name — override if your project prefix differs; see docs/slurm_lammps_e2e.md)
+# SLURM + LAMMPS API integration test (RUN_SLURM_E2E=1; default DOCKER_SLURM_CONTAINER matches sci_slurm compose worker name — override if your project prefix differs; see docs/TESTING_SLURM.md)
 test-slurm:
 	RUN_SLURM_E2E=1 DOCKER_SLURM_CONTAINER=$${DOCKER_SLURM_CONTAINER:-sci_slurm-gpu-worker-1} uv run pytest src/api/tests/test_slurm_lammps.py -v -m slurm
 
@@ -91,7 +91,7 @@ restart-services-slurm: stop-services
 # sci_slurm symlink next to this Makefile; override if your clone lives elsewhere:
 #   make slurm-up SLURM_COMPOSE_DIR=/path/to/sci_slurm
 # Optional extra args: make slurm-up SLURM_COMPOSE_EXTRA=--build
-# See docs/slurm_lammps_e2e.md
+# See docs/TESTING_SLURM.md
 
 SLURM_COMPOSE_DIR ?= sci_slurm
 SLURM_COMPOSE_EXTRA ?=
@@ -99,7 +99,7 @@ SLURM_COMPOSE_EXTRA ?=
 slurm-up:
 	@if [ ! -d "$(SLURM_COMPOSE_DIR)" ]; then \
 	  echo "ERROR: SLURM_COMPOSE_DIR=$(SLURM_COMPOSE_DIR) not found."; \
-	  echo "Clone or symlink your Slurm stack (e.g. sci_slurm) here, or set SLURM_COMPOSE_DIR. See docs/slurm_lammps_e2e.md"; \
+	  echo "Clone or symlink your Slurm stack (e.g. sci_slurm) here, or set SLURM_COMPOSE_DIR. See docs/TESTING_SLURM.md"; \
 	  exit 1; \
 	fi
 	cd "$(SLURM_COMPOSE_DIR)" && docker compose up -d $(SLURM_COMPOSE_EXTRA)

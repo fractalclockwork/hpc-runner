@@ -5,7 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --time=00:15:00
 
-# Harness replaces __LAMMPS_BIN__ before submit (see docs/slurm_lammps_e2e.md).
+# Harness replaces __LAMMPS_BIN__ before submit (see docs/TESTING_SLURM.md).
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"
 

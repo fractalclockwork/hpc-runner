@@ -56,7 +56,7 @@ This glossary defines key terms for the HPC Regression Platform. It helps **deve
 
 **Pattern** — A single extraction rule in `parser_config.yaml`: `name`, `regex` (with one capture group), `type` (`str`, `float`, `int`).
 
-**Template directory** — `configs/solvers/_template/` (or any folder starting with `_` or named `template`). Ignored by the loader; used as a copy source for new solvers. See [solver_template.md](solver_template.md).
+**Template directory** — `configs/solvers/_template/` (or any folder starting with `_` or named `template`). Ignored by the loader; used as a copy source for new solvers. See [USER_SOLVER_TEMPLATE.md](USER_SOLVER_TEMPLATE.md).
 
 ---
 

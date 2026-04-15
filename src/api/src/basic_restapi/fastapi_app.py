@@ -27,6 +27,10 @@ from harness import (
     get_config_dir,
     get_db_path,
     get_job_batch_uuids,
+    list_matrix_presets,
+    get_matrix_preset,
+    upsert_matrix_preset,
+    delete_matrix_preset,
 )
 
 from . import invocations
@@ -134,6 +138,17 @@ def _effective_session_label(body: RunSolversRequest) -> str:
 
 class DeleteRunsRequest(BaseModel):
     ids: list[int]
+
+
+class MatrixPresetCell(BaseModel):
+    name: str
+    system: str
+
+
+class MatrixPresetPut(BaseModel):
+    """Body for PUT /api/matrix_presets/{label}."""
+
+    cells: list[MatrixPresetCell]
 
 
 @app.get("/")
@@ -293,6 +308,48 @@ def api_delete_runs(body: DeleteRunsRequest):
     n = delete_runs(DB_PATH, body.ids)
     if n == 0:
         raise HTTPException(status_code=404, detail="No matching run ids")
+    return {"deleted": n}
+
+
+@app.get("/api/matrix_presets")
+def api_list_matrix_presets():
+    """List saved Run Matrix selections (label, cells, updated_at)."""
+    init_db(DB_PATH)
+    return list_matrix_presets(DB_PATH)
+
+
+@app.get("/api/matrix_presets/{label}")
+def api_get_matrix_preset(label: str):
+    """Get one Run Matrix preset by session label (normalized case-insensitively)."""
+    init_db(DB_PATH)
+    row = get_matrix_preset(DB_PATH, label)
+    if not row:
+        raise HTTPException(status_code=404, detail="Preset not found")
+    return row
+
+
+@app.put("/api/matrix_presets/{label}")
+def api_put_matrix_preset(label: str, body: MatrixPresetPut):
+    """Create or replace a Run Matrix preset."""
+    init_db(DB_PATH)
+    cells = [c.model_dump() for c in body.cells]
+    try:
+        upsert_matrix_preset(DB_PATH, label, cells)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    row = get_matrix_preset(DB_PATH, label)
+    if not row:
+        raise HTTPException(status_code=500, detail="Failed to read preset after save")
+    return row
+
+
+@app.delete("/api/matrix_presets/{label}")
+def api_delete_matrix_preset(label: str):
+    """Delete a saved Run Matrix preset."""
+    init_db(DB_PATH)
+    n = delete_matrix_preset(DB_PATH, label)
+    if n == 0:
+        raise HTTPException(status_code=404, detail="Preset not found")
     return {"deleted": n}
 
 

@@ -4,7 +4,7 @@
 set -euo pipefail
 
 if [[ "${RUN_SLURM_E2E:-}" != "1" ]]; then
-  echo "SKIP: set RUN_SLURM_E2E=1 for sleep-60-slurm (see docs/slurm_lammps_e2e.md)"
+  echo "SKIP: set RUN_SLURM_E2E=1 for sleep-60-slurm (see docs/TESTING_SLURM.md)"
   exit 0
 fi
 

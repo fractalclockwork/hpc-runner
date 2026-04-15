@@ -23,4 +23,4 @@ This directory is a template for creating new solvers. **It is ignored by the lo
 
 5. Add a job in `configs/jobs/` that references your solver.
 
-See [docs/solver_template.md](../../../docs/solver_template.md) for full specification.
+See [docs/USER_SOLVER_TEMPLATE.md](../../../docs/USER_SOLVER_TEMPLATE.md) for full specification.
