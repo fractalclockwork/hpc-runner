@@ -43,4 +43,8 @@ __pycache__/
 
 
 docker/slurm_sleep/work/
+
+# GROMACS solver: local inputs and run directory (see run.sh; PDB is downloaded locally)
+configs/solvers/gromacs-solver/data/
+
 *.pdb

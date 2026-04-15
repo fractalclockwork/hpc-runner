@@ -238,7 +238,7 @@ def render_numeric_metric_trend(df: pd.DataFrame, metric_name: str, session_stat
         point = event.selection.points[0]
         session_state['clicked_point'] = point
         print(f"point is {st.session_state['clicked_point']}")
-        session_state.page = "Run History"
+        session_state.page = "Job Activity"
         st.session_state.page_change_requested = True
         st.rerun()
 

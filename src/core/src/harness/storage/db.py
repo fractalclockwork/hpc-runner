@@ -134,10 +134,11 @@ def get_runs(
     db_path: str | Path,
     solver: str | None = None,
     processor: str | None = None,
+    system: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
-    """Fetch runs with optional solver and processor filters."""
+    """Fetch runs with optional solver, processor, and system (system_name) filters."""
     init_db(db_path)
     conditions: list[str] = []
     params: list[Any] = []
@@ -147,6 +148,9 @@ def get_runs(
     if processor:
         conditions.append("processor = ?")
         params.append(processor)
+    if system:
+        conditions.append("system_name = ?")
+        params.append(system)
     where = ("WHERE " + " AND ".join(conditions) + " ") if conditions else ""
     params.extend([limit, offset])
     with sqlite3.connect(db_path) as conn:

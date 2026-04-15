@@ -4,6 +4,7 @@ import json
 import os
 import structlog
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
@@ -33,6 +34,29 @@ from .slurm_tools import query_slurm_job_state
 
 app = FastAPI(title="HPC Regression API", version="0.1.0")
 logger = structlog.get_logger()
+
+# Allow the Streamlit UI (different port) to poll invocation JSON from the browser (live log iframe).
+_cors_origins = [
+    o.strip()
+    for o in os.environ.get(
+        "HPC_CORS_ORIGINS",
+        "http://localhost:8501,http://127.0.0.1:8501,http://localhost:8502,http://127.0.0.1:8502",
+    ).split(",")
+    if o.strip()
+]
+# Iframe live-log fetch() from Streamlit on another host (e.g. LAN IP) needs a matching origin.
+_cors_origin_regex = os.environ.get(
+    "HPC_CORS_ORIGIN_REGEX",
+    r"^http://[\w\.\-]+:(8501|8502)$",
+).strip() or None
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_origin_regex=_cors_origin_regex,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 CONFIG_DIR = get_config_dir()
 DB_PATH = get_db_path()
@@ -240,13 +264,21 @@ def api_run_solvers(body: RunSolversRequest | None = None):
 def api_runs(
     solver: str | None = None,
     processor: str | None = None,
+    system: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ):
-    """List recent runs, optionally filtered by solver or processor."""
+    """List recent runs, optionally filtered by solver, processor, or system (system_name)."""
     limit = min(limit, 500)
     init_db(DB_PATH)
-    runs = get_runs(DB_PATH, solver=solver, processor=processor, limit=limit, offset=offset)
+    runs = get_runs(
+        DB_PATH,
+        solver=solver,
+        processor=processor,
+        system=system,
+        limit=limit,
+        offset=offset,
+    )
     for r in runs:
         _normalize_run_row(r)
     return runs

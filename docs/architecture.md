@@ -192,7 +192,7 @@ flowchart TB
 | `/api/solvers` | GET | List solvers |
 | `/api/systems` | GET | List systems |
 | `/api/run_solvers` | POST | Run solvers (`solvers`, `session_label` or `batch_name`, `background`) — one invocation per solver when background — 202 |
-| `/api/runs` | GET | List runs (?solver=, ?processor=, ?limit=, ?offset=) |
+| `/api/runs` | GET | List runs (?solver=, ?processor=, ?system=, ?limit=, ?offset=) |
 | `/api/runs` | DELETE | Body `{ "ids": [1,2,3] }` — delete stored runs |
 | `/api/runs/<id>` | GET | Run detail |
 | `/api/runs/<id>/slurm_status` | GET | Live `squeue`/`sacct` when `RUN_SLURM_E2E=1` |

@@ -12,9 +12,6 @@ metrics:
   - name: runtime_seconds
     unit: s
     required: true
-  - name: potential_energy_kj_mol
-    unit: kJ/mol
-    required: true
   - name: n_atoms
     unit: count
     required: true

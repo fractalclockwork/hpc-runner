@@ -23,6 +23,7 @@ from harness.storage import (
 def _make_result(
     job_name="t1",
     solver_name="s1",
+    system_name="dev",
     metrics=None,
     processor="x86_64",
     validation_errors=None,
@@ -35,7 +36,7 @@ def _make_result(
     return RunResult(
         job_name=job_name,
         solver_name=solver_name,
-        system_name="dev",
+        system_name=system_name,
         returncode=returncode,
         stdout="out",
         stderr="err",
@@ -90,6 +91,23 @@ def test_get_runs_filter_by_processor(tmp_path):
     runs_arm = get_runs(db_path, processor="aarch64")
     assert len(runs_arm) == 1
     assert runs_arm[0]["processor"] == "aarch64"
+
+
+def test_get_runs_filter_by_system(tmp_path):
+    """Retrieve runs filtered by system_name."""
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    store_run(db_path, _make_result(job_name="t1", system_name="sys-a"))
+    store_run(db_path, _make_result(job_name="t2", system_name="sys-a"))
+    store_run(db_path, _make_result(job_name="t3", system_name="sys-b"))
+
+    runs_a = get_runs(db_path, system="sys-a")
+    assert len(runs_a) == 2
+    assert all(r["system_name"] == "sys-a" for r in runs_a)
+
+    runs_b = get_runs(db_path, system="sys-b")
+    assert len(runs_b) == 1
+    assert runs_b[0]["system_name"] == "sys-b"
 
 
 def test_delete_runs(tmp_path):

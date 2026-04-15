@@ -1,4 +1,4 @@
-"""E2E tests for Solvers landing page."""
+"""E2E tests for Home landing page."""
 
 from playwright.sync_api import expect
 

@@ -5,19 +5,23 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 DATA_DIR="${REPO_ROOT}/configs/solvers/gromacs-solver/data"
-mkdir -p "${DATA_DIR}" "${REPO_ROOT}/data"
+# Ephemeral run directory (removed after a successful finish). If the script exits early, work/ may remain for debugging.
+WORK_DIR="${DATA_DIR}/work"
+mkdir -p "${DATA_DIR}"
+rm -rf "${WORK_DIR}"
+mkdir -p "${WORK_DIR}"
 
 if command -v gmx &>/dev/null; then
     echo "gmx found on PATH"
 elif [ -n "${GROMACS_DOCKER_IMAGE:-}" ]; then
     echo "Using gmx via Docker (${GROMACS_DOCKER_IMAGE})"
-    # Bind-mount the repo at the same path so absolute paths in this script work inside the container.
+    # Bind-mount the repo at the same path so absolute paths work inside the container.
     gmx() {
         # shellcheck disable=SC2086
         # -i forwards stdin (needed for genion and other tools reading from a pipe).
         docker run --rm -i \
             -v "${REPO_ROOT}:${REPO_ROOT}" \
-            -w "${DATA_DIR}" \
+            -w "${WORK_DIR}" \
             ${GROMACS_DOCKER_EXTRA_ARGS:-} \
             "${GROMACS_DOCKER_IMAGE}" gmx "$@"
     }
@@ -49,7 +53,7 @@ if [ "$USE_GPU" -eq 1 ]; then
 fi
 
 DATA_PATH="${DATA_DIR}/1d5q.pdb"
-OUTPUT_PATH="${REPO_ROOT}/data/1d5q.gro"
+OUTPUT_PATH="${WORK_DIR}/1d5q.gro"
 FIRST_1D5Q_MDP_PATH="$REPO_ROOT"/configs/solvers/gromacs-solver/1d5q.mdp
 ENERGY_MIN_MDP_PATH="${REPO_ROOT}/configs/solvers/gromacs-solver/1d5q_energy_minimization.mdp"
 NVT_MDP_PATH="${REPO_ROOT}/configs/solvers/gromacs-solver/1d5q_nvt.mdp"
@@ -61,16 +65,16 @@ if [ ! -f "${DATA_PATH}" ]; then
     exit 1
 fi
 
-cd "${DATA_DIR}"
+cd "${WORK_DIR}"
 
 # Prep .gro files
 gmx pdb2gmx -ff gromos54a7 -p topol.top -water spc -ignh -f "${DATA_PATH}" -o "${OUTPUT_PATH}"
-gmx editconf -f "${OUTPUT_PATH}" -o "${DATA_DIR}/1d5q_boxed.gro" -c -d 1.0 -bt dodecahedron
+gmx editconf -f "${OUTPUT_PATH}" -o "${WORK_DIR}/1d5q_boxed.gro" -c -d 1.0 -bt dodecahedron
 
 # Solvation and charge neutralization
-gmx solvate -cp "${DATA_DIR}/1d5q_boxed.gro" -cs spc216.gro -o "${DATA_DIR}/1d5q_solvated.gro" -p topol.top
-gmx grompp -f "${FIRST_1D5Q_MDP_PATH}" -c "${DATA_DIR}/1d5q_solvated.gro" -p topol.top -o "${DATA_DIR}/1d5q.tpr" -maxwarn 10
-echo SOL | gmx genion -s "${DATA_DIR}/1d5q.tpr" -o "${DATA_DIR}/1d5q_solv_ions.gro" -p topol.top -pname NA -nname CL -neutral
+gmx solvate -cp "${WORK_DIR}/1d5q_boxed.gro" -cs spc216.gro -o "${WORK_DIR}/1d5q_solvated.gro" -p topol.top
+gmx grompp -f "${FIRST_1D5Q_MDP_PATH}" -c "${WORK_DIR}/1d5q_solvated.gro" -p topol.top -o "${WORK_DIR}/1d5q.tpr" -maxwarn 10
+echo SOL | gmx genion -s "${WORK_DIR}/1d5q.tpr" -o "${WORK_DIR}/1d5q_solv_ions.gro" -p topol.top -pname NA -nname CL -neutral
 
 # Minimize Energy
 gmx grompp -f "${ENERGY_MIN_MDP_PATH}" -c 1d5q_solv_ions.gro -p topol.top -o em.tpr -maxwarn 5
@@ -85,5 +89,6 @@ gmx mdrun -v -deffnm npt ${MDRUN_CORE_OPTIONS}
 gmx grompp -f "${SIM_MDP_PATH}" -c npt.gro -t npt.cpt -p topol.top -o md.tpr -maxwarn 5
 gmx mdrun -v -deffnm md ${MDRUN_CORE_OPTIONS}
 
-# Get the energy out from the simulation data
-cat "${DATA_DIR}/md.log"
+# Get the energy out from the simulation data (stdout for harness), then remove ephemeral outputs.
+cat "${WORK_DIR}/md.log"
+rm -rf "${WORK_DIR}"

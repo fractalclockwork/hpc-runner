@@ -10,7 +10,7 @@ env:
   SLURM_GPUS: "1"
   SLURM_NTASKS: "8"
   SLURM_TIME: "01:00:00"
-allowed_systems: [dev-system, hpc-cluster-01]
+allowed_systems: [dev-system]
 default_system: dev-system
 parser_config: parser_config.yaml
 metrics:

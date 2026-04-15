@@ -1,97 +1,251 @@
-# UI Design 
-Authors: Shree Patel and Shawn Schulz
-Last Updated: 3 March 2026
+# User Interface Specification — HPC Regression Platform (Streamlit)
 
-## Objective
-This file details the goals, design, and scope of the UI components of this project. 
+| Field | Value |
+|--------|--------|
+| **Document type** | User interface specification |
+| **Implementation** | `src/ui/app.py`, `src/ui/charts.py`, `src/ui/api_config.py` |
+| **Authors** | Shree Patel, Shawn Schulz |
+| **Last updated** | 14 April 2026 |
 
-## Overview
-Dow’s HPC environment must undergo frequent security‑driven software and system updates, but the company currently lacks a reliable way to detect when these changes break or degrade scientific software performance. Dow’s small HPC team supports critical R&D workloads in computational chemistry, molecular dynamics, CFD, and AI. They need a lightweight, maintainable system that ensures solver performance remains stable as security requirements force more frequent updates.
-Our team will build a modular, execution‑agnostic automated testing platform that runs scientific workloads, detects regressions, and visualizes performance changes over time. Within scope of this deliverable is a functional prototype test harness, a modular configuration system, a performance‑tracking dashboard, documentation, and a public GitHub repository suitable for community maintenance.
+---
 
-## Goals and Non-Goals
-### Goals
-Overarching goals of the project are to support the business in maintaining reliability of computational chemistry workloads, meeting new corporate security requirements requiring frequent system updates, minimizing downtime and performance regressions, and reducing manual testing burden on a small HPC staff.
-Within this set of goals, the UI is critical to ensure that the user can:
-- Run tests, schedule jobs, and trigger the execution of the test runner harness from the UI
-- Display results of said jobs, including key metrics parsed from the metric extraction and logging layer
-- Provide visualizations of current and historical data in a variety of interactive methods to ensure proper exploration of the system. This includes but is not limited to: heatmaps, performance trend tracking, and system health reports
+## 1. Purpose and scope
 
-### Non-Goals
-- For the current implementation, we do not want to specify a way to author new solvers within the UI interface
-- The UI should not specify a way to modify configuration files for the test harness. Where appropriate parameters for web UI should be handled without modifying configuration files through the UI. 
-  
-## Proposed Architecture
-To accomplish these goals, the following architecture is proposed:
+### 1.1 Purpose
 
-### Page 1: Landing / Dashboard + Run Test
-The goal of this page is to provide a quick, high-level overview of the system to the user.
-#### Components:
-**System Description**: A few paragraphs explaining the premise of the solver and the system.
+This document specifies the **browser-facing user interface** of the HPC Regression Platform prototype: navigation, screens, primary controls, data sources, and cross-cutting behaviors. It reflects the **current** Streamlit implementation.
 
-### Page 2: Run Solvers
-This page details how to select and run a handful of solvers at once or individually
-#### Components:
+### 1.2 Audience
 
-**Description:** Provide 2-3 sentences of text detailing what a solver is and how the user can identify what is best for them
+Engineers, testers, and stakeholders who need a single reference for **what the UI does today**—not for backend harness internals or solver configuration authoring (see non-goals).
 
-**Solver Overview**: A drop-down box containing a table of available solvers
+### 1.3 Business context (summary)
 
-**Run a Batch**: The user can choose solvers to run as a batch from checkbox selection, and those can then be run from that place in the UI.
+Dow’s HPC environment requires frequent security-driven updates; the platform helps detect when those changes break or degrade scientific software performance. The UI supports running solver workloads, monitoring jobs, inspecting results, and exploring performance over time.
 
-**Active Runs/Live Monitoring:** Show the progress bar on jobs that have been completed that fills as the test progresses. Under the test title, it shows the solver, system, resources, and job for that test. The progress bar gives an indicator to the user that their solver is still in progress. This is also one spot where the user can stop an asynchronous job
+---
 
-**Run Solvers (Individually):** Offer a set of tabs, one for each solver, to choose the solver then allow user to run it with a click or pull up the last run. Each solver gets an invocation ID and the results are shown at the bottom of the run. These jobs are technically run asynchronously and can also be cancelled from this portion too.  
+## 2. System context
 
-### Page 3: Run History
-This page details the runs that have been completed thus far one by one
-#### Components: 
+### 2.1 Architecture
 
-**History Dropdown**: In this region, the user can click on each run as a drop-down to see the stdout, metrics, and stderr of each run. This can be filtered, grouped, and manipulated to showcase the runs that are useful. Check-mark and "X" emojis denote whether the run succeeded or failed. 
+| Layer | Responsibility |
+|--------|----------------|
+| **Browser** | Streamlit app (`streamlit run src/ui/app.py`). |
+| **API** | REST API (FastAPI). The UI **does not** invoke the CLI or import harness Python modules directly. |
+| **Configuration** | YAML/TOML under `configs/` on the host; the UI reads files for **Configs** only where implemented. |
 
-### Page 4: Individual Test Performance
-This page details how the most recent test has performed. 
-#### Components:
-**Grasphs of Individual Test Metric performance:** This graph allows a drop down menu to select your job, and then you can see the runtime plotted. Improvements to this include being able to choose from a multiple-choice side panel to minimize the number of clicks, since users can choose multiple things to see per run.
+### 2.2 API availability
 
-### Page 5: Long-Term Trend Performance
-This page details the performance of the system, averaging across multiple tests. Results from individual tests is not within the scope of this page, and they can be included on another page for better user flow. The Long-Term trends view shows a default date range of its components, with an input for the user to set a different desired date range. This date range parameter should use streamlit's session state or other state management tool to keep this date range filter when the user clicks between tabs.  
+- Default base URL comes from `HPC_API_URL` (see `src/ui/api_config.py`); typical local dev: `http://localhost:8000`.
+- Without a reachable API, pages that depend on `/api/*` show errors or empty states (e.g. Run Matrix cannot load solvers/systems).
 
-#### Components:
-**Pass/Fail Boxes:** Two boxes of the same size, one detailing the number of passed cases and one detailng the number of failed cases in a given time period. Defaults to descending by date with a drop down input to create a date range for pass/fail. In the bottom of the box is a trend showing the percentage change from the last time period, providing a quick insight into system health
+### 2.3 SLURM / integration mode
 
-**Test Results Trend Visualization:** A bar chart with passed, failed, and skipped counted. X axis is time, Y axis is count
+When `RUN_SLURM_E2E=1`, the sidebar may show a caption that the stack expects Docker + job environment for SLURM-backed demos.
 
-**Performance Drift Analysis:** An interactive plot that details the performance drift. Not sure how exactly we want to calculate it, but the performance drift visualization allows the user to select, from a toggle-menu, which metric they would like to analyze (GFLOPS, Bandwidth, Throughput, Latency) and for which time period (in days). This supports hover-over interaction to provide more information on each data point, which includes the date and the calculation of the performance drift. The x axis is date and the y-axis is drift (in a percent?). There are also two levels specified to be a warning level, above which the line color changes (to yellow), and an alert level, above which the color changes again (to red). 
+---
 
-**Heatmap:** Used in an example given by William for TACC's test harness, gives more granular information about the test results or performance of a run, say eight different metrics across eight dates. These are shown directly under the performance drift analysis plot and display all defined metrics across the filtered time period for a solver. Another possible component could allow the comparison of different solvers for shared metrics for a selected time period, i.e. the runtime performance of Gaussian vs Q-Chem vs ACES for the past 15 runs that included all 3 solvers. Another component could handle system solver combinations etc. They provide a 2 dimensional comparison of solver, system or hardware combinations for different time points for a particular shared metric. Ideally provide easy way for user to plugin their own heatmaps to examine different combinations of data.
-![image](https://github.berkeley.edu/Chem-283/DOW-1-26/assets/3736/4f8a5252-1cac-45af-9981-3c5be5f60112) (From Texas Advanced Computing Center: High Performance Computing Test
-Harness with Jenkins 2017 presentation)
+## 3. Definitions
 
-### Page 6: Configs
-This page shows the configs available to the user on the back-end. They cannot be edited from this page, simply viewed. 
+| Term | Meaning |
+|------|---------|
+| **Solver** | A configured workload definition (e.g. under `configs/solvers/`). |
+| **System** | A target execution environment (e.g. cluster, local dev). |
+| **solver@system** | Harness job identity for a run of a given solver on a given system. |
+| **Invocation** | An in-memory background run tracked by the API (`GET /api/invocations`, …). |
+| **Stored run** | A persisted row in the database (`GET /api/runs`, …). |
+| **Session label** | Optional tag sent as `session_label` on run requests; stored with runs as batch/session metadata (`job_batch_name` / legacy `batch_name`). |
 
-## System Design Principles
-Fonts: Streamlit basic font is fine imo
+---
 
-Forms: For buttons, I think they should be in a different blue color for user attention.
+## 4. Global UI requirements
 
-Colors: I think a blue scheme would complement black or white well, and signals proficiency, innovation, and steamlined-ness for the user. See these two color suggestions:
-![image](https://github.berkeley.edu/Chem-283/DOW-1-26/assets/3735/48601f78-bfc4-446c-a9bf-a9204b776163)
+### 4.1 Navigation
 
-If not these, then we can go with Dow red, or some other accent color (not purple, not pink, not orange, not yellow, and not a pastel).
+- **Location:** Left sidebar, title **Navigation**.
+- **Control:** Radio group **“Go to”** with options **exactly** as listed in [§5](#5-page-specifications).
+- **Default page:** **Home** on first load.
+- **Hidden marker:** `data-testid="nav-sidebar"` (for automation).
 
-Icons: I don't think being an emoji-heavy platform is professional, but we can use gears and other icons for the sidebar for better user interactivity. Agree regarding avoiding emojis. Perhaps we could consult with Dow/capstone mentors about this topic, there are lots of good open source icon libraries we could use in addition to the free templates on figma and other platforms (see https://iconoir.com/ which has figma integration as one possibility). 
+### 4.2 Session migration (backward compatibility)
 
-## State Management
+Older session keys may still map to current pages (e.g. legacy page names are rewritten to **Run Matrix** or **Job Activity**). This is implementation detail; users should rely on the sidebar labels in §5.
 
-The UI should maintain the minimum state possible to meet user experience requirements. To this end, a few aspects of the UI state need to be tracked, such as date filters, any performance metric filters and other manipulations of the UI a user makes. Streamlit provides an idiomatic method to save/cache some of this information in it's session management component: https://docs.streamlit.io/develop/api-reference/caching-and-state/st.session_state
+### 4.3 Global run-completion notifications
 
+- A **fragment** polls active invocations on **every** page.
+- When the active set changes and jobs finish, **toast** messages encourage opening **Job Activity** for results.
 
-A few key data should be kept in a streamlit session state, namely: the date range for the test results page, the date range for long term trend visualization, the tests currently selected to run as a group on the run jobs page, whether to run the selected tests as a dry run or full run. In general though we would like to maintain the minimum possible state necessary to create the required user experience in the UI. 
+### 4.4 Trends → Job Activity (drill-down)
 
-## Backend Communication
+- On **Long-Term Trends**, **clicking** a point in supported Plotly charts sets session state and navigates to **Job Activity**, with the corresponding stored run pre-selected when the match can be resolved.
 
-Where necessary, backend communication will be facilitated via REST API requests using python requests or another http server library called via the UI. POST requests are exposed in the backend api where query parameters exceed 2-3 simple parameters or where a data structure such as a list, dictionary, or object is appropriate as a query parameter. The streamlit frontend will avoid calling the command line interface directly or calling backend functions directly to maintain abstraction between the frontend and backend, keep the user's underlying system abstracted from the web browser interface, as well as to utilize the existing asynchronous request available through FastAPI running on a ASGI server. 
+### 4.5 Automation hooks (`data-testid`)
 
+Primary pages expose stable test ids (see each page). E2E tests rely on these.
 
+---
+
+## 5. Page specifications
+
+Navigation order and titles:
+
+1. **Home**
+2. **Run Matrix**
+3. **Job Activity**
+4. **Individual Trends**
+5. **Long-Term Trends**
+6. **Configs**
+
+---
+
+### 5.1 Home
+
+| Item | Specification |
+|------|----------------|
+| **Purpose** | Welcome and high-level orientation (execution-agnostic harness, operate vs understand, pointer to `configs/` and docs). |
+| **Primary heading** | “Welcome to the HPC Regression Platform” |
+| **`data-testid`** | `page-home` |
+| **Content** | Markdown: goals, bullets for **Run Matrix**, **Job Activity**, trends, configuration; short navigation hint. |
+| **API** | None required. |
+
+---
+
+### 5.2 Run Matrix
+
+| Item | Specification |
+|------|----------------|
+| **Purpose** | Select **solver × system** pairs (allowed combinations only) and start **background** runs: one invocation per selected cell (`POST /api/run_solvers` with `background: true`). |
+| **Primary heading** | “Run Matrix” |
+| **`data-testid`** | `page-run-matrix`; grid region `run-matrix-grid` |
+| **Inputs** | **Session label (optional)** — text field; sent as `session_label`. |
+| **Matrix** | Rows = solvers; columns = systems; disallowed pairs show “—”. **Checkboxes** select cells; **↔** toggles an entire solver row; **↕** toggles an entire system column. |
+| **Live status** | Matrix **fragment** refreshes on a short interval; active invocations show a **dot** in the cell and tooltips with status, invocation id, backend, progress, scheduler ids when present. |
+| **Primary action** | **“Run selected (N)”** — primary button; disabled when N=0. On success, user is directed to **Job Activity** for monitoring. |
+| **API** | `GET /api/systems`, `GET /api/solvers`, `GET /api/invocations?active_only=true`, `POST /api/run_solvers` |
+| **Empty / error** | Message if API unreachable; warning if no solvers/systems in config. |
+
+---
+
+### 5.3 Job Activity
+
+| Item | Specification |
+|------|----------------|
+| **Purpose** | Single place for **live invocations** (queued/running/…) and **stored runs** (database): pick one job, inspect details, cancel in-flight work, delete stored rows, set baseline runs. |
+| **Primary heading** | “Job Activity” |
+| **`data-testid`** | `page-job-activity` |
+| **Filters** | **Filter by solver (stored runs)** and **Filter by system (stored runs)** — narrow which stored runs appear in the combined list. |
+| **Actions** | **Refresh list**; **multiselect stored runs** + **Delete selected runs** with confirmation; **Baseline** on stored run detail (when not already baseline). |
+| **Unified pick** | **Select box “Job”** lists invocations and stored runs in one list (formatted labels with status icons). |
+| **Invocation branch** | Shows status, live log viewer (with auto-scroll behavior where applicable), **Cancel invocation** when relevant. |
+| **Stored run branch** | Run metadata, **Baseline** control, stdout/stderr/metrics/validation as viewers, **Refresh SLURM status** when scheduler metadata exists. |
+| **API** | `GET /api/invocations`, `GET /api/invocations/{id}`, `GET /api/runs` (with filters), `DELETE /api/runs`, `POST /api/runs/{id}/set_baseline`, `POST /api/invocations/{id}/cancel`, `GET /api/runs/{id}/slurm_status` as applicable |
+
+---
+
+### 5.4 Individual Trends
+
+| Item | Specification |
+|------|----------------|
+| **Purpose** | Per-solver **metric history** over time as a **line chart**; optional **baseline** line when the solver’s baseline run defines that metric. |
+| **Primary heading** | “Individual Trends” |
+| **`data-testid`** | `page-individual-trends` |
+| **Selection** | **Select box** “Select solver and metric to view” — options from `GET /api/available_metrics`. |
+| **Chart** | `st.line_chart` for timestamp vs value; if baseline exists, extra series **baseline**. |
+| **Raw data** | Expander **“View raw data”** with a dataframe. |
+| **API** | `GET /api/available_metrics`, `GET /api/metrics/{solver}/{metric}`, `GET /api/solvers/{solver}/baseline` |
+| **Empty** | Info when no metrics yet (suggests **Run Matrix** or CLI). |
+
+---
+
+### 5.5 Long-Term Trends
+
+| Item | Specification |
+|------|----------------|
+| **Purpose** | Multi-solver / multi-system views over a **date range**: **heatmaps** and **metric trend** visualizations (Plotly), with **sidebar** filters persisted in session state. |
+| **Primary heading** | “Long-Term Trends” |
+| **`data-testid`** | `page-long-term-trends` |
+| **Sidebar (this page)** | **Solver(s)** multiselect, **System(s)** multiselect, **Date range** — applied to the main content. |
+| **Data source** | Local DB via `get_trend_runs_data` for the main table; heatmap path also uses `GET /api/runs` with optional solver filter. |
+| **Tabs** | **Heatmap** \| **Metric trends** |
+| **Heatmap** | Modes: all metrics for one solver/system, or one metric across solvers/systems; color scaling options include default min-max and **baseline-relative** where implemented. |
+| **Metric trends** | Plotly charts; **click** on a point triggers navigation to **Job Activity** (see [§4.4](#44-trends--job-activity-drill-down)). |
+| **Empty** | Info when no run data (suggests **Run Matrix** or CLI). |
+
+---
+
+### 5.6 Configs
+
+| Item | Specification |
+|------|----------------|
+| **Purpose** | **Read-only** browse of YAML files discovered under `configs/` (grouped by category). |
+| **Primary heading** | “Configs” |
+| **`data-testid`** | `page-configs` |
+| **Controls** | **Category** select box, **File** select box. |
+| **Content** | Selected file rendered as **syntax-highlighted code** (YAML). |
+| **Persistence** | No save; no edit workflow in the current implementation. |
+
+---
+
+## 6. Visual design and theming
+
+### 6.1 Framework
+
+- Streamlit default typography and components unless overridden by **CSS** injected in `app.py` (e.g. dark sidebar, card-style metrics, wide main content).
+
+### 6.2 Principles (non-prescriptive)
+
+- Prefer **clear hierarchy** (headers, captions, help) over dense controls.
+- **Primary actions** use Streamlit primary button styling where applicable (e.g. **Run selected** on Run Matrix).
+- Status feedback uses standard Streamlit patterns: `st.success`, `st.warning`, `st.error`, `st.toast`, progress indicators.
+
+### 6.3 Icons and symbols
+
+- The UI uses **status icons** and compact symbols in lists (e.g. job status, matrix active dot). **Emoji** appear in some captions (e.g. Job Activity legend); this is intentional for scanability in the current build.
+
+---
+
+## 7. State and persistence
+
+### 7.1 Streamlit `session_state`
+
+- **Page navigation** is bound to `page_radio` / `page` with sync rules for programmatic changes (e.g. chart drill-down).
+- **Filters** persist across navigation where keys are set (e.g. Long-Term Trends date range, heatmap mode, solver/system filters, Individual Trends metric selection).
+- **Run Matrix** checkbox states persist until the session ends or the user clears them.
+
+### 7.2 Minimum state principle
+
+- Persist only what is needed for UX continuity (filters, selections, scroll positions for log viewers where implemented). Avoid duplicating server state that the API already owns.
+
+---
+
+## 8. Backend communication
+
+- **Transport:** HTTP only (`requests`, `API_URL` / `HPC_API_URL`).
+- **JSON** request bodies for non-trivial POST/DELETE (e.g. `run_solvers`, bulk delete runs).
+- **Asynchronous jobs:** Run Matrix uses **background** invocations (`202`); synchronous `run_solvers` exists for automation but is not the primary Streamlit path.
+
+---
+
+## 9. Goals and non-goals (UI)
+
+### 9.1 Goals
+
+- Submit and monitor solver runs (**Run Matrix**, **Job Activity**).
+- Inspect outputs and metrics (Job Activity, trends pages).
+- Visualize historical and comparative performance (**Individual Trends**, **Long-Term Trends**).
+- Browse configuration files read-only (**Configs**).
+
+### 9.2 Non-goals (current)
+
+- **Authoring new solvers** entirely within the UI.
+- **Editing** harness YAML/TOML through the UI (Configs is view-only; validation/save flows elsewhere are out of scope for this document).
+
+---
+
+## 10. References
+
+- Application entry: `src/ui/app.py`
+- Charts helpers: `src/ui/charts.py`
+- REST API: `src/api/` (OpenAPI under `/docs` when the API is running)
