@@ -6,7 +6,7 @@
 # RUN_SLURM_E2E=1 and DOCKER_SLURM_CONTAINER set — no compose overlay needed.
 #
 # If you run the API inside this compose stack and need `docker exec`, mount the socket and use
-# an image that includes the Docker CLI (not the default Dockerfile). See docs/slurm_lammps_e2e.md.
+# an image that includes the Docker CLI (not the default Dockerfile). See docs/TESTING_SLURM.md.
 
 services:
   api:

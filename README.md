@@ -4,7 +4,7 @@ Modular, execution-agnostic HPC regression testing system for the Dow/Berkeley C
 
 Notable changes by release period: [CHANGELOG.md](CHANGELOG.md).
 
-**Full architecture (diagrams, sequences, API reference):** [docs/architecture.md](docs/architecture.md)
+**Full architecture (diagrams, sequences, API reference):** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ## Quickstart
 
@@ -61,7 +61,7 @@ All commands from the **repository root**. Install **[uv](https://docs.astral.sh
    make test-e2e
    ```
 
-   Ensures Playwright’s **Chromium** is present, then runs tests. Details: [docs/e2e_quickstart.md](docs/e2e_quickstart.md).
+   Ensures Playwright’s **Chromium** is present, then runs tests. Details: [docs/TESTING_E2E_QUICKSTART.md](docs/TESTING_E2E_QUICKSTART.md).
 
 6. **Optional — CLI runs** (`configs` here is the default **config directory** path; replace with another root or add flags as needed)
 
@@ -151,11 +151,11 @@ flowchart LR
 - **Runner** — Spawns solver entrypoints; captures stdout/stderr; integrates with optional background invocations and SLURM metadata when present.
 - **Parser** — Regex and rules from per-solver `parser_config` YAML; metrics validated against solver `metrics` specs.
 - **Storage** — SQLite stores runs, metrics JSON, batch and baseline fields.
-- **API** — FastAPI exposes runs, invocations, metrics, baselines; Streamlit uses HTTP only (see [docs/architecture.md](docs/architecture.md) for sequences).
+- **API** — FastAPI exposes runs, invocations, metrics, baselines; Streamlit uses HTTP only (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for sequences).
 
 **Data flow:** CLI → Runner → Parser → Storage → API → UI (the UI reads and drives work through the REST API over HTTP).
 
-**SLURM / LAMMPS:** Optional integration via solver scripts and environment; see the [SLURM + LAMMPS](#slurm--lammps) commands below and [docs/slurm_lammps_e2e.md](docs/slurm_lammps_e2e.md).
+**SLURM / LAMMPS:** Optional integration via solver scripts and environment; see the [SLURM + LAMMPS](#slurm--lammps) commands below and [docs/TESTING_SLURM.md](docs/TESTING_SLURM.md).
 
 ## Development workflow
 
@@ -191,11 +191,11 @@ uv run hpc-runner --add 'echo hello' --system <system_name>
 |-------|-------------------|------|
 | Unit (core) | `make test` or `uv run pytest src/core/tests -q` | Config, parser, storage, runner, CLI, add-solver |
 | API | `make test-api` or `uv run pytest src/api/tests` | REST contracts; use `make test-slurm` for gated SLURM/LAMMPS |
-| E2E (UI) | `make test-e2e` | Playwright against Streamlit ([docs/e2e_quickstart.md](docs/e2e_quickstart.md)); `make e2e` is an alias |
+| E2E (UI) | `make test-e2e` | Playwright against Streamlit ([docs/TESTING_E2E_QUICKSTART.md](docs/TESTING_E2E_QUICKSTART.md)); `make e2e` is an alias |
 | E2E (Docker) | `make test-e2e-docker` | Streamlit + Playwright in Compose; `make e2e-docker` is an alias |
 | E2E (UI in Docker, local Playwright) | `make test-e2e-docker-ui` | `make e2e-docker-ui` is an alias |
 | Docker images | `make docker-validate` | Build + API health check |
-| SLURM smoke | `make test-slurm` (sets `RUN_SLURM_E2E=1` and defaults `DOCKER_SLURM_CONTAINER` to `sci_slurm-gpu-worker-1`; override when needed, see [docs/slurm_lammps_e2e.md](docs/slurm_lammps_e2e.md)) | Integration with external Slurm stack |
+| SLURM smoke | `make test-slurm` (sets `RUN_SLURM_E2E=1` and defaults `DOCKER_SLURM_CONTAINER` to `sci_slurm-gpu-worker-1`; override when needed, see [docs/TESTING_SLURM.md](docs/TESTING_SLURM.md)) | Integration with external Slurm stack |
 
 **Manual smoke:** After `uv run hpc-runner configs --solver echo-solver`, expect a completed run with metrics stored when not using `--no-store`; confirm in the UI or `hpc-runner configs --list-runs`.
 
@@ -218,7 +218,7 @@ make start-services-slurm
 make restart-services-slurm
 ```
 
-Inputs live under `docker/lammps/` (do not modify external `sci_slurm`). See [docs/slurm_lammps_e2e.md](docs/slurm_lammps_e2e.md). Start an external Slurm Docker stack: **`make slurm-up`** (set `SLURM_COMPOSE_DIR` if not using a `./sci_slurm` checkout). **`make test-slurm`** sets `RUN_SLURM_E2E=1` and defaults **`DOCKER_SLURM_CONTAINER=sci_slurm-gpu-worker-1`** for the pytest process (override if your Compose container name differs). Optional Compose overlay: `docker/docker-compose.slurm.yml` and [docker/README.md](docker/README.md).
+Inputs live under `docker/lammps/` (do not modify external `sci_slurm`). See [docs/TESTING_SLURM.md](docs/TESTING_SLURM.md). Start an external Slurm Docker stack: **`make slurm-up`** (set `SLURM_COMPOSE_DIR` if not using a `./sci_slurm` checkout). **`make test-slurm`** sets `RUN_SLURM_E2E=1` and defaults **`DOCKER_SLURM_CONTAINER=sci_slurm-gpu-worker-1`** for the pytest process (override if your Compose container name differs). Optional Compose overlay: `docker/docker-compose.slurm.yml` and [docker/README.md](docker/README.md).
 
 ## Docker
 

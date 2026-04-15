@@ -9,7 +9,7 @@
 set -euo pipefail
 
 if [[ "${RUN_SLURM_E2E:-}" != "1" ]]; then
-  echo "SKIP: set RUN_SLURM_E2E=1 for a real SLURM/LAMMPS run (see docs/slurm_lammps_e2e.md)"
+  echo "SKIP: set RUN_SLURM_E2E=1 for a real SLURM/LAMMPS run (see docs/TESTING_SLURM.md)"
   exit 0
 fi
 
@@ -81,7 +81,7 @@ if [[ -n "${DOCKER_SLURM_CONTAINER:-}" ]]; then
       echo "ERROR: could not parse Slurm job id from: ${out}" >&2
       exit 1
     fi
-    # Machine-readable lines for harness (cancellation / stored run metadata); documented in slurm_lammps_e2e.md
+    # Machine-readable lines for harness (cancellation / stored run metadata); documented in TESTING_SLURM.md
     echo "HARNESS_SCHEDULER_BACKEND=slurm"
     echo "HARNESS_SLURM_JOB_ID=${jid}"
     echo "HARNESS_SUBMIT_CONTAINER=${SUBMIT}"

@@ -46,10 +46,10 @@ This runs **`playwright install chromium`** then `uv run pytest src/ui/tests/e2e
 | Streamlit fails to start in time | Ensure port 8501 is free, or set `STREAMLIT_PORT` to another port. |
 | Tests need the API (Run Jobs, Home metrics, etc.) | The app expects the API at `http://localhost:8000`. Start it with `make api` if you run those flows. |
 
-For more on the app and config, see [architecture.md](architecture.md) and [user_guide.md](user_guide.md).
+For more on the app and config, see [ARCHITECTURE.md](ARCHITECTURE.md) and [USER_GUIDE.md](USER_GUIDE.md).
 
 ## SLURM + LAMMPS (optional)
 
-This is separate from Playwright UI tests. Inputs live under `docker/lammps/` in the repo; **do not modify** the `sci_slurm` symlink directory—copy files into `docker/lammps/` as needed. See **[slurm_lammps_e2e.md](slurm_lammps_e2e.md)** for the [sci-slurm](https://github.com/fractalclockwork/sci-slurm) stack, **`SLURM_COMPOSE_DIR`** / **`make slurm-up`**, `RUN_SLURM_E2E`, `DOCKER_SLURM_CONTAINER`, **`make restart-services-slurm`**, and the gated API test.
+This is separate from Playwright UI tests. Inputs live under `docker/lammps/` in the repo; **do not modify** the `sci_slurm` symlink directory—copy files into `docker/lammps/` as needed. See **[TESTING_SLURM.md](TESTING_SLURM.md)** for the [sci-slurm](https://github.com/fractalclockwork/sci-slurm) stack, **`SLURM_COMPOSE_DIR`** / **`make slurm-up`**, `RUN_SLURM_E2E`, `DOCKER_SLURM_CONTAINER`, **`make restart-services-slurm`**, and the gated API test.
 
 With SLURM/LAMMPS available: start the cluster (e.g. `export SLURM_COMPOSE_DIR=/path/to/sci-slurm && make slurm-up`), set `export DOCKER_SLURM_CONTAINER=...` to your worker (often `sci_slurm-gpu-worker-1`), then **`make test-slurm`** (it sets `RUN_SLURM_E2E=1` for you).

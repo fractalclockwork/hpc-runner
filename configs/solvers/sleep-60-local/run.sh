@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Local subprocess sleep — for monitoring and cancel tests on dev-system (no SLURM).
-# Uses same HARNESS_SOLVER_WALL_SECONDS convention as Slurm batch scripts (see docs/slurm_lammps_e2e.md).
+# Uses same HARNESS_SOLVER_WALL_SECONDS convention as Slurm batch scripts (see docs/TESTING_SLURM.md).
 set -euo pipefail
 
 SECS="${LOCAL_SLEEP_SECONDS:-60}"

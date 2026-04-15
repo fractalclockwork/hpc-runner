@@ -48,6 +48,8 @@ class InvocationRecord:
     batch_name: str = ""
     solver_name: str = ""
     job_names: list[str] = field(default_factory=list)
+    # Sorted unique job.system values (for UI filtering while queued/running).
+    system_names: list[str] = field(default_factory=list)
     results: list[dict[str, Any]] | None = None
     error: str | None = None
     control: InvocationControl = field(default_factory=InvocationControl)
@@ -137,6 +139,7 @@ def invocation_to_dict(rec: InvocationRecord) -> dict[str, Any]:
         "batch_name": bn,
         "session_label": bn,
         "solver_name": rec.solver_name or "",
+        "system_names": list(rec.system_names),
         "job_names": labels,
         "run_labels": labels,
         "results": rec.results,
@@ -176,12 +179,14 @@ def start_background_run(
 ) -> str:
     inv_id = uuid.uuid4().hex
     jnames = list(job_names) if job_names is not None else [j.name for j in job_list]
+    sys_names = sorted({j.system for j in job_list})
     rec = InvocationRecord(
         id=inv_id,
         status="queued",
         batch_name=batch_name or "",
         solver_name=solver_name or "",
         job_names=jnames,
+        system_names=sys_names,
     )
     with LOCK:
         REGISTRY[inv_id] = rec

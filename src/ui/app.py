@@ -4,6 +4,7 @@ import html
 import os
 import sys
 import uuid
+from urllib.parse import quote
 from datetime import timedelta
 from typing import Literal
 from pathlib import Path
@@ -45,7 +46,9 @@ from harness import get_db_path
 from api_config import API_URL  # noqa: E402
 from matrix_grid_style import (  # noqa: E402
     DEFAULT_MATRIX_GRID_CONTROL_STYLE,
+    DEFAULT_MATRIX_RUN_LAYOUT_TUNING,
     MATRIX_INNER_BAND,
+    MatrixRunLayoutTuning,
     matrix_grid_control_css,
 )
 
@@ -61,6 +64,8 @@ _JOB_HISTORY_LOG_CAPTION = (
     " (live jobs follow new output from there); "
     "scroll up to pause, or scroll back to the **bottom** to resume."
 )
+# Populated before the Job selectbox; value cannot be set after that widget is created (Streamlit).
+_JH_DEFER_PICK_CLEAR = "__jh_defer_pick_clear__"
 
 
 def _stored_run_status_icon(r: dict[str, Any]) -> str:
@@ -98,6 +103,43 @@ def _jh_stored_row_label(r: dict[str, Any]) -> str:
     )
 
 
+def _jh_invocation_select_label(rec: dict[str, Any]) -> str:
+    iid = (rec.get("invocation_id") or "").strip()
+    sn = rec.get("solver_name") or "?"
+    st_ = rec.get("status") or "?"
+    sl = (rec.get("session_label") or rec.get("batch_name") or "").strip()
+    tail = f"{iid[:12]}…" if len(iid) > 12 else iid
+    jc = rec.get("jobs_completed", 0)
+    jt = rec.get("jobs_total", 0)
+    extra = f" · {sl}" if sl else ""
+    icon = _invocation_row_icon(rec)
+    return f"{icon} {sn} · {st_} · jobs {jc}/{jt} · {tail}{extra}"
+
+
+def _jh_system_names_for_inv_option_list(rec: dict[str, Any]) -> set[str]:
+    """Union of API system_names and completed results (for filter dropdown options)."""
+    out = {str(x) for x in (rec.get("system_names") or []) if x}
+    for item in rec.get("results") or []:
+        if isinstance(item, dict) and item.get("system_name"):
+            out.add(str(item["system_name"]))
+    return out
+
+
+def _jh_invocation_matches_filters(
+    rec: dict[str, Any], *, solver_filter: str, system_filter: str
+) -> bool:
+    if solver_filter != "(all)":
+        if (rec.get("solver_name") or "").strip() != solver_filter:
+            return False
+    if system_filter != "(all)":
+        names = [str(x) for x in (rec.get("system_names") or []) if x]
+        if not names:
+            return False
+        if system_filter not in names:
+            return False
+    return True
+
+
 def _match_stored_run_for_invocation(
     inv: dict[str, Any], runs: list[dict[str, Any]]
 ) -> dict[str, Any] | None:
@@ -119,29 +161,6 @@ def _match_stored_run_for_invocation(
     if not candidates:
         return None
     return max(candidates, key=lambda x: (x.get("timestamp") or ""))
-
-
-def _ensure_jh_pick_in_options(
-    pick: str | None,
-    runs_all: list[dict[str, Any]],
-    option_keys: list[str],
-    labels: dict[str, str],
-) -> None:
-    """If the session selectbox value is run:X but X is not in the filtered list, append it (valid after auto-switch)."""
-    if not pick or not pick.startswith("run:"):
-        return
-    try:
-        rid = int(pick[4:])
-    except ValueError:
-        return
-    k = f"run:{rid}"
-    if k in labels:
-        return
-    row = next((x for x in runs_all if int(x.get("id", -1)) == rid), None)
-    if row is None:
-        return
-    option_keys.append(k)
-    labels[k] = _jh_stored_row_label(row)
 
 
 def _apply_jh_inv_to_stored_switch(runs_all: list[dict[str, Any]]) -> None:
@@ -659,7 +678,7 @@ def page_home() -> None:
         - **Execution-agnostic:** solvers are black-box scripts; the platform works across HPC workloads.
         - **Operate:** submit jobs from **Run Matrix**, watch **Job Activity** (live invocations and stored runs), and inspect stdout/stderr and metrics when they finish.
         - **Understand:** stored runs, **Job Activity** (stored runs), per-solver charts, and long-term trend views support baselines and drift detection.
-        - **Configure:** solver, system, and resource definitions live under `configs/` (browse YAML from the sidebar or read `docs/architecture.md`).
+        - **Configure:** solver, system, and resource definitions live under `configs/` (browse YAML from the sidebar or read `docs/ARCHITECTURE.md`).
         """
     )
 
@@ -753,6 +772,116 @@ def _matrix_cell_help(solver_name: str, system_name: str, inv: dict[str, Any] | 
     return "\n".join(lines)
 
 
+def _run_matrix_preset_key(label: str) -> str:
+    """Normalize session label for preset dict lookup (case-insensitive)."""
+    return (label or "").strip().lower()
+
+
+def _matrix_collect_specs_from_state(
+    solver_names: list[str],
+    system_names: list[str],
+    solver_by_name: dict[str, Any],
+) -> list[dict[str, Any]]:
+    specs: list[dict[str, Any]] = []
+    for sn in solver_names:
+        allowed = set(solver_by_name[sn].get("allowed_systems") or [])
+        for sysn in system_names:
+            if sysn in allowed and st.session_state.get(_matrix_cell_key(sn, sysn), False):
+                specs.append({"name": sn, "system": sysn})
+    return specs
+
+
+def _apply_run_matrix_preset_pairs(
+    pairs: set[tuple[str, str]],
+    solver_names: list[str],
+    system_names: list[str],
+    solver_by_name: dict[str, Any],
+) -> None:
+    """Set each allowed matrix checkbox True iff (solver, system) is in pairs; else False."""
+    for sn in solver_names:
+        allowed = set(solver_by_name[sn].get("allowed_systems") or [])
+        for sysn in system_names:
+            if sysn not in allowed:
+                continue
+            st.session_state[_matrix_cell_key(sn, sysn)] = (sn, sysn) in pairs
+
+
+def _matrix_preset_cells_to_pairs(cells: list[Any]) -> set[tuple[str, str]]:
+    pairs: set[tuple[str, str]] = set()
+    for item in cells:
+        if isinstance(item, dict):
+            n = (item.get("name") or "").strip()
+            s = (item.get("system") or "").strip()
+            if n and s:
+                pairs.add((n, s))
+    return pairs
+
+
+def _fetch_matrix_presets_list() -> list[dict[str, Any]]:
+    try:
+        r = requests.get(API_URL + "/api/matrix_presets", timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        return data if isinstance(data, list) else []
+    except requests.exceptions.RequestException:
+        return []
+
+
+def _get_matrix_preset_remote(label_key: str) -> dict[str, Any] | None:
+    try:
+        r = requests.get(
+            API_URL + f"/api/matrix_presets/{quote(label_key, safe='')}",
+            timeout=15,
+        )
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.RequestException:
+        return None
+
+
+def _put_matrix_preset_remote(label: str, cells: list[dict[str, Any]]) -> tuple[bool, str]:
+    pk = _run_matrix_preset_key(label)
+    if not pk:
+        return False, "empty label"
+    try:
+        r = requests.put(
+            API_URL + f"/api/matrix_presets/{quote(pk, safe='')}",
+            json={"cells": cells},
+            timeout=30,
+        )
+        if r.status_code == 422:
+            detail = r.json()
+            return False, str(detail.get("detail", r.text))
+        r.raise_for_status()
+        return True, ""
+    except requests.exceptions.RequestException as e:
+        return False, str(e)
+
+
+def _delete_matrix_preset_remote(label: str) -> tuple[bool, str]:
+    pk = _run_matrix_preset_key(label)
+    if not pk:
+        return False, "empty label"
+    try:
+        r = requests.delete(
+            API_URL + f"/api/matrix_presets/{quote(pk, safe='')}",
+            timeout=15,
+        )
+        if r.status_code == 404:
+            return False, "not found"
+        r.raise_for_status()
+        return True, ""
+    except requests.exceptions.RequestException as e:
+        return False, str(e)
+
+
+def _matrix_run_layout_effective() -> MatrixRunLayoutTuning:
+    """Run Matrix layout: fixed defaults from :data:`DEFAULT_MATRIX_RUN_LAYOUT_TUNING`."""
+    return DEFAULT_MATRIX_RUN_LAYOUT_TUNING
+
+
 def page_run_matrix() -> None:
     """Solver × system grid: select cells and start one background run per cell (solver@system)."""
     _testid("page-run-matrix")
@@ -761,8 +890,9 @@ def page_run_matrix() -> None:
         help="Pick solver/system pairs. Each checked cell starts one background run (same as API: one job per solver@system).",
     )
     st.caption(
-        "Use **Session label** to tag this group; stored as `job_batch_name` in the database "
-        "(API `session_label` or legacy `batch_name`)."
+        "Use **Session label** to tag runs (`job_batch_name` / API `session_label`). "
+        "Typing a name that matches a saved preset loads it; otherwise that name starts a new session. "
+        "Presets persist via **GET/PUT/DELETE /api/matrix_presets** (case-insensitive)."
     )
 
     solvers: list[dict[str, Any]] = []
@@ -790,20 +920,154 @@ def page_run_matrix() -> None:
     solver_by_name = {s["name"]: s for s in solvers}
     solver_names = sorted(solver_by_name.keys())
 
-    sess_col, _ = st.columns([3, 1])
-    with sess_col:
+    presets_rows = _fetch_matrix_presets_list()
+    preset_opts = ["—"] + sorted(
+        str(p["label"]).strip() for p in presets_rows if p.get("label")
+    )
+    st.session_state.setdefault("run-matrix-saved-pick", "—")
+    _rp = st.session_state.get("run-matrix-saved-pick", "—")
+    # Don't clear a valid selection when the list fetch failed (only "—" left) or labels are momentarily stale.
+    if _rp != "—" and _rp not in preset_opts and len(preset_opts) > 1:
+        st.session_state["run-matrix-saved-pick"] = "—"
+
+    def _sync_run_matrix_from_saved_pick(current_pick: str) -> None:
+        """Apply matrix + Session label from Saved presets when the dropdown value changes.
+
+        Invoked from the main script and from ``@st.fragment`` (Saved presets is in the fragment;
+        fragment-only reruns do not execute the main script, so both paths keep state aligned).
+        """
+        if current_pick == "—":
+            _apply_run_matrix_preset_pairs(set(), solver_names, system_names, solver_by_name)
+            st.session_state["run-matrix-session-label"] = ""
+            return
+        row = _get_matrix_preset_remote(current_pick)
+        if row:
+            st.session_state["run-matrix-session-label"] = str(row.get("label") or current_pick)
+            pairs = _matrix_preset_cells_to_pairs(row.get("cells") or [])
+            _apply_run_matrix_preset_pairs(pairs, solver_names, system_names, solver_by_name)
+        else:
+            st.session_state["run-matrix-session-label"] = current_pick
+
+    current_pick = st.session_state.get("run-matrix-saved-pick", "—")
+    if "_run_matrix_synced_pick" not in st.session_state:
+        st.session_state["_run_matrix_synced_pick"] = current_pick
+        if current_pick != "—":
+            _sync_run_matrix_from_saved_pick(current_pick)
+    elif current_pick != st.session_state["_run_matrix_synced_pick"]:
+        st.session_state["_run_matrix_synced_pick"] = current_pick
+        _sync_run_matrix_from_saved_pick(current_pick)
+
+    def _on_session_label_change() -> None:
+        raw = (st.session_state.get("run-matrix-session-label") or "").strip()
+        pk = _run_matrix_preset_key(raw)
+        if not pk:
+            st.session_state["run-matrix-saved-pick"] = "—"
+            st.session_state["_run_matrix_synced_pick"] = "—"
+            return
+        row = _get_matrix_preset_remote(pk)
+        if row:
+            pairs = _matrix_preset_cells_to_pairs(row.get("cells") or [])
+            _apply_run_matrix_preset_pairs(pairs, solver_names, system_names, solver_by_name)
+            label = str(row.get("label") or pk)
+            st.session_state["run-matrix-saved-pick"] = label
+            st.session_state["_run_matrix_synced_pick"] = label
+        else:
+            # GET can fail transiently; don't clear the Saved presets dropdown if it already matches this label.
+            cur_sp = st.session_state.get("run-matrix-saved-pick", "—")
+            if cur_sp != "—" and _run_matrix_preset_key(cur_sp) == pk:
+                return
+            st.session_state["run-matrix-saved-pick"] = "—"
+            st.session_state["_run_matrix_synced_pick"] = "—"
+
+    st.session_state.setdefault("run-matrix-session-label", "")
+
+    _rm_label_w, _rm_btn_w = 0.72, 0.82
+    r1, r2 = st.columns([_rm_label_w, _rm_btn_w])
+    with r1:
         st.text_input(
             "Session label (optional)",
-            value="",
             key="run-matrix-session-label",
-            help="Stored as job_batch_name; send as API session_label (batch_name is an alias).",
+            on_change=_on_session_label_change,
+            help="Matches saved presets by name (case-insensitive). Choosing a **Saved preset** fills this "
+            "field so you can Save again, rename (Save as a copy), or edit the matrix and save under the same "
+            "or a new label.",
             placeholder="e.g. nightly-smoke",
         )
+    # Push column-2 buttons down so they line up with the labeled widget’s control (text field / select).
+    _btn_align_labeled_control = '<div style="height:1.72rem" aria-hidden="true"></div>'
+    _rm_preset_btn_px = 92
+    with r2:
+        st.markdown(_btn_align_labeled_control, unsafe_allow_html=True)
+        # Skew + nudge Save right: equal columns leave a wide gap after a fixed-width Save.
+        c_save, c_del = st.columns([0.34, 0.66], gap="xxsmall")
+        with c_save:
+            _, save_slot = st.columns([0.18, 0.82], gap="xxsmall")
+            with save_slot:
+                save_clicked = st.button(
+                    "Save",
+                    key="run-matrix-save-preset",
+                    width=_rm_preset_btn_px,
+                    help="Store the current checkbox selection under this session label (PUT /api/matrix_presets).",
+                )
+        with c_del:
+            delete_clicked = st.button(
+                "Delete",
+                key="run-matrix-delete-preset",
+                width=_rm_preset_btn_px,
+                help="Remove this preset from the database (DELETE /api/matrix_presets).",
+            )
 
-    st.subheader("Select runs")
+    del_pend = st.session_state.get("run_matrix_preset_delete_pending")
+    if del_pend:
+        st.warning(f"Delete preset «{del_pend}» from the database?")
+        dca, dcb = st.columns(2)
+        with dca:
+            if st.button("Yes, delete", type="primary", key="run-matrix-del-yes"):
+                ok_del, err_del = _delete_matrix_preset_remote(del_pend)
+                st.session_state.pop("run_matrix_preset_delete_pending", None)
+                if ok_del:
+                    if st.session_state.get("run-matrix-saved-pick") == del_pend:
+                        st.session_state["run-matrix-saved-pick"] = "—"
+                    st.toast(f"Deleted preset «{del_pend}».")
+                    st.rerun()
+                else:
+                    st.error(err_del or "Delete failed.")
+        with dcb:
+            if st.button("Cancel", key="run-matrix-del-no"):
+                st.session_state.pop("run_matrix_preset_delete_pending", None)
+                st.rerun()
 
-    # Matrix grid CSS: see matrix_grid_style (inject outside @st.fragment so rules apply).
-    st.markdown(matrix_grid_control_css(DEFAULT_MATRIX_GRID_CONTROL_STYLE), unsafe_allow_html=True)
+    if save_clicked:
+        sl_in = (st.session_state.get("run-matrix-session-label") or "").strip()
+        if not sl_in:
+            st.warning("Enter a session label to save the current selection.")
+        else:
+            specs_cur = _matrix_collect_specs_from_state(
+                solver_names, system_names, solver_by_name
+            )
+            if not specs_cur:
+                st.warning("Select at least one cell in the matrix.")
+            else:
+                ok_sv, err_sv = _put_matrix_preset_remote(sl_in, specs_cur)
+                if ok_sv:
+                    pk = _run_matrix_preset_key(sl_in)
+                    st.session_state["run-matrix-saved-pick"] = pk
+                    st.toast(f"Saved {len(specs_cur)} cell(s) under «{pk}».")
+                    st.rerun()
+                else:
+                    st.error(err_sv or "Save failed.")
+
+    if delete_clicked:
+        sl_in = (st.session_state.get("run-matrix-session-label") or "").strip()
+        if not sl_in:
+            st.warning("Enter a session label to identify which preset to delete.")
+        elif not _get_matrix_preset_remote(_run_matrix_preset_key(sl_in)):
+            st.warning(f"No saved preset for «{_run_matrix_preset_key(sl_in)}».")
+        else:
+            st.session_state["run_matrix_preset_delete_pending"] = _run_matrix_preset_key(
+                sl_in
+            )
+            st.rerun()
 
     @st.fragment(run_every=timedelta(seconds=4))
     def _run_matrix_grid_fragment() -> None:
@@ -811,145 +1075,177 @@ def page_run_matrix() -> None:
         active_map = _matrix_active_by_job_key(active_rows)
         _testid("run-matrix-grid")
 
-        # Tight grid: narrow solver column + uniform system columns (first column weight pulls systems left)
-        col_weights = [1.0] + [0.68] * len(system_names)
-        # Two header rows: (1) system names only, (2) column ↕ only — same [0.28,0.72] + MATRIX_INNER_BAND
-        # as body rows so Streamlit column widths match checkboxes/dashes (see matrix_grid_style).
-        head_names = st.columns(col_weights)
-        with head_names[0]:
-            sp, lab = st.columns([0.42, 1.85])
-            with sp:
-                st.markdown("")
-            with lab:
-                st.caption("Solver")
-        for i, sysn in enumerate(system_names):
-            with head_names[i + 1]:
-                h_dot, h_chk = st.columns([0.28, 0.72])
-                with h_dot:
-                    st.markdown("")
-                with h_chk:
-                    st.markdown(
-                        f"<div style='text-align:center;font-size:0.9rem'><b>{sysn}</b></div>",
-                        unsafe_allow_html=True,
-                    )
-        head_toggles = st.columns(col_weights)
-        with head_toggles[0]:
-            cbtn, cname = st.columns([0.42, 1.85])
-            with cbtn:
-                _, row_head_spacer, _ = st.columns(MATRIX_INNER_BAND)
-                with row_head_spacer:
-                    st.markdown("")
-            with cname:
-                st.markdown("")
-        for i, sysn in enumerate(system_names):
-            with head_toggles[i + 1]:
-                h_dot, h_chk = st.columns([0.28, 0.72])
-                with h_dot:
-                    st.markdown("")
-                with h_chk:
-                    _, col_btn, _ = st.columns(MATRIX_INNER_BAND)
-                    with col_btn:
-                        if st.button(
-                            "↕",
-                            key=f"matrix-col-toggle-{sysn}",
-                            help=f"Toggle column {sysn}: select all allowed cells or clear",
-                            width=DEFAULT_MATRIX_GRID_CONTROL_STYLE.toggle_width_px,
-                        ):
-                            _matrix_toggle_column_selection(sysn, solver_names, solver_by_name)
-                            st.rerun()
+        st.subheader("Select runs")
 
-        for sn in solver_names:
-            allowed = set(solver_by_name[sn].get("allowed_systems") or [])
-            row = st.columns(col_weights)
-            with row[0]:
-                cbtn, cname = st.columns([0.42, 1.85])
-                with cbtn:
-                    _, row_btn, _ = st.columns(MATRIX_INNER_BAND)
-                    with row_btn:
-                        if st.button(
-                            "↔",
-                            key=f"matrix-row-toggle-{sn}",
-                            help="Toggle row: select all allowed systems for this solver or clear",
-                            width=DEFAULT_MATRIX_GRID_CONTROL_STYLE.toggle_width_px,
-                        ):
-                            _matrix_toggle_row_selection(sn, allowed, system_names)
-                            st.rerun()
-                with cname:
-                    st.markdown(
-                        f'<span class="matrix-solver-name"><code>{html.escape(sn)}</code></span>',
-                        unsafe_allow_html=True,
-                    )
-            for i, sysn in enumerate(system_names):
-                with row[i + 1]:
-                    if sysn not in allowed:
-                        d_left, d_right = st.columns([0.28, 0.72])
-                        with d_left:
-                            st.markdown("")
-                        with d_right:
-                            pad_l, dash_mid, pad_r = st.columns(MATRIX_INNER_BAND)
-                            with pad_l:
-                                st.markdown("")
-                            with dash_mid:
-                                st.markdown(
-                                    '<div class="matrix-dash-cell">—</div>',
-                                    unsafe_allow_html=True,
-                                )
-                            with pad_r:
-                                st.markdown("")
-                    else:
-                        jk = _matrix_job_key(sn, sysn)
-                        inv = active_map.get(jk)
-                        help_txt = _matrix_cell_help(sn, sysn, inv)
-                        dot, chk = st.columns([0.28, 0.72])
-                        with dot:
-                            st.markdown("")
-                        with chk:
-                            pad_l, chk_mid, pad_r = st.columns(MATRIX_INNER_BAND)
-                            with pad_l:
-                                st.markdown("")
-                            with chk_mid:
-                                st.checkbox(
-                                    "run",
-                                    key=_matrix_cell_key(sn, sysn),
-                                    label_visibility="collapsed",
-                                    help=help_txt,
-                                )
-                            with pad_r:
-                                if inv:
-                                    st.markdown(
-                                        '<span class="matrix-active-dot" title="Active run">●</span>',
-                                        unsafe_allow_html=True,
-                                    )
-                                else:
-                                    st.markdown("")
-
-        specs: list[dict[str, Any]] = []
-        for sn in solver_names:
-            allowed = set(solver_by_name[sn].get("allowed_systems") or [])
-            for sysn in system_names:
-                if sysn in allowed and st.session_state.get(_matrix_cell_key(sn, sysn), False):
-                    specs.append({"name": sn, "system": sysn})
-
+        specs: list[dict[str, Any]] = _matrix_collect_specs_from_state(
+            solver_names, system_names, solver_by_name
+        )
         n_sel = len(specs)
         session_sl = (st.session_state.get("run-matrix-session-label") or "").strip()
-        run_go = st.button(
-            f"Run selected ({n_sel})",
-            type="primary",
-            key="run-matrix-go",
-            disabled=n_sel == 0,
+
+        # Same column split as Session label | Save/Delete so the selectbox matches text input width.
+        c_presets, c_run = st.columns([_rm_label_w, _rm_btn_w])
+        with c_presets:
+            st.selectbox(
+                "Saved presets",
+                options=preset_opts,
+                key="run-matrix-saved-pick",
+                help="Pick a saved label to load its cells. Choose «—» to clear all checkboxes and the session label.",
+            )
+        with c_run:
+            st.markdown(_btn_align_labeled_control, unsafe_allow_html=True)
+            run_go = st.button(
+                f"Run selected ({n_sel})",
+                type="primary",
+                key="run-matrix-go",
+                disabled=n_sel == 0,
+            )
+
+        # Run after the selectbox so ``run-matrix-saved-pick`` reflects this interaction. Fragment-only
+        # reruns skip the main script; ``st.rerun()`` here (not in a widget callback) refreshes Session label.
+        _pick = st.session_state.get("run-matrix-saved-pick", "—")
+        if _pick != st.session_state.get("_run_matrix_synced_pick"):
+            st.session_state["_run_matrix_synced_pick"] = _pick
+            _sync_run_matrix_from_saved_pick(_pick)
+            st.rerun()
+
+        ml = _matrix_run_layout_effective()
+        st.markdown(
+            matrix_grid_control_css(DEFAULT_MATRIX_GRID_CONTROL_STYLE, layout=ml),
+            unsafe_allow_html=True,
         )
-        if run_go and specs:
-            with st.spinner(f"Starting {len(specs)} background run(s)…"):
-                ok = _post_run_solvers(
-                    specs,
-                    session_sl,
-                    success_note=(
-                        f"Started {len(specs)} background run(s) (one per solver@system). "
-                        "See **Job Activity** for live status and logs."
-                    ),
-                )
-            if ok:
-                st.rerun()
+        with st.container(key="run_matrix_tuning_shell"):
+            # Column weights: see ``MatrixRunLayoutTuning`` in matrix_grid_style.
+            col_weights = [ml.solver_col_weight] + [ml.system_col_weight] * len(system_names)
+            # Two header rows: (1) system names only, (2) column ↕ only — same [0.28,0.72] + MATRIX_INNER_BAND
+            # as body rows so Streamlit column widths match checkboxes/dashes (see matrix_grid_style).
+            head_names = st.columns(col_weights)
+            with head_names[0]:
+                sp, lab = st.columns([0.42, 1.85])
+                with sp:
+                    st.markdown("")
+                with lab:
+                    st.caption("Solver")
+            for i, sysn in enumerate(system_names):
+                with head_names[i + 1]:
+                    h_dot, h_chk = st.columns([0.28, 0.72])
+                    with h_dot:
+                        st.markdown("")
+                    with h_chk:
+                        st.markdown(
+                            "<div class='matrix-header-system' style='text-align:center;font-size:0.85rem;line-height:1'>"
+                            f"<b>{html.escape(sysn)}</b></div>",
+                            unsafe_allow_html=True,
+                        )
+            head_toggles = st.columns(col_weights)
+            with head_toggles[0]:
+                cbtn, cname = st.columns([0.42, 1.85])
+                with cbtn:
+                    _, row_head_spacer, _ = st.columns(MATRIX_INNER_BAND)
+                    with row_head_spacer:
+                        st.markdown("")
+                with cname:
+                    st.markdown("")
+            for i, sysn in enumerate(system_names):
+                with head_toggles[i + 1]:
+                    h_dot, h_chk = st.columns([0.28, 0.72])
+                    with h_dot:
+                        st.markdown("")
+                    with h_chk:
+                        _, col_btn, _ = st.columns(MATRIX_INNER_BAND)
+                        with col_btn:
+                            if st.button(
+                                "↕",
+                                key=f"matrix-col-toggle-{sysn}",
+                                help=f"Toggle column {sysn}: select all allowed cells or clear",
+                                width=DEFAULT_MATRIX_GRID_CONTROL_STYLE.toggle_width_px,
+                            ):
+                                _matrix_toggle_column_selection(sysn, solver_names, solver_by_name)
+                                st.rerun()
+
+            for sn in solver_names:
+                allowed = set(solver_by_name[sn].get("allowed_systems") or [])
+                row = st.columns(col_weights)
+                with row[0]:
+                    cbtn, cname = st.columns([0.42, 1.85])
+                    with cbtn:
+                        _, row_btn, _ = st.columns(MATRIX_INNER_BAND)
+                        with row_btn:
+                            if st.button(
+                                "↔",
+                                key=f"matrix-row-toggle-{sn}",
+                                help="Toggle row: select all allowed systems for this solver or clear",
+                                width=DEFAULT_MATRIX_GRID_CONTROL_STYLE.toggle_width_px,
+                            ):
+                                _matrix_toggle_row_selection(sn, allowed, system_names)
+                                st.rerun()
+                    with cname:
+                        st.markdown(
+                            f'<span class="matrix-solver-name"><code>{html.escape(sn)}</code></span>',
+                            unsafe_allow_html=True,
+                        )
+                for i, sysn in enumerate(system_names):
+                    with row[i + 1]:
+                        if sysn not in allowed:
+                            d_left, d_right = st.columns([0.28, 0.72])
+                            with d_left:
+                                st.markdown("")
+                            with d_right:
+                                pad_l, dash_mid, pad_r = st.columns(MATRIX_INNER_BAND)
+                                with pad_l:
+                                    st.markdown("")
+                                with dash_mid:
+                                    st.markdown(
+                                        '<div class="matrix-dash-cell">—</div>',
+                                        unsafe_allow_html=True,
+                                    )
+                                with pad_r:
+                                    st.markdown("")
+                        else:
+                            jk = _matrix_job_key(sn, sysn)
+                            inv = active_map.get(jk)
+                            help_txt = _matrix_cell_help(sn, sysn, inv)
+                            dot, chk = st.columns([0.28, 0.72])
+                            with dot:
+                                st.markdown("")
+                            with chk:
+                                pad_l, chk_mid, pad_r = st.columns(MATRIX_INNER_BAND)
+                                with pad_l:
+                                    st.markdown("")
+                                with chk_mid:
+                                    st.checkbox(
+                                        "run",
+                                        key=_matrix_cell_key(sn, sysn),
+                                        label_visibility="collapsed",
+                                        help=help_txt,
+                                    )
+                                with pad_r:
+                                    if inv:
+                                        st.markdown(
+                                            '<span class="matrix-active-dot" title="Active run">●</span>',
+                                            unsafe_allow_html=True,
+                                        )
+                                    else:
+                                        st.markdown("")
+
+            if run_go and specs:
+                with st.spinner(f"Starting {len(specs)} background run(s)…"):
+                    ok = _post_run_solvers(
+                        specs,
+                        session_sl,
+                        success_note=(
+                            f"Started {len(specs)} background run(s) (one per solver@system). "
+                            "See **Job Activity** for live status and logs."
+                        ),
+                    )
+                if ok:
+                    if session_sl:
+                        ok_pr, _ = _put_matrix_preset_remote(session_sl, specs)
+                        if ok_pr:
+                            st.session_state["run-matrix-saved-pick"] = _run_matrix_preset_key(
+                                session_sl
+                            )
+                    st.rerun()
 
     _run_matrix_grid_fragment()
 
@@ -957,6 +1253,7 @@ def page_run_matrix() -> None:
 # ---------------------------------------------------------------------------
 # Page: Individual Trends (formerly Home — Metrics over job history)
 # ---------------------------------------------------------------------------
+
 
 def page_individual_trends() -> None:
     _testid("page-individual-trends")
@@ -1041,15 +1338,14 @@ def page_job_activity() -> None:
     st.header("Job Activity")
     st.caption(
         "Choose one job below. **Live invocations** (⏳ queued · 🏃 running · …) are in-memory "
-        "(tail when queued/running). **Stored runs** (✅ ❌ ⚠️) are from the database; "
-        "solver/system filters apply only to stored runs."
+        "(tail when queued/running). **Stored runs** (✅ ❌ ⚠️) are from the database. "
+        "**Filter by solver** and **Filter by system** apply to both."
     )
 
-    h1, h2 = st.columns([4, 1])
-    with h1:
-        st.caption("Refresh after starting jobs. Filters narrow **stored runs** in the combined list.")
-    with h2:
-        st.button("Refresh list", key="job-history-refresh")
+    st.caption(
+        "The list reloads on each interaction (filters, **Job** selection). "
+        "Submit new runs from **Run Matrix**."
+    )
 
     inv_list: list[dict[str, Any]] = []
     try:
@@ -1066,8 +1362,22 @@ def page_job_activity() -> None:
         st.error(f"API unavailable: {e}")
         return
 
-    solvers = sorted({r["solver_name"] for r in runs_all}) if runs_all else []
-    systems = sorted({r.get("system_name") or "unknown" for r in runs_all}) if runs_all else []
+    solver_names: set[str] = set()
+    if runs_all:
+        solver_names |= {r["solver_name"] for r in runs_all if r.get("solver_name")}
+    for rec in inv_list:
+        sn = (rec.get("solver_name") or "").strip()
+        if sn:
+            solver_names.add(sn)
+    solvers = sorted(solver_names)
+
+    system_names: set[str] = set()
+    if runs_all:
+        system_names |= {r.get("system_name") or "unknown" for r in runs_all}
+    for rec in inv_list:
+        system_names |= _jh_system_names_for_inv_option_list(rec)
+    systems = sorted(system_names)
+
     _solver_opts = ["(all)"] + solvers
     _system_opts = ["(all)"] + systems
     if st.session_state.get("job-history-solver") not in _solver_opts:
@@ -1076,11 +1386,14 @@ def page_job_activity() -> None:
         st.session_state["job-history-system"] = "(all)"
     fc1, fc2 = st.columns(2)
     with fc1:
-        solver_filter = st.selectbox("Filter by solver (stored runs)", _solver_opts, key="job-history-solver")
+        solver_filter = st.selectbox("Filter by solver", _solver_opts, key="job-history-solver")
     with fc2:
-        system_filter = st.selectbox(
-            "Filter by system (stored runs)", _system_opts, key="job-history-system"
-        )
+        system_filter = st.selectbox("Filter by system", _system_opts, key="job-history-system")
+    running_only = st.checkbox(
+        "Running jobs only",
+        key="job-history-running-only",
+        help="Show only queued or running invocations. Stored (completed) runs are hidden.",
+    )
 
     solver_arg = solver_filter if solver_filter != "(all)" else None
     system_arg = system_filter if system_filter != "(all)" else None
@@ -1094,78 +1407,44 @@ def page_job_activity() -> None:
     def _sort_key_ts(r: dict[str, Any]) -> str:
         return (r.get("timestamp") or "")[:32]
 
-    def _inv_label(rec: dict[str, Any]) -> str:
-        iid = (rec.get("invocation_id") or "").strip()
-        sn = rec.get("solver_name") or "?"
-        st_ = rec.get("status") or "?"
-        sl = (rec.get("session_label") or rec.get("batch_name") or "").strip()
-        tail = f"{iid[:12]}…" if len(iid) > 12 else iid
-        jc = rec.get("jobs_completed", 0)
-        jt = rec.get("jobs_total", 0)
-        extra = f" · {sl}" if sl else ""
-        icon = _invocation_row_icon(rec)
-        return f"{icon} {sn} · {st_} · jobs {jc}/{jt} · {tail}{extra}"
-
     inv_sorted = sorted(
         inv_list,
         key=lambda r: ((r.get("solver_name") or ""), r.get("invocation_id") or ""),
     )
+    inv_filtered = [
+        rec
+        for rec in inv_sorted
+        if _jh_invocation_matches_filters(rec, solver_filter=solver_filter, system_filter=system_filter)
+    ]
+    if running_only:
+        inv_filtered = [
+            rec
+            for rec in inv_filtered
+            if (rec.get("status") or "").strip().lower() in ("queued", "running")
+        ]
     filtered_sorted = sorted(filtered, key=_sort_key_ts, reverse=True)
-
-    st.write(
-        f"**Stored runs (this filter):** {len(filtered_sorted)} row(s) — newest first. "
-        "Delete permanently removes rows from the database."
-    )
-    id_to_label = {
-        int(r["id"]): f"{r['id']}: {r['job_name']} @ {r.get('timestamp', '')[:19]}"
-        for r in filtered_sorted
-        if r.get("id") is not None
-    }
-    delete_options = sorted(id_to_label.keys(), reverse=True)
-    del_pick = st.multiselect(
-        "Select stored runs to delete from the database",
-        options=delete_options,
-        format_func=lambda i: id_to_label[i],
-        key="ja-delete-multiselect",
-    )
-    if "ja_pending_delete_ids" not in st.session_state:
-        st.session_state["ja_pending_delete_ids"] = None
-    col_del_a, col_del_b = st.columns(2)
-    with col_del_a:
-        if st.button("Delete selected runs", type="primary", disabled=not del_pick, key="ja-delete-btn"):
-            st.session_state["ja_pending_delete_ids"] = list(del_pick)
-    with col_del_b:
-        if st.session_state["ja_pending_delete_ids"]:
-            st.warning(f"Confirm deletion of {len(st.session_state['ja_pending_delete_ids'])} run(s)?")
-            if st.button("Yes, delete permanently", key="ja-delete-confirm"):
-                try:
-                    resp = requests.delete(
-                        API_URL + "/api/runs",
-                        json={"ids": st.session_state["ja_pending_delete_ids"]},
-                        timeout=30,
-                    )
-                    if resp.status_code == 200:
-                        st.success(f"Deleted {resp.json().get('deleted', '?')} run(s).")
-                        st.session_state["ja_pending_delete_ids"] = None
-                        st.rerun()
-                    else:
-                        st.error(resp.text or str(resp.status_code))
-                except requests.exceptions.RequestException as e:
-                    st.error(f"Request failed: {e}")
-            if st.button("Cancel", key="ja-delete-cancel"):
-                st.session_state["ja_pending_delete_ids"] = None
-                st.rerun()
+    runs_for_list = [] if running_only else filtered_sorted
 
     option_keys: list[str] = []
     labels: dict[str, str] = {}
-    for rec in inv_sorted:
+    run_ids_in_filtered = {int(r["id"]) for r in runs_for_list if r.get("id") is not None}
+    inv_shown = 0
+    for rec in inv_filtered:
         iid = (rec.get("invocation_id") or "").strip()
         if not iid:
             continue
+        st_ = (rec.get("status") or "").strip().lower()
+        if st_ in ("completed", "failed", "cancelled"):
+            match = _match_stored_run_for_invocation(rec, runs_all)
+            if match is not None and match.get("id") is not None:
+                if int(match["id"]) in run_ids_in_filtered:
+                    # Same job is already listed as a stored run; omit duplicate inv: row.
+                    continue
         k = f"inv:{iid}"
         option_keys.append(k)
-        labels[k] = _inv_label(rec)
-    for r in filtered_sorted:
+        labels[k] = _jh_invocation_select_label(rec)
+        inv_shown += 1
+    for r in runs_for_list:
         rid = r.get("id")
         if rid is None:
             continue
@@ -1173,23 +1452,34 @@ def page_job_activity() -> None:
         option_keys.append(k)
         labels[k] = _jh_stored_row_label(r)
 
+    st.write(
+        f"**Jobs (this filter):** {inv_shown} live invocation(s), "
+        f"{len(runs_for_list)} stored run(s) (newest first)."
+        + (" **Running only** — finished runs are hidden." if running_only else "")
+    )
+
     _apply_jh_inv_to_stored_switch(runs_all)
     pr_pre = st.session_state.pop("jh_preselect_run_id", None)
     if pr_pre is not None:
         st.session_state["job-history-unified-pick"] = f"run:{int(pr_pre)}"
-    _ensure_jh_pick_in_options(
-        st.session_state.get("job-history-unified-pick"),
-        runs_all,
-        option_keys,
-        labels,
-    )
+
+    _pick_defer = st.session_state.pop("jh_defer_job_history_pick", None)
+    if _pick_defer == _JH_DEFER_PICK_CLEAR:
+        st.session_state.pop("job-history-unified-pick", None)
+    elif isinstance(_pick_defer, str):
+        st.session_state["job-history-unified-pick"] = _pick_defer
 
     if not option_keys:
+        st.session_state.pop("job-history-unified-pick", None)
         st.info(
             "No jobs to show: no invocations in memory, no stored runs (or none match the filters). "
             "Start a background run from **Run Matrix**, or widen filters."
         )
         return
+
+    pick_cur = st.session_state.get("job-history-unified-pick")
+    if pick_cur not in option_keys:
+        st.session_state["job-history-unified-pick"] = option_keys[0]
 
     sel = st.selectbox(
         "Job",
@@ -1203,6 +1493,8 @@ def page_job_activity() -> None:
         if not iid:
             st.warning("Invalid invocation selection.")
             return
+
+        st.session_state.pop("ja_pending_delete_run_id", None)
 
         try:
             detail = requests.get(API_URL + f"/api/invocations/{iid}", timeout=30)
@@ -1280,11 +1572,16 @@ def page_job_activity() -> None:
         if row is None:
             st.error(f"Run id {pick_id} not found.")
             return
-        col_run_title, col_run_baseline = st.columns([4, 1])
+
+        pend_del = st.session_state.get("ja_pending_delete_run_id")
+        if pend_del is not None and pend_del != pick_id:
+            st.session_state.pop("ja_pending_delete_run_id", None)
+
+        col_run_title, col_run_baseline, col_run_delete = st.columns([4, 1, 1])
         with col_run_title:
             st.markdown(f"**Run id** `{pick_id}` · **{row.get('job_name')}** · {(row.get('timestamp') or '')[:19]}")
+        rid_btn = row.get("id")
         with col_run_baseline:
-            rid_btn = row.get("id")
             if rid_btn is not None:
                 if row.get("is_baseline", False):
                     st.button(
@@ -1309,6 +1606,50 @@ def page_job_activity() -> None:
                                 st.error(resp.text or f"Error {resp.status_code}")
                         except requests.exceptions.RequestException as e:
                             st.error(f"Request failed: {e}")
+        with col_run_delete:
+            if rid_btn is not None:
+                rid_int = int(rid_btn)
+                if st.session_state.get("ja_pending_delete_run_id") == rid_int:
+                    st.warning("Delete this run permanently from the database?")
+                    dca, dcb = st.columns(2)
+                    with dca:
+                        if st.button("Yes, delete", type="primary", key=f"ja-delete-yes-{rid_int}"):
+                            try:
+                                dresp = requests.delete(
+                                    API_URL + "/api/runs",
+                                    json={"ids": [rid_int]},
+                                    timeout=30,
+                                )
+                                if dresp.status_code == 200:
+                                    st.success(
+                                        f"Deleted {dresp.json().get('deleted', '?')} run(s)."
+                                    )
+                                    st.session_state.pop("ja_pending_delete_run_id", None)
+                                    remain = [k for k in option_keys if k != f"run:{pick_id}"]
+                                    if remain:
+                                        st.session_state["jh_defer_job_history_pick"] = remain[0]
+                                    else:
+                                        st.session_state["jh_defer_job_history_pick"] = (
+                                            _JH_DEFER_PICK_CLEAR
+                                        )
+                                    st.rerun()
+                                else:
+                                    st.error(dresp.text or str(dresp.status_code))
+                            except requests.exceptions.RequestException as e:
+                                st.error(f"Request failed: {e}")
+                    with dcb:
+                        if st.button("Cancel", key=f"ja-delete-no-{rid_int}"):
+                            st.session_state.pop("ja_pending_delete_run_id", None)
+                            st.rerun()
+                else:
+                    if st.button(
+                        "Delete",
+                        type="secondary",
+                        key=f"ja-delete-req-{rid_int}",
+                        help="Remove this stored run from the database",
+                    ):
+                        st.session_state["ja_pending_delete_run_id"] = rid_int
+                        st.rerun()
         hh = st.session_state.pop("jh_log_key_handoff", None)
         stdout_key_suffix: str | None = None
         if isinstance(hh, dict) and int(hh.get("run_id", -1)) == pick_id:

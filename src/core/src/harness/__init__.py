@@ -17,6 +17,10 @@ from .storage import (
     set_baseline_run,
     get_baseline_comparison,
     get_job_batch_uuids,
+    list_matrix_presets,
+    get_matrix_preset,
+    upsert_matrix_preset,
+    delete_matrix_preset,
 )
 
 __all__ = [
@@ -47,4 +51,8 @@ __all__ = [
     "set_baseline_run",
     "get_baseline_comparison",
     "get_job_batch_uuids",
+    "list_matrix_presets",
+    "get_matrix_preset",
+    "upsert_matrix_preset",
+    "delete_matrix_preset",
 ]

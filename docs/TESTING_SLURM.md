@@ -200,5 +200,5 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.slurm.yml u
 
 ## See also
 
-- [user_guide.md](user_guide.md)
-- [e2e_quickstart.md](e2e_quickstart.md) (Playwright UI tests)
+- [USER_GUIDE.md](USER_GUIDE.md)
+- [TESTING_E2E_QUICKSTART.md](TESTING_E2E_QUICKSTART.md) (Playwright UI tests)
