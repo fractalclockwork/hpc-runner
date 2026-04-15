@@ -8,7 +8,7 @@ Style guide, repository directory map, and sponsor-facing overview: [README.md](
 - **Config model (solver-first)**: On disk, only **`configs/resources/`**, **`configs/systems/`**, and **`configs/solvers/`**. There is **no** `configs/jobs/` tree—runnables are expanded from each solver’s `allowed_systems` and `default_system`; the harness uses **`{solver}@{system}`** as the run identity in storage and APIs.
 - **Entry points**: CLI (`hpc-runner`), REST API (FastAPI), Streamlit UI
 - **Key principle**: Solver scripts are black-box **subprocesses**. The harness does **not** embed SLURM/MPI APIs; solver entrypoints may call schedulers, `docker exec`, etc. (e.g. [`configs/solvers/lammps-slurm/run.sh`](../configs/solvers/lammps-slurm/run.sh)).
-- **Data flow (end-to-end)**: CLI → Runner → Parser → Storage → API → UI (Streamlit uses the REST API over HTTP).
+- **Data flow (end-to-end)**: CLI → Runner → Parser → Storage → API → UI (Streamlit uses the REST API over HTTP). The dashboard’s **Run Matrix** path uses **`POST /api/run_solvers`** with **`background: true`** so work runs in **daemon threads** while the UI polls **invocation** endpoints (see §5.2).
 
 ## 2. Component Architecture
 
@@ -21,7 +21,7 @@ flowchart TB
         Browser[Web Browser]
     end
     subgraph ui [Streamlit UI]
-        Streamlit[app.py]
+        Streamlit["app.py Run Matrix Job Activity"]
     end
     subgraph api [REST]
         FastAPI[fastapi_app.py]
@@ -88,6 +88,8 @@ configs/
 
 ### 5.0 Synchronous `POST /api/run_solvers` (default)
 
+With **`background: false`** (the default), the request handler **blocks** until all jobs finish. It returns **HTTP 200** with a JSON array of per-run results (including stdout/stderr in the payload).
+
 ```mermaid
 sequenceDiagram
     participant Client
@@ -97,7 +99,7 @@ sequenceDiagram
     participant Parser
     participant Solver
     participant Storage
-    Client->>API: POST /api/run_solvers
+    Client->>API: POST /api/run_solvers background false
     API->>Config: load_all()
     Config-->>API: solvers, systems
     API->>Runner: run_jobs(job_list, solvers, systems)
@@ -113,28 +115,76 @@ sequenceDiagram
     API-->>Client: 200 JSON results
 ```
 
-### 5.0b Background `POST /api/run_solvers` with `"background": true`
+### 5.2 Asynchronous invocation path (`background: true`)
 
-The API builds a runtime job list via `build_jobs_from_solver_specs` from solver YAML + request body. With **`background: true`**, it starts **one worker thread per solver**, each with its own `invocation_id`. The **202** body includes `invocations` (list of `{ solver_name, invocation_id, run_labels }`).
+The primary **browser** path for starting work is the **Run Matrix** page: it calls **`POST /api/run_solvers`** with **`background: true`** so the HTTP request returns immediately while solver runs continue in the API process. Details below match [`api_run_solvers()`](../src/api/src/basic_restapi/fastapi_app.py), [`start_background_run()`](../src/api/src/basic_restapi/invocations.py), and [`run_jobs(..., invoke_ctl=...)`](../src/core/src/harness/runner.py).
 
-Each worker runs `run_jobs(..., invoke_ctl=...)` for its single job, stores rows, then updates the in-memory registry.
+**Request and response**
 
-- **Poll**: `GET /api/invocations/{id}` returns `status`, `run_labels`, `execution` (local pid vs SLURM ids), `scheduler_job_ids`, `submit_container`, `jobs_total`, `jobs_completed`, and `results` when finished.
-- **Unified monitor**: `GET /api/invocations/{id}/execution_status` — adds `scheduler_detail` when SLURM ids exist.
-- **List**: `GET /api/invocations` — optional query `active_only=true` for `queued` / `running` rows only.
-- **Live SLURM**: `GET /api/invocations/{id}/slurm_status`.
-- **Cancel**: `POST /api/invocations/{id}/cancel` — sets a cooperative cancel flag, best-effort `scancel` for known job ids, and `terminate()` on the local subprocess. `scancel` runs when **`HARNESS_ALLOW_SCANCEL=1`**, **`RUN_SLURM_E2E=1`**, or **`DOCKER_SLURM_CONTAINER`** / **`DOCKER_SLURM_SUBMIT_CONTAINER`** is set (so production Docker SLURM setups do not require the E2E flag).
+- The API builds a runtime job list with **`build_jobs_from_solver_specs`** from solver YAML plus the request body.
+- For **each** job in that list, it calls **`start_background_run`** with a **single-job** `job_list` (so there is **one invocation id per job**—typically one Run Matrix cell).
+- **`batch_name` / `session_label`** are merged into the stored run metadata; if both are set, **`session_label` wins** (see `RunSolversRequest` in `fastapi_app.py`). The invocation’s batch string is derived as **`{label}:{solver}`** when a label is present, else the solver name.
+- The **HTTP response** is **202** with `status: "queued"`, an **`invocations`** array of `{ solver_name, invocation_id, run_labels }`, and if there is exactly one invocation, a convenience top-level **`invocation_id`**.
 
-`run_jobs` skips any **remaining** jobs after cancel with `validation_errors: ["Cancelled by user"]` when a multi-job invocation is used.
+**Worker thread and in-memory registry**
 
-Registry is **per-process**; not durable across API restarts or multiple workers.
+- **`start_background_run`** allocates a UUID **`invocation_id`**, creates an **`InvocationRecord`** (`status` **`queued`** → **`running`**), stores it in **`REGISTRY`** (a module-level dict in `invocations.py`, guarded by a lock), and starts a **daemon `threading.Thread`**.
+- The thread runs **`run_jobs(..., invoke_ctl=ctl)`** with the shared **`InvocationControl`** on the record, then **`init_db`** + **`store_run`** for each **`RunResult`**, copies JSON-safe **`results`**, and sets **`status`** to **`completed`**, **`cancelled`** (if validation errors include “Cancelled by user”), or **`failed`**. Live stdout is cleared in **`finally`**.
+- **`REGISTRY` is per API process** — it is **not** persisted across restarts and is **not** shared across multiple Uvicorn worker processes unless you add an external store.
 
-### 5.1 Call Graph (synchronous path)
+**Runner behavior with `invoke_ctl`**
+
+- When **`invoke_ctl`** is set, **`run_job`** uses **`Popen`** and a line reader loop instead of a single **`subprocess.run`**: it appends **`live_stdout`** for the UI, parses **SLURM scheduler job ids** and **submit container** hints from the stream, and checks **`cancel_event`** so runs can stop cooperatively. **`jobs_total`** / **`jobs_completed`** are updated for progress.
+- For multi-job invocations (unusual in the current API loop, which passes one job per thread), **`run_jobs`** skips remaining jobs after cancel with **`validation_errors: ["Cancelled by user"]`**.
+
+**Observation and control (same endpoints as §6)**
+
+| Action | Endpoint |
+|--------|----------|
+| List invocations | `GET /api/invocations` — optional **`?active_only=true`** for `queued` / `running` only |
+| Detail + live fields | `GET /api/invocations/{id}` — `status`, `run_labels`, `execution` (local pid vs SLURM), `scheduler_job_ids`, `submit_container`, `jobs_total`, `jobs_completed`, `live_stdout`, `results` when finished |
+| Unified monitor | `GET /api/invocations/{id}/execution_status` — adds **`scheduler_detail`** when SLURM ids exist |
+| Live SLURM | `GET /api/invocations/{id}/slurm_status` — live `squeue`/`sacct` when `RUN_SLURM_E2E=1` |
+| Cancel | `POST /api/invocations/{id}/cancel` — sets **`cancel_event`**, **`try_scancel`** when allowed (see `HARNESS_ALLOW_SCANCEL`, `RUN_SLURM_E2E`, `DOCKER_SLURM_*`), **`terminate()`** on local subprocess |
+
+**Sequence (async path)**
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as fastapi_app
+    participant Inv as invocations
+    participant Reg as REGISTRY
+    participant Worker as daemon_thread
+    participant Runner
+    participant Solver
+    participant DB as SQLite
+
+    Client->>API: POST /api/run_solvers background true
+    API->>API: build_jobs_from_solver_specs
+    loop For each job
+        API->>Inv: start_background_run single job
+        Inv->>Reg: InvocationRecord queued
+        Inv->>Worker: start daemon Thread
+        Inv-->>API: invocation_id
+    end
+    API-->>Client: 202 invocations
+    Worker->>Reg: status running
+    Worker->>Runner: run_jobs invoke_ctl
+    Runner->>Solver: Popen stream
+    Solver-->>Runner: stdout stderr
+    Worker->>DB: store_run each RunResult
+    Worker->>Reg: status completed results
+```
+
+**UI integration** — See [`UI_DESIGN.md`](UI_DESIGN.md) §§4.3–4.5: global **fragments** poll invocations for completion **toasts**; **Job Activity** and the Run Matrix **matrix fragment** poll for status and logs.
+
+### 5.3 Call Graph (synchronous path)
 
 ```mermaid
 flowchart TB
     subgraph UI["Web UI"]
-        A[User: Run solvers]
+        A[User: Run Matrix or CLI]
         B["requests POST /api/run_solvers"]
         C["requests GET /api/runs"]
     end
@@ -173,7 +223,7 @@ flowchart TB
 
 | Step | Message / data | Code path |
 |------|----------------|-----------|
-| 1–2 | User runs solvers → API | `requests.post('/api/run_solvers')` → `fastapi_app.api_run_solvers()` |
+| 1–2 | User or automation → API | `requests.post('/api/run_solvers')` (sync path) → `fastapi_app.api_run_solvers()` |
 | 3 | Load definitions | `_load_definitions()` → `load_all(CONFIG_DIR, None)` |
 | 4 | Execute jobs | `run_jobs(...)` → `run_job()` |
 | 5–6 | Solver stdout/stderr | `subprocess.run` or Popen+reader when `invoke_ctl` set |
@@ -191,7 +241,7 @@ flowchart TB
 | `/api/health` | GET | Health check |
 | `/api/solvers` | GET | List solvers |
 | `/api/systems` | GET | List systems |
-| `/api/run_solvers` | POST | Run solvers (`solvers`, `session_label` or `batch_name`, `background`) — one invocation per solver when background — 202 |
+| `/api/run_solvers` | POST | Run solvers (`solvers`, `session_label` or `batch_name`, `background`). Default **`background: false`**: **200** + results. **`background: true`**: **202** + one **invocation** per requested job |
 | `/api/runs` | GET | List runs (?solver=, ?processor=, ?system=, ?limit=, ?offset=) |
 | `/api/runs` | DELETE | Body `{ "ids": [1,2,3] }` — delete stored runs |
 | `/api/runs/<id>` | GET | Run detail |
@@ -214,16 +264,16 @@ flowchart TB
 
 ## 7. Dashboard Views
 
-The **Streamlit UI** (`make ui`, port 8501):
+The **Streamlit UI** (`make ui`, port 8501) sidebar order and behavior are specified in [`UI_DESIGN.md`](UI_DESIGN.md) §5. Summary:
 
-- **Home**: Welcome text; **solver monitoring** table (`GET /api/solver_summaries`)
-- **Individual Trends**: Solver/metric line charts
-- **Run Solvers**: **Active runs** (one invocation per solver when background); select solvers; optional raw invocation-id inspect; Monitor / Stop
-- **Run History**: Batches; expand stdout/stderr/metrics; **delete selected runs**; optional **Refresh SLURM status** when run has scheduler metadata
-- **Long-Term Trends**: Filtered charts
-- **Configs**: Read-only YAML view (category/file)
+- **Home** — Welcome and orientation; optional solver summary (`GET /api/solver_summaries`).
+- **Run Matrix** — Solver × system checkbox grid; **`POST /api/run_solvers`** with **`background: true`**; optional **`session_label`**; saved matrix presets via **`/api/matrix_presets`**; matrix fragment refreshes active invocations in cells.
+- **Job Activity** — Unified list of **in-flight invocations** (`REGISTRY`) and **stored runs** (`GET /api/runs`, filters); live log viewer, cancel, baseline, bulk delete, SLURM refresh when metadata exists.
+- **Individual Trends** — Per-solver metric line charts (`GET /api/available_metrics`, `GET /api/metrics/...`).
+- **Long-Term Trends** — Heatmaps and metric-trend Plotly views; point-click can navigate to **Job Activity** with a stored run pre-selected (see `UI_DESIGN.md` §4.4).
+- **Configs** — Read-only YAML browse (syntax-highlighted); no save in the current UI.
 
-The UI uses **`HPC_API_URL`** (via [`api_config.py`](../src/ui/api_config.py)) to reach the API.
+**Cross-cutting:** A **fragment** polls **`GET /api/invocations`** on every page so **toast** notifications can appear when background work completes (`UI_DESIGN.md` §4.3). The UI uses **`HPC_API_URL`** (via [`api_config.py`](../src/ui/api_config.py)) to reach the API.
 
 ## 8. Storage Schema
 
@@ -241,7 +291,7 @@ Table **`run_matrix_presets`**: `label` (PRIMARY KEY, normalized lowercase), `ce
 ## 10. Workspace Layout
 
 ```
-e2e_testing/
+DOW-1-26/
 ├── configs/           # resources/, systems/, solvers/ (YAML; solver-first)
 ├── data/              # harness.db (gitignored)
 ├── docker/            # compose, lammps/, slurm_sleep/, overlays (see docker/README.md)

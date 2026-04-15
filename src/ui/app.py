@@ -924,6 +924,17 @@ def page_run_matrix() -> None:
     preset_opts = ["—"] + sorted(
         str(p["label"]).strip() for p in presets_rows if p.get("label")
     )
+    # After Run or Save + PUT, we defer updating ``run-matrix-saved-pick`` (can't set after selectbox).
+    # Apply here in the main script *before* validation/sync/widgets so ``preset_opts`` is from a fresh
+    # list that includes the new preset; otherwise the Saved presets menu snaps back to "—".
+    _defer_pk = st.session_state.pop("_run_matrix_defer_saved_pick", None)
+    if _defer_pk is not None:
+        st.session_state["run-matrix-saved-pick"] = _defer_pk
+        st.session_state["_run_matrix_synced_pick"] = _defer_pk
+        _row_defer = _get_matrix_preset_remote(_defer_pk)
+        if _row_defer:
+            st.session_state["run-matrix-session-label"] = str(_row_defer.get("label") or _defer_pk)
+
     st.session_state.setdefault("run-matrix-saved-pick", "—")
     _rp = st.session_state.get("run-matrix-saved-pick", "—")
     # Don't clear a valid selection when the list fetch failed (only "—" left) or labels are momentarily stale.
@@ -1051,7 +1062,7 @@ def page_run_matrix() -> None:
                 ok_sv, err_sv = _put_matrix_preset_remote(sl_in, specs_cur)
                 if ok_sv:
                     pk = _run_matrix_preset_key(sl_in)
-                    st.session_state["run-matrix-saved-pick"] = pk
+                    st.session_state["_run_matrix_defer_saved_pick"] = pk
                     st.toast(f"Saved {len(specs_cur)} cell(s) under «{pk}».")
                     st.rerun()
                 else:
@@ -1242,7 +1253,7 @@ def page_run_matrix() -> None:
                     if session_sl:
                         ok_pr, _ = _put_matrix_preset_remote(session_sl, specs)
                         if ok_pr:
-                            st.session_state["run-matrix-saved-pick"] = _run_matrix_preset_key(
+                            st.session_state["_run_matrix_defer_saved_pick"] = _run_matrix_preset_key(
                                 session_sl
                             )
                     st.rerun()
