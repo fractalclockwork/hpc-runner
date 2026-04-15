@@ -6,9 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-04-15
+### Documentation
 
-Period covered: **2026-04-01 → 2026-04-15** (since **[0.0.0] - 2026-03-31**). Canonical UI behavior and page names: **[`docs/UI_DESIGN.md`](docs/UI_DESIGN.md)**.
+- **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** — Added **§5.2 Asynchronous invocation path** (`POST /api/run_solvers` with `background: true`, per-job **`start_background_run`**, in-memory **`REGISTRY`**, daemon threads, **`invoke_ctl`** / Popen streaming, observation endpoints, cancel behavior); clarified **§5.0** synchronous **200** vs **202**; renumbered call-graph **§5.3**. Updated **§7** to match current Streamlit pages (**Home**, **Run Matrix**, **Job Activity**, trends, **Configs**) and cross-links to **[`docs/UI_DESIGN.md`](docs/UI_DESIGN.md)**; **§10** workspace root label; **§6** `/api/run_solvers` row; **§1**/**§2** notes for Run Matrix / Job Activity.
+
+## [Final Release Candidate] - 2026-04-15
+
+Period covered: **2026-04-01 → 2026-04-15** (since **[0.0.0] - 2026-03-31**). **Git tag and release title:** **Final Release Candidate**. Canonical UI behavior and page names: **[`docs/UI_DESIGN.md`](docs/UI_DESIGN.md)**.
 
 ### Added
 
