@@ -33,7 +33,6 @@ def render_manual_baseline_overrides(
             st.number_input(
                 label,
                 value=default,
-                min_value=0.0,
                 format="%g",
                 key=f"{key_prefix}_{label}",
                 help=input_help.format(label=label),

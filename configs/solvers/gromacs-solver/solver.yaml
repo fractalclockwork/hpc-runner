@@ -1,7 +1,7 @@
 name: gromacs-solver
 version: "1.0.0"
 entrypoint: run.sh
-allowed_systems: [gromacs-docker]
+allowed_systems: [dev-system, gromacs-docker]
 default_system: gromacs-docker
 parser_config: parser_config.yaml
 metrics:
@@ -15,4 +15,8 @@ metrics:
   - name: n_atoms
     unit: count
     required: true
+  - name: potential_energy_kj_mol
+    unit: kj/mol
+  - name: Total MFlops
+    unit: mflops
 log_names: [stdout]

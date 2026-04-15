@@ -5,10 +5,12 @@ patterns:
   - name: runtime_seconds
     regex: 'runtime_seconds:\s*([\d.]+)'
     type: float
-  # potential_energy_kj_mol: not reported in a form we parse for the GROMACS version under test (e.g. Docker 2022.2).
-  #- name: potential_energy_kj_mol
-  #  regex: 'Potential\n.*?([-\d.e+]+)\s*$'
-  #  type: float
   - name: n_atoms
     regex: '\s*(\d+) atoms'
     type: int
+  - name: potential_energy_kj_mol
+    regex: 'Potential Energy\s+=\s+([-\d.e+]+)'
+    type: float
+  - name: Total MFlops
+    regex: 'Total\s+([\d,]+\.[\d]+)'
+    type: float
