@@ -18,7 +18,7 @@ This guide gets you from a fresh clone to running the Playwright E2E tests again
 
 2. **Playwright Chromium** is **not** part of `uv sync`. **`make test-e2e`** runs **`uv run playwright install chromium`** before pytest (idempotent — quick when already installed). For browser only: **`make playwright-chromium`**.
 
-3. You do **not** need to start Streamlit or the API manually for the default `make test-e2e`. The test suite starts Streamlit in the background via `src/ui/tests/e2e/conftest.py`.
+3. You do **not** need to start Streamlit or the API manually for the default `make test-e2e`. The test suite starts Streamlit in the background via `src/ui/tests/e2e/conftest.py`, and starts FastAPI on port 8000 when `http://127.0.0.1:8000` (or `HPC_API_URL`) does not already respond on `/api/health` (needed for Run Matrix and other API-backed pages).
 
 ## Run E2E tests
 
@@ -44,7 +44,7 @@ This runs **`playwright install chromium`** then `uv run pytest src/ui/tests/e2e
 |-------|------------|
 | "Executable doesn't exist" for Chromium | Run `make playwright-chromium` or `uv run playwright install chromium` (or use `make test-e2e`, which runs install first). |
 | Streamlit fails to start in time | Ensure port 8501 is free, or set `STREAMLIT_PORT` to another port. |
-| Tests need the API (Run Jobs, Home metrics, etc.) | The app expects the API at `http://localhost:8000`. Start it with `make api` if you run those flows. |
+| Tests need the API (Run Matrix, Home metrics, etc.) | `make test-e2e` starts `uvicorn` on port 8000 when the default URL is not already up. Set `E2E_SKIP_API=1` to disable that (then start the API yourself, e.g. `make api`). |
 
 For more on the app and config, see [ARCHITECTURE.md](ARCHITECTURE.md) and [USER_GUIDE.md](USER_GUIDE.md).
 

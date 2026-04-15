@@ -3,9 +3,9 @@
 | Field | Value |
 |--------|--------|
 | **Document type** | User interface specification |
-| **Implementation** | `src/ui/app.py`, `src/ui/charts.py`, `src/ui/api_config.py` |
+| **Implementation** | `src/ui/app.py`, `src/ui/matrix_grid_style.py`, `src/ui/charts.py`, `src/ui/api_config.py` |
 | **Authors** | Shree Patel, Shawn Schulz |
-| **Last updated** | 14 April 2026 |
+| **Last updated** | 15 April 2026 |
 
 ---
 
@@ -116,15 +116,18 @@ Navigation order and titles:
 
 | Item | Specification |
 |------|----------------|
-| **Purpose** | Select **solver × system** pairs (allowed combinations only) and start **background** runs: one invocation per selected cell (`POST /api/run_solvers` with `background: true`). |
+| **Purpose** | Select **solver × system** pairs (allowed combinations only) and start **background** runs: one invocation per selected cell (`POST /api/run_solvers` with `background: true`). Optional **session label** tags runs (`session_label` / `job_batch_name`). **Saved presets** persist checkbox selections in the API database. |
 | **Primary heading** | “Run Matrix” |
-| **`data-testid`** | `page-run-matrix`; grid region `run-matrix-grid` |
-| **Inputs** | **Session label (optional)** — text field; sent as `session_label`. |
-| **Matrix** | Rows = solvers; columns = systems; disallowed pairs show “—”. **Checkboxes** select cells; **↔** toggles an entire solver row; **↕** toggles an entire system column. |
-| **Live status** | Matrix **fragment** refreshes on a short interval; active invocations show a **dot** in the cell and tooltips with status, invocation id, backend, progress, scheduler ids when present. |
-| **Primary action** | **“Run selected (N)”** — primary button; disabled when N=0. On success, user is directed to **Job Activity** for monitoring. |
-| **API** | `GET /api/systems`, `GET /api/solvers`, `GET /api/invocations?active_only=true`, `POST /api/run_solvers` |
-| **Empty / error** | Message if API unreachable; warning if no solvers/systems in config. |
+| **Caption** | Explains session labels and **GET/PUT/DELETE `/api/matrix_presets`**. |
+| **`data-testid`** | `page-run-matrix`; grid region `run-matrix-grid` (inside the matrix **fragment**). |
+| **Session row (main block)** | **Session label (optional)** — text input (`run-matrix-session-label`). Typing a name that matches a saved preset (case-insensitive) loads that preset into the matrix. **Save** / **Delete** — fixed-width buttons aligned with the text field; **Save** PUTs the current selection under the session label; **Delete** asks for confirmation then DELETEs the preset. |
+| **Presets** | **GET `/api/matrix_presets`** populates the **Saved presets** select box (leading option **“—”** clears the matrix and session label). Choosing a preset loads cells and fills the session label; state updates are coordinated so the dropdown and text field stay in sync (including **deferred** updates on **Save** / **Run** so Streamlit session state is not written after widgets are instantiated). |
+| **Select runs row (fragment)** | Subheader **“Select runs”**. **Saved presets** and **“Run selected (N)”** share the same column weights as the session row so widths line up. **Run selected** is disabled when N=0. After a successful run, optional PUT to save the selection under the session label; toast + full rerun. |
+| **Matrix** | Rendered inside **`@st.fragment(run_every=…)`** (~4s): polls **`GET /api/invocations?active_only=true`** for active jobs. Rows = solvers; columns = systems; disallowed pairs show an em dash in a dashed cell. **Checkboxes** select cells; **↔** toggles a solver row; **↕** toggles a system column. Active invocations show a **●** (green) in the cell with a tooltip (status, ids, progress, etc.). |
+| **Layout / CSS** | Column weights, row spacing, and whole-grid **translate** for the matrix shell come from **`MatrixRunLayoutTuning`** defaults in `src/ui/matrix_grid_style.py` (not exposed as sidebar sliders in the current UI). Injected CSS: `matrix_grid_control_css` (toggle/checkbox alignment, fragment-safe selectors). |
+| **Primary action** | **“Run selected (N)”** — primary button. On success, toast; user is pointed to **Job Activity** in copy. |
+| **API** | `GET /api/systems`, `GET /api/solvers`, `GET /api/matrix_presets`, `GET /api/matrix_presets/{label}`, `PUT /api/matrix_presets/{label}`, `DELETE /api/matrix_presets/{label}`, `GET /api/invocations?active_only=true`, `POST /api/run_solvers` |
+| **Empty / error** | Error if API unreachable; warning if no solvers/systems in config (page returns before the matrix). |
 
 ---
 
@@ -132,15 +135,18 @@ Navigation order and titles:
 
 | Item | Specification |
 |------|----------------|
-| **Purpose** | Single place for **live invocations** (queued/running/…) and **stored runs** (database): pick one job, inspect details, cancel in-flight work, delete stored rows, set baseline runs. |
+| **Purpose** | Single place for **live invocations** (in-memory) and **stored runs** (database): pick one job, inspect details, cancel in-flight work, delete a stored run, set a baseline. |
 | **Primary heading** | “Job Activity” |
 | **`data-testid`** | `page-job-activity` |
-| **Filters** | **Filter by solver (stored runs)** and **Filter by system (stored runs)** — narrow which stored runs appear in the combined list. |
-| **Actions** | **Refresh list**; **multiselect stored runs** + **Delete selected runs** with confirmation; **Baseline** on stored run detail (when not already baseline). |
-| **Unified pick** | **Select box “Job”** lists invocations and stored runs in one list (formatted labels with status icons). |
-| **Invocation branch** | Shows status, live log viewer (with auto-scroll behavior where applicable), **Cancel invocation** when relevant. |
-| **Stored run branch** | Run metadata, **Baseline** control, stdout/stderr/metrics/validation as viewers, **Refresh SLURM status** when scheduler metadata exists. |
-| **API** | `GET /api/invocations`, `GET /api/invocations/{id}`, `GET /api/runs` (with filters), `DELETE /api/runs`, `POST /api/runs/{id}/set_baseline`, `POST /api/invocations/{id}/cancel`, `GET /api/runs/{id}/slurm_status` as applicable |
+| **Captions** | (1) Explains live vs stored icons and that **Filter by solver** / **Filter by system** apply to both. (2) Notes the list reloads on interaction and new runs come from **Run Matrix**. |
+| **Filters** | **Filter by solver** and **Filter by system** — options **“(all)”** or values drawn from invocations + stored runs. **Running jobs only** — checkbox: show only **queued** / **running** invocations; stored runs are omitted from the unified list while checked. |
+| **Data loading** | `GET /api/invocations` (full list). `GET /api/runs` without params for baseline matching; **filtered** `GET /api/runs?solver=&system=` drives the stored-run side of the picker. Client-side filter for invocations by solver/system; running-only further narrows invocations. |
+| **Summary line** | **“Jobs (this filter):”** *N* live invocation(s), *M* stored run(s) (newest first); adds a note when **Running only** is on. |
+| **Unified pick** | **`st.selectbox` “Job”** (`job-history-unified-pick`): internal keys `inv:{invocation_id}` and `run:{id}` with formatted labels (status icons, solver@system, timestamps). Duplicates suppressed when a finished invocation already has a matching stored run in the filtered set. If nothing matches, an info empty state and early return. If the current pick falls off the list, selection resets to the first option. |
+| **Drill-down / defer** | **Long-Term Trends** can set **`jh_preselect_run_id`** to pre-select a stored run. Internal **`jh_defer_job_history_pick`** clears or sets the unified pick after delete/navigation without violating widget session-state rules. |
+| **Invocation branch** | Loads **`GET /api/invocations/{id}`**. **Queued/running:** completion poller, status line, optional backend caption, **stdout** via live log viewer (follow-to-bottom control; caption from shared job-log help). **Cancel invocation** POSTs **`/api/invocations/{id}/cancel`**. **Completed/failed/cancelled** without a stored run yet: may show results JSON, stdout snapshot, or defer-switch to the new stored run row after **`jh_pending_switch_to_stored`**. |
+| **Stored run branch** | Header row: **Run id**, job name, timestamp; **Baseline** (primary if current baseline, else clickable **set baseline** POST **`/api/runs/{id}/set_baseline`**); **Delete** — confirm **Yes, delete** / **Cancel**, then **`DELETE /api/runs`** with JSON body `{ "ids": [...] }`. Detail body: session label / batch uuid when present; solver, system, return code, runtime; **stdout** / **stderr** / metrics / validation via log viewers or code blocks; SLURM refresh and related helpers where **`_render_run_record_detail_body`** applies. |
+| **API** | `GET /api/invocations`, `GET /api/invocations/{id}`, `POST /api/invocations/{id}/cancel`, `GET /api/runs`, `GET /api/runs` (query: `solver`, `system`), `DELETE /api/runs`, `POST /api/runs/{id}/set_baseline`, `GET /api/runs/{id}/slurm_status` as applicable |
 
 ---
 
@@ -212,7 +218,8 @@ Navigation order and titles:
 
 - **Page navigation** is bound to `page_radio` / `page` with sync rules for programmatic changes (e.g. chart drill-down).
 - **Filters** persist across navigation where keys are set (e.g. Long-Term Trends date range, heatmap mode, solver/system filters, Individual Trends metric selection).
-- **Run Matrix** checkbox states persist until the session ends or the user clears them.
+- **Run Matrix** checkbox states persist until the session ends or the user clears them. **Saved presets** (`run-matrix-saved-pick`, `run-matrix-session-label`) and sync keys (`_run_matrix_synced_pick`, deferred `_run_matrix_defer_saved_pick` after Save/Run) persist for continuity across reruns.
+- **Job Activity** unified pick and filters use dedicated `session_state` keys (`job-history-*`, `ja_pending_delete_run_id`, etc.).
 
 ### 7.2 Minimum state principle
 
@@ -247,5 +254,6 @@ Navigation order and titles:
 ## 10. References
 
 - Application entry: `src/ui/app.py`
+- Run Matrix layout/CSS: `src/ui/matrix_grid_style.py`
 - Charts helpers: `src/ui/charts.py`
 - REST API: `src/api/` (OpenAPI under `/docs` when the API is running)
