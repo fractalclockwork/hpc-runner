@@ -1,384 +1,159 @@
 # User Guide
 
-This guide walks you through defining solvers, execution environments, jobs, and metrics for the HPC Regression Platform. It is intended for **solver authors** and **config authors**.
+This guide is for **HPC administrators** and **DevOps engineers** who operate the **HPC Regression Platform**: validating environments after stack changes, comparing runs over time, and triaging failures. It is **not** a tutorial for authoring new solvers from scratch—use **[USER_SOLVER_TEMPLATE.md](USER_SOLVER_TEMPLATE.md)** for package layout and key fields, **[ARCHITECTURE.md](ARCHITECTURE.md)** for how the harness expands runs and how the API executes work, **[UI_DESIGN.md](UI_DESIGN.md)** for screen-by-screen UI behavior, and **[TESTING_SLURM.md](TESTING_SLURM.md)** for Docker SLURM and scheduler-backed smoke tests.
 
-**Prerequisites:** Run `uv sync --all-extras --dev` from the project root. Familiarity with YAML is helpful. For unfamiliar terms, see the [Glossary](GLOSSARY.md).
+The harness treats each workload as **`{solver}@{system}`** (`job_name`): a **solver** package under `configs/solvers/` run on a named **system** from `configs/systems/`. **[Glossary](GLOSSARY.md)** defines terms used across docs.
 
----
-
-## 1. Defining Execution Environments
-
-Execution environments are built from **Resources** (hardware) and **Systems** (resource bundles plus environment variables).
-
-### Resources
-
-Resources define hardware capacity. Add them in `configs/resources/*.yaml` (`.yml` is also supported; `.yaml` is preferred for consistency):
-
-```yaml
-resources:
-  - name: dev-local
-    cpus: 4
-    memory_gb: 8
-  - name: hpc-node
-    cpus: 64
-    gpus: 4
-    memory_gb: 256
-    env:
-      MODULEPATH: /opt/modules
-```
-
-| Field       | Description                    |
-|-------------|--------------------------------|
-| `name`      | Unique identifier              |
-| `cpus`      | CPU count (optional)           |
-| `gpus`      | GPU count (optional)           |
-| `memory_gb` | Memory in GB (optional)        |
-| `env`       | Optional site-wide variables (e.g. module paths) merged before solver and system env |
-
-You can define multiple resources in one file or split across files. Each resource is referenced by its `name`.
-
-### Systems
-
-Systems bundle one or more resources and add environment variables. Add them in `configs/systems/*.yaml` (`.yml` also supported). The loader merges every YAML file in that directory into one registry of systems by `name`.
-
-**Convention:** Prefer **one file per production system** (for example `dev-system.yaml`, `hpc-cluster-01.yaml`) so each environment is easy to find and review. Use `configs/systems/default.yaml` for **optional** extra definitions used only for local or CI testing (for example scratch systems). Do **not** define the same `name` in two files unless you intend to override; the last file loaded wins, which is fragile.
-
-```yaml
-systems:
-  - name: dev-system
-    resources: [dev-local]
-    env:
-      EXECUTION_MODE: local
-  - name: hpc-cluster-01
-    resources: [hpc-node]
-    env:
-      EXECUTION_MODE: slurm
-```
-
-| Field         | Description                              |
-|---------------|------------------------------------------|
-| `name`        | Unique identifier                        |
-| `resources`   | List of resource names                   |
-| `env`         | Environment variables (key-value)        |
-| `constraints` | Optional list of constraints             |
-
-**Merged environment for each job:** The runner builds the subprocess environment in this order (later entries override earlier ones for the same key): the process environment, then each **resource** `env` in `resources` order, then the **solver** `env` from `solver.yaml`, then the **system** `env`. Put site-wide knobs (for example `MODULEPATH`) on the **resource**; put solver defaults (for example MD input paths) on the **solver**; keep **system** `env` for deployment-specific overrides (for example `EXECUTION_MODE`, or a different `INPUT_PDB` on HPC than on dev).
-
-**Workflow:** Define a resource → reference it in a system → the system is ready for jobs.
-
-**Cross-system smoke tests:** Portable solvers (such as `echo-solver` and `python-solver`) should list every system you support in `allowed_systems`. Automated tests in `src/core/tests/test_solver_matrix.py` run those solvers against each production system. You can also run a matrix from the CLI with `uv run hpc-runner configs --solver echo-solver --solver python-solver --all-allowed-systems --no-store` (one job per solver per allowed system), or pin a single system with `--system dev-system`.
+**Prerequisites:** From the project root, `uv sync --all-extras --dev`. To use the browser UI or scripted API calls, start the API (`make api`, default http://localhost:8000) and optionally the Streamlit UI (`make ui`, default http://localhost:8501). The UI talks to the API **only over HTTP**—set **`HPC_API_URL`** if the API is not on localhost.
 
 ---
 
-## 2. Defining Solvers
+## What you need to know about `configs/`
 
-A solver is a self-contained package with a run script and metadata. See [USER_SOLVER_TEMPLATE.md](USER_SOLVER_TEMPLATE.md) for the full specification.
+Default on-disk layout (solver-first; **no** required `configs/jobs/` tree):
 
-### Quick Start
+```
+configs/
+├── resources/   # Hardware capacity (cpus, memory, optional env)
+├── systems/     # Named environments: resource bundles + env (e.g. local vs SLURM)
+└── solvers/     # One folder per solver: solver.yaml, entrypoint script, optional parser
+```
 
-1. Copy the template:
-   ```bash
-   cp -r configs/solvers/_template configs/solvers/my-solver
-   ```
+- **Systems** are *where* jobs run. Names match the API and UI; operators pick **solver × system** cells in the Run Matrix or pass `--system` / API `system`.
+- **Solvers** are the packaged benchmarks or applications under test. Runs are expanded from each solver’s **`allowed_systems`** and **`default_system`** at load time—see **[ARCHITECTURE.md](ARCHITECTURE.md) §4** for how `build_jobs_from_solver_specs` forms the job list.
 
-2. Edit `configs/solvers/my-solver/solver.yaml`:
-   ```yaml
-   name: my-solver
-   entrypoint: run.sh
-   allowed_systems: [dev-system, hpc-cluster-01]
-   # env:
-   #   MY_DEFAULT: value
-   ```
+---
 
-3. Implement `run.sh` (or `run.py`). The script must be executable. The platform merges resource, solver, and system `env` (see **Systems** above) and invokes the entrypoint as a subprocess. Your script controls execution (local, SLURM, MPI, etc.).
+## Operational workflows
 
-4. Add a job that uses your solver (see [Defining Jobs](#4-defining-jobs)).
+### Validate after a platform change
 
-**SLURM + LAMMPS:** The bundled `lammps-slurm` solver uses `docker/lammps/` (`in.lammps`, `sbatch_lammps.sh`). With Docker it defaults to **`sbatch`**, waits for the job, and collects **`slurm-*.out` / `.err`**. See [TESTING_SLURM.md](TESTING_SLURM.md).
+After OS updates, module trees, SLURM, drivers, or container images change, confirm that representative **solver × system** pairs still pass and that metrics look sane.
 
-### Adding a solver from a command
+1. Start **API** (and **UI** if you prefer the Run Matrix).
+2. Open **Run Matrix**, select the cells that cover your change (or use the CLI with `--solver` / `--system` / `--all-allowed-systems`).
+3. Optionally set a **session label** (`session_label` on **`POST /api/run_solvers`**, or the Run Matrix field) to tie runs to a ticket or change ID.
+4. Watch **Job Activity** for invocations (background runs), logs, pass/fail, and cancel/stop as needed.
 
-To quickly add a solver that runs a shell command:
+### Investigate a regression
+
+When performance or correctness drifts:
+
+- Use **Individual Trends** or **Long-Term Trends** to see metric history and comparisons to **baselines**.
+- Drill from trends into **Job Activity** where supported (**[UI_DESIGN.md](UI_DESIGN.md) §4.4**) to open stored runs, stdout/stderr, and parsed metrics.
+- For SLURM-backed runs, use execution status and SLURM endpoints as described in **[ARCHITECTURE.md](ARCHITECTURE.md) §5.2** and **[TESTING_SLURM.md](TESTING_SLURM.md)** (`RUN_SLURM_E2E`, `DOCKER_SLURM_*`, live `squeue`/`sacct` when enabled).
+
+### Batch runs and automation (CLI)
+
+Prefer **narrow filters** so you do not accidentally run every solver in the tree (some workloads may be long or resource-heavy).
 
 ```bash
-uv run hpc-runner --add "cat /proc/cpuinfo" --system dev-system
-```
-
-This creates a minimal solver and job in `configs/solvers/` and `configs/jobs/added.yaml`, then runs the new job. Use `--name` for a custom solver/job name:
-
-```bash
-uv run hpc-runner --add "echo hello" --system dev-system --name hello-check --no-store
-```
-
-### Key Points
-
-- **Paths** in `solver.yaml` (e.g. `entrypoint`, `parser_config`) are relative to the solver directory.
-- **allowed_systems** must list system names that exist in `configs/systems/`. Jobs can only pair your solver with one of these systems.
-- **env** (optional): Default environment variables for this solver; system `env` can override keys per deployment.
-- **Entrypoint** must exist at the specified path. Use `run.sh` or `run.py`; the platform invokes them via `bash` or `python3`.
-- **cwd** (optional): Working directory for the solver. Default `true` = use solver dir; `false` = use entrypoint parent; or a string path.
-
----
-
-## 3. Extracting Metrics
-
-To extract metrics from solver output, add a `parser_config.yaml` and reference it in `solver.yaml`.
-
-### Parser Config
-
-Create `configs/solvers/my-solver/parser_config.yaml`:
-
-```yaml
-patterns:
-  - name: mlups
-    regex: 'MLUPS:\s*([\d.e+-]+)'
-    type: float
-  - name: runtime_seconds
-    regex: 'runtime_seconds:\s*([\d.]+)'
-    type: float
-  - name: status
-    regex: 'status:\s*(\w+)'
-    type: str
-```
-
-Each pattern has:
-
-| Field   | Description                                      |
-|---------|--------------------------------------------------|
-| `name`  | Metric name (used in results and trend charts)   |
-| `regex` | Regex with **exactly one capture group** `(...)` |
-| `type`  | `str`, `float`, or `int`                         |
-
-The platform concatenates stdout and stderr, then applies each regex. The first match’s capture group is the metric value.
-
-### Solver Output
-
-Your run script must print metrics to stdout or stderr. For example:
-
-```python
-print("MLUPS: 2.1e6")
-print("runtime_seconds: 38.5")
-print("status: success")
-```
-
-### Wire Up in solver.yaml
-
-```yaml
-name: my-solver
-entrypoint: run.py
-allowed_systems: [dev-system]
-parser_config: parser_config.yaml
-metrics:
-  - name: mlups
-    unit: MLUPS
-    min: 0
-    required: true
-  - name: runtime_seconds
-    unit: s
-    required: true
-```
-
-The `metrics` list is optional; it declares expected metrics and validation ranges (`min`, `max`, `required`).
-
----
-
-## 4. Defining Jobs
-
-Jobs pair a solver with a system and define success criteria. Add them in `configs/jobs/*.yaml` (`.yml` also supported):
-
-```yaml
-jobs:
-  - name: echo-test
-    solver: echo-solver
-    system: dev-system
-    parameters: {}
-    success_criteria:
-      returncode: 0
-  - name: python-test
-    solver: python-solver
-    system: dev-system
-    parameters: {}
-    success_criteria:
-      returncode: 0
-```
-
-| Field             | Description                                      |
-|-------------------|--------------------------------------------------|
-| `name`            | Unique job identifier                            |
-| `solver`          | Solver name (must exist in `configs/solvers/`)   |
-| `system`          | System name (must exist in `configs/systems/`)   |
-| `parameters`      | Optional key-value params (passed to solver)      |
-| `success_criteria`| Pass/fail conditions; `returncode` (default 0)   |
-| `timeout_seconds` | Optional; job timeout in seconds (default 3600)   |
-| `schedule`        | Optional; reserved for future cron/scheduling    |
-| `baseline`        | Optional; if true, runs from this job are stored as a baseline |
-
-The solver’s `allowed_systems` must include the job’s `system`. Otherwise the job will be skipped.
-
----
-
-## 5. Running Jobs
-
-### CLI
-
-From the project root:
-
-```bash
-# List available jobs
+# List solvers (names, default_system, allowed_systems)
 uv run hpc-runner configs --list
 
-# Run all jobs
-uv run hpc-runner configs
+# Matrix smoke: one run per (solver, allowed system) for the listed solvers; no DB write
+uv run hpc-runner configs --solver echo-solver --solver python-solver --all-allowed-systems --no-store
 
-# Run specific job(s)
-uv run hpc-runner configs --job echo-test --job python-test
+# Single solver on one system
+uv run hpc-runner configs --solver echo-solver --system dev-system
 
-# List recent runs from database
+# Recent stored runs
 uv run hpc-runner configs --list-runs
-
-# Run without persisting to database
-uv run hpc-runner configs --no-store
 ```
 
-Options:
+**`--no-store`** is useful for dry validation without touching **`data/harness.db`**. Override the DB path with **`--db`** when isolating test data.
 
-| Option           | Description                                  |
-|------------------|----------------------------------------------|
-| `config_dir`     | Optional positional; path to config dir (default: `configs`) |
-| `--add CMD`      | Create solver from command and run (requires `--system`)   |
-| `--system NAME`  | System name (required with `--add`)                         |
-| `--name NAME`    | Custom solver/job name (optional with `--add`)               |
-| `--job <name>`   | Run only these jobs (repeatable)              |
-| `--list`         | List jobs and exit                           |
-| `--list-runs`    | List last 20 runs from DB and exit           |
-| `--no-store`     | Do not persist results to database           |
-| `--solvers-dir`  | Override solvers directory (default: `configs/solvers`)   |
-| `--db`           | Override database path (default: data/harness.db) |
+### Scheduler / SLURM path
 
-You can also pass a custom config directory as the first argument:
+For real clusters or the Docker SLURM stack used in this repo’s LAMMPS demos, follow **[TESTING_SLURM.md](TESTING_SLURM.md)** (`SLURM_COMPOSE_DIR`, `RUN_SLURM_E2E`, `DOCKER_SLURM_CONTAINER`, `make slurm-up`, etc.).
+
+**Cancel behavior:** **`POST /api/invocations/<id>/cancel`** always tries to stop the local subprocess; best-effort **`scancel`** applies when allowed (**`HARNESS_ALLOW_SCANCEL`**, **`RUN_SLURM_E2E`**, or **`DOCKER_SLURM_*`**—see **[ARCHITECTURE.md](ARCHITECTURE.md) §5.2**).
+
+### Local background-run smoke (optional)
+
+The **`sleep-60-local`** solver is a long-ish local subprocess useful for exercising **Run Matrix**, **Job Activity**, and cancel APIs without SLURM. For a quicker CLI check, use **`echo-solver`**. Changing or adding solvers is covered in **[USER_SOLVER_TEMPLATE.md](USER_SOLVER_TEMPLATE.md)**.
+
+---
+
+## CLI quick reference
+
+Entry point: **`uv run hpc-runner configs`** (optional first argument: config directory, default **`configs`**).
+
+| Option | Description |
+|--------|-------------|
+| `config_dir` | Optional positional path to config root (default: `configs`) |
+| `--solver NAME` | Run only these solvers (repeatable) |
+| `--system NAME` | Target system for selected solvers |
+| `--all-allowed-systems` | One run per allowed system per selected solver (not with `--system`) |
+| `--list` | List solvers and exit |
+| `--list-runs` | List last 20 runs from the DB and exit |
+| `--no-store` | Do not persist results |
+| `--db PATH` | SQLite DB (default: `data/harness.db`) |
+| `--solvers-dir` | Override solvers directory |
+| `-v` / `--verbose` | Print solver stdout/stderr to stderr; include in JSON |
+| `--add CMD` | Create a minimal solver from a command and run (requires `--system`; author-oriented) |
+
+Custom config tree:
 
 ```bash
 uv run hpc-runner /path/to/configs --solvers-dir /path/to/configs/solvers
 ```
 
-### Web UI
+---
 
-Two interfaces are available:
+## API essentials (operators)
 
-**REST API (FastAPI):** `make api` → http://localhost:8000 (root redirects to `/docs` for interactive API documentation). Use for programmatic access or automation.
+Use **`GET /docs`** on the API host for the full OpenAPI surface. Typical automation and triage:
 
-**Streamlit UI:** `make ui` → http://localhost:8501. Use for interactive running of jobs and viewing results in a browser. The UI talks to the harness **only via the REST API** (HTTP), not embedded Python calls—start **`make api`** first (or point **`HPC_API_URL`** at a reachable API), or pages such as **Solvers**, **Run Matrix**, and **Run History** cannot load jobs or runs. **Solvers** and **Run Matrix** use a **Session label** field; the API sends it as **`session_label`** (see REST API section below).
+| Endpoint | Role |
+|----------|------|
+| `GET /api/solvers`, `GET /api/systems` | Discover names for scripts and Run Matrix |
+| `POST /api/run_solvers` | Body: `solvers: [{ "name", "system"? }, ...]`, optional `session_label` / `batch_name`, `background`. Sync: **200** + results. **`background: true`**: **202** + **invocation** ids—see **[ARCHITECTURE.md](ARCHITECTURE.md) §5.2** |
+| `GET /api/invocations`, `GET /api/invocations/<id>`, `GET /api/invocations/<id>/execution_status` | Track and inspect background runs |
+| `POST /api/invocations/<id>/cancel` | Cancel run (subprocess + optional `scancel`) |
+| `GET /api/runs`, `GET /api/runs/<id>` | Stored history and detail |
+| `GET /api/metrics/...`, `GET /api/solvers/<solver>/baseline`, `GET /api/baseline_comparison` | Metrics and baseline comparison for trends |
 
-Both allow you to:
-
-- Run all jobs
-- View recent runs (filter by solver or processor)
-- Inspect run details (stdout, stderr, metrics)
-- View performance trends (metric history over time)
-
-### Local sleep solver (`sleep-60-local`)
-
-The **`sleep-60-local`** solver runs only on **`dev-system`** and sleeps **60 seconds** by default (override with **`LOCAL_SLEEP_SECONDS`**). Use it to exercise **Run Solvers**, **invocation monitoring**, and **Stop** for **local** subprocess runs (`GET /api/invocations/.../execution_status`, pid/alive) without SLURM.
-
-```bash
-uv run hpc-runner configs --solver sleep-60-local
-```
-
-For cancel testing, use **`background: true`** so the API returns immediately while the solver keeps running:
-
-```bash
-curl -s -X POST http://localhost:8000/api/run_solvers \
-  -H 'Content-Type: application/json' \
-  -d '{"solvers":[{"name":"sleep-60-local","system":"dev-system"}],"background":true}'
-```
-
-Then poll **`GET /api/invocations`** and call **`POST /api/invocations/<id>/cancel`** while the run is active.
-
-Like the Slurm batch templates, the script prints **`HARNESS_SOLVER_WALL_SECONDS`** (high-resolution wall time around the **`sleep`**). The harness prefers that value for **`runtime_seconds`** when present, matching the Slurm path.
-
-### REST API
-
-**Session label:** The optional tag for a launch is **`session_label`** on `POST /api/run_solvers` (legacy **`batch_name`** is equivalent). If both are non-empty, **`session_label`** is used. The value is persisted as **`job_batch_name`** in the database. **`job_batch_uuid`** still groups runs from a single launch for correlation; it is not removed or renamed.
-
-For automation:
-
-| Endpoint                    | Method | Description                          |
-|----------------------------|--------|--------------------------------------|
-| `/api/solvers`             | GET    | List solvers (`default_system`, `allowed_systems`) |
-| `/api/run_solvers`         | POST   | Run solvers; body `solvers` (each `name` + optional `system`), optional `session_label` or `batch_name`, `background` — 202 returns one invocation per **job** (`solver@system`) when background |
-| `/api/runs`                | GET    | List runs (?solver=, ?processor=, ?limit=) |
-| `/api/runs`                | DELETE | Body `{"ids": [1,2]}` — remove stored runs (baseline rows allowed) |
-| `/api/runs/<id>`           | GET    | Run detail                           |
-| `/api/runs/<id>/slurm_status` | GET | Live `squeue`/`sacct` when `RUN_SLURM_E2E=1` and run has SLURM metadata |
-| `/api/invocations`         | GET    | List invocations; `?active_only=true` for queued/running only |
-| `/api/invocations/<id>`    | GET    | Status, `batch_name` and mirrored `session_label`, live `scheduler_job_ids`, `jobs_total` / `jobs_completed`, and `results` when done |
-| `/api/invocations/<id>/slurm_status` | GET | Live `squeue`/`sacct` for SLURM ids captured on this invocation (`RUN_SLURM_E2E=1`) |
-| `/api/invocations/<id>/cancel` | POST | Cancel background run (subprocess + best-effort `scancel`; see env vars below) |
-| `/api/solver_summaries`   | GET    | Per-solver pass counts and last run info |
-
-**Background cancel (`scancel`):** set **`HARNESS_ALLOW_SCANCEL=1`** for explicit opt-in, or rely on **`RUN_SLURM_E2E=1`** (tests / Docker SLURM E2E), or configure **`DOCKER_SLURM_CONTAINER`** / **`DOCKER_SLURM_SUBMIT_CONTAINER`** so the API can `docker exec` and run `scancel`. Subprocess termination always runs on cancel regardless of those flags.
-
-| `/api/metrics/<solver>/<metric>` | GET | Metric history for trends            |
-| `/api/solvers/<solver>/baseline` | GET | Current baseline run for a solver    |
-| `/api/runs/<id>/set_baseline` | POST | Set a run as the baseline for its solver |
-| `/api/baseline_comparison` | GET | Compare runs to baseline (?solver=, ?limit=) |
+**Session label:** Optional tag on **`POST /api/run_solvers`**; **`session_label`** wins over legacy **`batch_name`** when both are set. Persisted with runs for grouping.
 
 ---
 
-## 6. Viewing Results
+## UI map (investigation focus)
 
-### Run Output
+Aligned with **[UI_DESIGN.md](UI_DESIGN.md) §5**—one line each:
 
-Each run produces a result with:
+| Page | Use for |
+|------|---------|
+| **Home** | Orientation |
+| **Run Matrix** | Choose **solver × system** cells; optional session label; start background runs |
+| **Job Activity** | Invocations and stored runs; logs; cancel; baselines; SLURM refresh when applicable |
+| **Individual Trends** | Per-solver metric charts |
+| **Long-Term Trends** | Broader metric views; drill to Job Activity where supported |
+| **Configs** | Read-only browse of YAML on disk |
 
-- `job_name`, `solver_name`, `system_name`
-- `returncode`, `passed` (based on success_criteria)
-- `runtime_seconds`, `timestamp`
-- `metrics` (extracted via parser_config)
-- `processor` (e.g. x86_64, aarch64) — detected via `platform.machine()`
-
-CLI output is JSON. Results are stored in `data/harness.db` unless you use `--no-store`. Jobs have a 1-hour (3600s) timeout; jobs exceeding this are marked as failed.
-
-### Dashboard
-
-The Streamlit UI provides:
-
-- **Home:** Welcome text and a **solver monitoring** table (aggregates from stored runs); **Individual Trends** — select solver and metric, line chart
-- **Solvers:** Batch or per-solver runs, **Active runs** (invocation monitoring), last run and pasted invocation ids
-- **Run Matrix:** Solver × system grid (checkboxes per allowed pair); optional **Session label** (stored as `job_batch_name`, API `session_label` / `batch_name`); starts one background run per selected cell — each stored row’s **`job_name`** is `solver@system`
-- **Run History:** Chronological list of runs (newest first); filter by solver or processor; each row is one run keyed by **`job_name`** (`solver@system`) and database **Run id**; optional session label / batch uuid in the expander; **select runs and delete** from the database (with confirm); for SLURM-backed runs, optional **Refresh SLURM status** (needs API env in [TESTING_SLURM.md](TESTING_SLURM.md))
-- **Long-Term Trends:** Heatmaps and trend charts over time, with optional baseline-relative views
-
-Set **`HPC_API_URL`** if the Streamlit process must call an API that is not `http://localhost:8000` (e.g. Docker networking).
+Global **toast** notifications when background jobs finish are described in **UI_DESIGN** §4.3.
 
 ---
 
-## 7. Troubleshooting
+## Troubleshooting (operations)
 
-| Issue                    | Check                                                                 |
-|--------------------------|-----------------------------------------------------------------------|
-| Solver not found         | Solver folder in `configs/solvers/`; not under `_template` or starting with `_`; check `--solvers-dir` |
-| System not found for job | System exists in `configs/systems/`; solver’s `allowed_systems` includes it |
-| Metrics not extracted    | Regex has exactly one capture group; solver prints to stdout/stderr   |
-| Job fails                | Inspect returncode; view stdout/stderr in run detail or DB             |
-| Job times out            | Jobs have a 1-hour limit; long runs may need to be split or optimized |
-| Entrypoint not found     | Path in `solver.yaml` is relative to solver dir; file exists           |
+| Issue | What to check |
+|-------|----------------|
+| UI cannot reach API | **`HPC_API_URL`**; API process listening; firewall |
+| Empty or failing Run Matrix | **`GET /api/solvers`** / **`GET /api/systems`**; config errors in API logs |
+| Run failed or validation errors | **Job Activity** or **`GET /api/runs/<id>`**; **`returncode`**, **`validation_errors`**, stdout/stderr |
+| No SLURM metadata | **`RUN_SLURM_E2E`**, **`DOCKER_SLURM_*`** per **[TESTING_SLURM.md](TESTING_SLURM.md)** |
+| Wrong or missing data in scripts | **`--db`** path; confirm you are querying the same DB the API uses |
+| Cancel did not kill cluster job | **`HARNESS_ALLOW_SCANCEL`** / **`RUN_SLURM_E2E`** / **`DOCKER_SLURM_*`** for `scancel`; see **[ARCHITECTURE.md](ARCHITECTURE.md) §5.2** |
 
 ---
 
-## 8. Quick Reference
+## Appendix: Legacy `configs/jobs/`
 
-**Config layout:**
-```
-configs/
-├── resources/   # Hardware definitions
-├── systems/    # Resource bundles + env
-├── jobs/       # Solver+system pairings
-└── solvers/    # Solver packages
-    └── <name>/
-        ├── solver.yaml        # Required
-        ├── run.sh or run.py   # Required
-        └── parser_config.yaml # Optional
-```
+The config **loader** can still consume a **`configs/jobs/`** directory if present (older layouts). **This repository’s default workflow is solver-first:** maintain **`configs/resources/`**, **`configs/systems/`**, and **`configs/solvers/`** only.
 
-**See also:** [Glossary](GLOSSARY.md) | [Solver Template](USER_SOLVER_TEMPLATE.md) | [Architecture](ARCHITECTURE.md)
+---
+
+## See also
+
+[Glossary](GLOSSARY.md) · [Solver template](USER_SOLVER_TEMPLATE.md) · [Architecture](ARCHITECTURE.md) · [UI design](UI_DESIGN.md) · [SLURM testing](TESTING_SLURM.md)
